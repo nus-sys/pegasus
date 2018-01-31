@@ -2,7 +2,7 @@
 node.py: Contains classes and functions for managing nodes in the simulator.
 """
 
-from config import *
+from pegasus.config import *
 from sortedcontainers import SortedList
 
 def size_distance_to_time(size, distance):

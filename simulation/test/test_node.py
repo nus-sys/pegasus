@@ -3,8 +3,8 @@ node_test.py: Unit tests for the Node class.
 """
 
 import unittest
-import node
-import message
+import pegasus.node as node
+import pegasus.message as message
 
 class TwoNodesTest(unittest.TestCase):
     def setUp(self):
