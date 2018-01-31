@@ -91,15 +91,18 @@ class Node(object):
 
     def process_messages(self, end_time):
         """
-        Process all queued messages up to the end_time
+        Process all queued messages up to end_time
         """
+        timer = self._time
         while len(self._msg_queue) > 0:
             msg = self._msg_queue[0]
             if msg.time < end_time:
                 # XXX Process message here
                 del self._msg_queue[0]
+                timer += PKT_PROC_LTC
+                if timer >= end_time:
+                    break
             else:
                 break
 
         self._time = end_time
-
