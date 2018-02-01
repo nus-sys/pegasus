@@ -75,34 +75,51 @@ class Node(object):
     """
     def __init__(self, parent):
         self._parent = parent
-        self._msg_queue = SortedList()
+        self._message_queue = SortedList()
         self._time = 0
+        self._app = None
 
-    def _add_to_msg_queue(self, msg, time):
-        self._msg_queue.add(QueuedMessage(msg, time))
+    def _add_to_message_queue(self, message, time):
+        self._message_queue.add(QueuedMessage(message, time))
+
+    def register_app(self, app):
+        self._app = app
 
     def distance(self, node):
         return self._parent.distance(node._parent)
 
-    def send_message(self, msg, node):
-        arrival_time = self._time + size_distance_to_time(msg.length(),
+    def send_message(self, message, node):
+        arrival_time = self._time + size_distance_to_time(message.length(),
                                                           self.distance(node))
-        node._add_to_msg_queue(msg, arrival_time)
+        node._add_to_message_queue(message, arrival_time)
 
     def process_messages(self, end_time):
         """
-        Process all queued messages up to end_time
+        Process all queued messages up to ```end_time```
         """
         timer = self._time
-        while len(self._msg_queue) > 0:
-            msg = self._msg_queue[0]
-            if msg.time < end_time:
-                # XXX Process message here
-                del self._msg_queue[0]
-                timer += PKT_PROC_LTC
-                if timer >= end_time:
-                    break
-            else:
+        while len(self._message_queue) > 0:
+            message = self._message_queue[0]
+            if message.time > timer:
+                timer = message.time
+            timer += PKT_PROC_LTC
+            if timer > end_time:
                 break
 
+            self._app.process_message(message)
+            del self._message_queue[0]
+
+    def execute_app(self, end_time):
+        """
+        Execute registered application up to ```end_time```
+        """
+        assert self._app != None
+        self._app.execute(end_time)
+
+    def run(self, end_time):
+        """
+        Run this node up to ```end_time```
+        """
+        self.process_messages(end_time)
+        self.execute_app(end_time)
         self._time = end_time
