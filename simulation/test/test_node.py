@@ -1,5 +1,5 @@
 """
-node_test.py: Unit tests for the Node class.
+test_node.py: Unit tests for the ``Node`` class.
 """
 
 import unittest
@@ -15,7 +15,7 @@ class TestApp(application.Application):
     def _execute(self, end_time):
         pass
 
-    def _process_message(self, message):
+    def _process_message(self, message, time):
         pass
 
 
@@ -32,7 +32,7 @@ class TwoNodesTest(unittest.TestCase):
 
     def test_single_message(self):
         msg = message.Message(1024)
-        self.node_a.send_message(msg, self.node_b)
+        self.node_a.send_message(msg, self.node_b, self.node_a._time)
         self.assertEqual(len(self.node_b._message_queue), 1)
         arrv_time = self.node_b._message_queue[0].time
         self.node_b.run(arrv_time)
@@ -42,19 +42,19 @@ class TwoNodesTest(unittest.TestCase):
 
     def test_multiple_messages(self):
         msg = message.Message(1024)
-        self.node_a.send_message(msg, self.node_b)
-        self.node_a.send_message(msg, self.node_b)
-        self.node_b.send_message(msg, self.node_a)
-        self.node_b.send_message(msg, self.node_a)
+        self.node_a.send_message(msg, self.node_b, self.node_a._time)
+        self.node_a.send_message(msg, self.node_b, self.node_a._time)
+        self.node_b.send_message(msg, self.node_a, self.node_b._time)
+        self.node_b.send_message(msg, self.node_a, self.node_b._time)
         self.assertEqual(len(self.node_a._message_queue), 2)
         self.assertEqual(len(self.node_b._message_queue), 2)
         timer = self.node_a._message_queue[0].time
-        timer += PKT_PROC_LTC
+        timer += PKT_PROC_LTC + 1
         self.node_a.run(timer)
         self.node_b.run(timer)
         self.assertEqual(len(self.node_a._message_queue), 1)
         self.assertEqual(len(self.node_b._message_queue), 1)
-        timer += PKT_PROC_LTC
+        timer += PKT_PROC_LTC + 1
         self.node_a.run(timer)
         self.node_b.run(timer)
         self.assertEqual(len(self.node_a._message_queue), 0)
@@ -78,8 +78,8 @@ class TwoRacksTest(unittest.TestCase):
     def test_message_order(self):
         msg_a = message.Message(1024)
         msg_b = message.Message(1024)
-        self.node_a1.send_message(msg_a, self.node_b2)
-        self.node_b1.send_message(msg_b, self.node_b2)
+        self.node_a1.send_message(msg_a, self.node_b2, self.node_a1._time)
+        self.node_b1.send_message(msg_b, self.node_b2, self.node_b1._time)
         self.assertEqual(len(self.node_b2._message_queue), 2)
         self.assertTrue(self.node_b2._message_queue[0].message is msg_b)
         arrv_time = self.node_b2._message_queue[0].time
