@@ -9,8 +9,13 @@ class Application(object):
     a node. Subclass of ``Application`` should implement
     ``_execute`` and ``_process_message``.
     """
-    def __init__(self, node):
-        self._node = node
+    def __init__(self):
+        self._local_node = None
+        self._remote_nodes = None
+
+    def register_nodes(self, local_node, remote_nodes):
+        self._local_node = local_node
+        self._remote_nodes = remote_nodes
 
     def execute(self, end_time):
         """

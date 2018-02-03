@@ -18,7 +18,8 @@ class BasicTest(unittest.TestCase):
             self.nodes.append(pegasus.node.Node(self.rack))
 
         for node in self.nodes:
-            app = nullrpc.NullRPC(node, self.nodes)
+            app = nullrpc.NullRPC()
+            app.register_nodes(node, self.nodes)
             self.apps.append(app)
             node.register_app(app)
 

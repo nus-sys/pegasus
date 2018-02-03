@@ -9,8 +9,8 @@ import pegasus.application as application
 from pegasus.config import *
 
 class TestApp(application.Application):
-    def __init__(self, node):
-        super().__init__(node)
+    def __init__(self):
+        super().__init__()
 
     def _execute(self, end_time):
         pass
@@ -24,7 +24,7 @@ class TwoNodesTest(unittest.TestCase):
         self.rack = node.Rack()
         self.node_a = node.Node(self.rack)
         self.node_b = node.Node(self.rack)
-        self.app = TestApp(self.node_a)
+        self.app = TestApp()
         self.node_a.register_app(self.app)
         self.node_b.register_app(self.app)
         self.rack.add_node(self.node_a)
@@ -69,7 +69,7 @@ class TwoRacksTest(unittest.TestCase):
         self.node_a2 = node.Node(self.rack_a)
         self.node_b1 = node.Node(self.rack_b)
         self.node_b2 = node.Node(self.rack_b)
-        self.app = TestApp(self.node_a1)
+        self.app = TestApp()
         self.node_a1.register_app(self.app)
         self.node_a2.register_app(self.app)
         self.node_b1.register_app(self.app)
