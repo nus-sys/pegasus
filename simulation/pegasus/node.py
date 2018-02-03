@@ -77,6 +77,7 @@ class Node(object):
         self._parent = parent
         self._message_queue = SortedList()
         self._time = 0
+        self._message_proc_remain_time = -1
         self._app = None
 
     def _add_to_message_queue(self, message, time):
@@ -88,37 +89,50 @@ class Node(object):
     def distance(self, node):
         return self._parent.distance(node._parent)
 
-    def send_message(self, message, node):
-        arrival_time = self._time + size_distance_to_time(message.length(),
-                                                          self.distance(node))
+    def send_message(self, message, node, send_time):
+        message.send_time = send_time
+        arrival_time = send_time + size_distance_to_time(message.length,
+                                                         self.distance(node))
         node._add_to_message_queue(message, arrival_time)
 
     def process_messages(self, end_time):
         """
-        Process all queued messages up to ```end_time```
+        Process all queued messages up to ``end_time``
         """
         timer = self._time
+        # Process the last message from last batch
+        if self._message_proc_remain_time >= 0:
+            assert len(self._message_queue) > 0
+            timer += self._message_proc_remain_time
+            self._message_proc_remain_time = -1
+            self._app.process_message(self._message_queue[0], timer)
+            del self._message_queue[0]
+
+        # Now process other messages
         while len(self._message_queue) > 0:
             message = self._message_queue[0]
+            if message.time > end_time:
+                break
             if message.time > timer:
                 timer = message.time
             timer += PKT_PROC_LTC
-            if timer > end_time:
+            if timer >= end_time:
+                self._message_proc_remain_time = timer - end_time
                 break
 
-            self._app.process_message(message)
+            self._app.process_message(message, timer)
             del self._message_queue[0]
 
     def execute_app(self, end_time):
         """
-        Execute registered application up to ```end_time```
+        Execute registered application up to ``end_time``
         """
         assert self._app != None
         self._app.execute(end_time)
 
     def run(self, end_time):
         """
-        Run this node up to ```end_time```
+        Run this node up to ``end_time``
         """
         self.process_messages(end_time)
         self.execute_app(end_time)
