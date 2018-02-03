@@ -102,7 +102,6 @@ class Node(object):
         timer = self._time
         # Process the last message from last batch
         if self._message_proc_remain_time >= 0:
-            assert len(self._message_queue) > 0
             timer += self._message_proc_remain_time
             self._message_proc_remain_time = -1
             self._app.process_message(self._message_queue[0], timer)
@@ -127,7 +126,6 @@ class Node(object):
         """
         Execute registered application up to ``end_time``
         """
-        assert self._app != None
         self._app.execute(end_time)
 
     def run(self, end_time):
