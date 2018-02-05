@@ -14,8 +14,8 @@ class BasicTest(unittest.TestCase):
         self.rack = pegasus.node.Rack()
         self.nodes = []
         self.apps = []
-        for _ in range(N_NODES):
-            self.nodes.append(pegasus.node.Node(self.rack))
+        for i in range(N_NODES):
+            self.nodes.append(pegasus.node.Node(self.rack, i))
 
         for node in self.nodes:
             app = nullrpc.NullRPC()
@@ -35,6 +35,7 @@ class BasicTest(unittest.TestCase):
             timer += MIN_PROPG_DELAY
 
         # Process remaining messages
+        timer += (N_NODES * PKT_PROC_LTC)
         for node in self.nodes:
             node.process_messages(timer)
 
