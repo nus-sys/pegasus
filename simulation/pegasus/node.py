@@ -22,8 +22,12 @@ class Rack(object):
     Object representing a single rack in the simulator. Each rack
     contains a set of nodes.
     """
-    def __init__(self):
+    def __init__(self, id=0):
         self._nodes = set()
+        self._id = id
+
+    def id(self):
+        return self._id
 
     def distance(self, rack):
         """
@@ -73,15 +77,19 @@ class Node(object):
     Object representing a single node in the simulator. Each node
     belongs to a single rack.
     """
-    def __init__(self, parent):
+    def __init__(self, parent, id=0):
         self._parent = parent
         self._message_queue = SortedList()
         self._time = 0
         self._message_proc_remain_time = -1
         self._app = None
+        self._id = id
 
     def _add_to_message_queue(self, message, time):
         self._message_queue.add(QueuedMessage(message, time))
+
+    def id(self):
+        return '['+str(self._parent.id())+' '+str(self._id)+']'
 
     def register_app(self, app):
         self._app = app
@@ -115,7 +123,7 @@ class Node(object):
             if message.time > timer:
                 timer = message.time
             timer += PKT_PROC_LTC
-            if timer >= end_time:
+            if timer > end_time:
                 self._message_proc_remain_time = timer - end_time
                 break
 
