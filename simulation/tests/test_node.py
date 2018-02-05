@@ -12,10 +12,10 @@ class TestApp(application.Application):
     def __init__(self):
         super().__init__()
 
-    def _execute(self, end_time):
+    def execute(self, end_time):
         pass
 
-    def _process_message(self, message, time):
+    def process_message(self, message, time):
         pass
 
 

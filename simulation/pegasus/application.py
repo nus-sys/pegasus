@@ -7,7 +7,7 @@ class Application(object):
     """
     Abstract class, representing a generic application running on
     a node. Subclass of ``Application`` should implement
-    ``_execute`` and ``_process_message``.
+    ``execute`` and ``process_message``.
     """
     def __init__(self):
         self._local_node = None
@@ -21,16 +21,10 @@ class Application(object):
         """
         Execute application logic up to end_time
         """
-        self._execute(end_time)
-
-    def _execute(self, end_time):
         raise NotImplementedError
 
     def process_message(self, message, time):
         """
         Process a single message
         """
-        self._process_message(message, time)
-
-    def _process_message(self, message, time):
         raise NotImplementedError

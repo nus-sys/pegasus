@@ -16,7 +16,7 @@ class NullRPC(pegasus.application.Application):
         self._sent_messages = 0
         self._received_messages = 0
 
-    def _execute(self, end_time):
+    def execute(self, end_time):
         """
         Send message to randomly selected node every ``MESSAGE_INTERVAL``
         """
@@ -30,5 +30,5 @@ class NullRPC(pegasus.application.Application):
             self._next_send_time += MESSAGE_INTERVAL
             self._sent_messages += 1
 
-    def _process_message(self, message, time):
+    def process_message(self, message, time):
         self._received_messages += 1
