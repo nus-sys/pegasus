@@ -112,7 +112,7 @@ class Node(object):
         if self._message_proc_remain_time >= 0:
             timer += self._message_proc_remain_time
             self._message_proc_remain_time = -1
-            self._app.process_message(self._message_queue[0], timer)
+            self._app.process_message(self._message_queue[0].message, timer)
             del self._message_queue[0]
 
         # Now process other messages
@@ -127,7 +127,7 @@ class Node(object):
                 self._message_proc_remain_time = timer - end_time
                 break
 
-            self._app.process_message(message, timer)
+            self._app.process_message(message.message, timer)
             del self._message_queue[0]
 
     def execute_app(self, end_time):
