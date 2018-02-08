@@ -129,13 +129,10 @@ class SimulatorTest(unittest.TestCase):
                                       "k1"), 75),
                         (kv.Operation(kv.Operation.Type.GET,
                                       "k1"), 88)]
-            self.op_index = 0
 
         def next_operation(self):
-            if self.op_index < len(self.ops):
-                ret = self.ops[self.op_index]
-                self.op_index += 1
-                return ret
+            if len(self.ops) > 0:
+                return self.ops.pop(0)
             else:
                 return None, None
 
