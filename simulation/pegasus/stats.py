@@ -21,12 +21,12 @@ class Stats(object):
         raise NotImplementedError
 
     def dump(self):
-        assert self._end_time > 0
+        assert self.end_time > 0
         self.latencies.sort()
-        print("Throughput:", len(self.latencies) / (self.end_time / 1000000))
-        print("Average Latency:", sum(self.latencies) / len(self.latencies))
+        print("Throughput:", "{0:.2f}".format(len(self.latencies) / (self.end_time / 1000000)))
+        print("Average Latency:", "{0:.2f}".format(sum(self.latencies) / len(self.latencies)))
         print("Median Latency:", self.latencies[len(self.latencies)//2])
-        print("90% Latency:", self.latencies[round(len(self.latencies) * 0.9)])
-        print("99% Latency:", self.latencies[round(len(self.latencies) * 0.99)])
+        print("90% Latency:", self.latencies[int(len(self.latencies) * 0.9)])
+        print("99% Latency:", self.latencies[int(len(self.latencies) * 0.99)])
 
         self._dump()
