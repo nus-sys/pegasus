@@ -95,3 +95,91 @@ class ClientServerTest(unittest.TestCase):
         self.assertEqual(self.stats.cache_misses, 1)
         self.assertEqual(len(self.client_app._store), 0)
         self.assertEqual(len(self.server_app._store), 1)
+
+
+class SimulatorTest(unittest.TestCase):
+    class StaticConfig(memcachekv.MemcacheKVConfiguration):
+        def __init__(self, cache_nodes, db_node):
+            super().__init__(cache_nodes, db_node)
+
+        def key_to_node(self, key):
+            index = sum(map(lambda x : ord(x), key)) % len(self.cache_nodes)
+            return self.cache_nodes[index]
+
+    class SimpleGenerator(kv.KVWorkloadGenerator):
+        def __init__(self):
+            self.ops = [(kv.Operation(kv.Operation.Type.PUT,
+                                      "k1",
+                                      "v1"), 0),
+                        (kv.Operation(kv.Operation.Type.PUT,
+                                      "k2",
+                                      "v2"), 15),
+                        (kv.Operation(kv.Operation.Type.GET,
+                                      "k1"), 23),
+                        (kv.Operation(kv.Operation.Type.GET,
+                                      "k3"), 40),
+                        (kv.Operation(kv.Operation.Type.PUT,
+                                      "k3",
+                                      "v3"), 48),
+                        (kv.Operation(kv.Operation.Type.GET,
+                                      "k3"), 60),
+                        (kv.Operation(kv.Operation.Type.GET,
+                                      "k2"), 71),
+                        (kv.Operation(kv.Operation.Type.DEL,
+                                      "k1"), 75),
+                        (kv.Operation(kv.Operation.Type.GET,
+                                      "k1"), 88)]
+            self.op_index = 0
+
+        def next_operation(self):
+            if self.op_index < len(self.ops):
+                ret = self.ops[self.op_index]
+                self.op_index += 1
+                return ret
+            else:
+                return None, None
+
+    def setUp(self):
+        self.stats = kv.KVStats()
+        self.simulator = pegasus.simulator.Simulator(self.stats)
+        # Single client node in a dedicated rack
+        self.client_node = pegasus.node.Node(pegasus.node.Rack(0), 0)
+        # 4 cache nodes in one rack
+        self.cache_nodes = []
+        cache_rack = pegasus.node.Rack(1)
+        for i in range(4):
+            self.cache_nodes.append(pegasus.node.Node(cache_rack, i))
+
+        config = self.StaticConfig(self.cache_nodes, None)
+        # Register applications
+        self.client_app = memcachekv.MemcacheKV(self.SimpleGenerator(),
+                                                self.stats)
+        self.client_app.register_config(config)
+        self.client_node.register_app(self.client_app)
+
+        self.server_apps = []
+        for node in self.cache_nodes:
+            app = memcachekv.MemcacheKV(None, self.stats)
+            app.register_config(config)
+            node.register_app(app)
+            self.server_apps.append(app)
+
+        self.simulator.add_node(self.client_node)
+        self.simulator.add_nodes(self.cache_nodes)
+
+    def test_basic(self):
+        self.simulator.run(88 + 6 * MIN_PROPG_DELAY)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET],
+                         5)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         3)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.DEL],
+                         1)
+        self.assertEqual(self.stats.cache_hits, 3)
+        self.assertEqual(self.stats.cache_misses, 2)
+        self.assertEqual(len(self.server_apps[0]._store), 0)
+        self.assertEqual(len(self.server_apps[1]._store), 1)
+        self.assertTrue(self.server_apps[1]._store["k2"], "v2")
+        self.assertEqual(len(self.server_apps[2]._store), 1)
+        self.assertTrue(self.server_apps[2]._store["k3"], "v3")
+        self.assertEqual(len(self.server_apps[3]._store), 0)
