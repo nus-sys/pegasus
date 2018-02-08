@@ -44,14 +44,9 @@ class MemcacheKV(kv.KV):
     """
     Implementation of a memcache style distributed key-value store.
     """
-    def __init__(self, generator, key_node_map):
-        super().__init__(generator)
+    def __init__(self, generator, stats, key_node_map):
+        super().__init__(generator, stats)
         self._key_node_map = key_node_map
-        self.cache_hits = 0
-        self.cache_misses = 0
-        self.received_replies = {}
-        for op_type in kv.Operation.Type:
-            self.received_replies[op_type] = 0
 
     def _execute(self, op, time):
         """
@@ -67,18 +62,19 @@ class MemcacheKV(kv.KV):
 
     def _process_message(self, message, time):
         if isinstance(message, Request):
-            ret = self._execute_op(message.operation)
+            result, value = self._execute_op(message.operation)
             reply = Reply(src_time = message.src_time,
                           op_type = message.operation.op_type,
-                          result = ret[0],
-                          value = ret[1])
+                          result = result,
+                          value = value)
             self._local_node.send_message(reply, message.src, time)
         elif isinstance(message, Reply):
-            self.received_replies[message.op_type] += 1
+            hit = True
             if (message.op_type == kv.Operation.Type.GET):
-                if message.result == kv.Result.OK:
-                    self.cache_hits += 1
-                else:
-                    self.cache_misses += 1
+                if message.result == kv.Result.NOT_FOUND:
+                    hit = False
+            self._stats.report_op(message.op_type,
+                                  time - message.src_time,
+                                  hit)
         else:
             raise ValueError("Invalid message type")
