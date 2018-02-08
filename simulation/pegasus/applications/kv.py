@@ -42,7 +42,7 @@ class KVWorkloadGenerator(object):
     def next_operation(self):
         """
         Returns a (op, time) tuple, where ``op`` is an ``Operation``
-        type.
+        type. Returns (``None``, ``None``) to stop generating operations.
         """
         raise NotImplementedError
 
@@ -69,11 +69,10 @@ class KVStats(pegasus.stats.Stats):
                 self.cache_misses += 1
 
     def _dump(self):
-        print("Cache Hit Rate:", self.cache_hits / (self.cache_hits +
-                                                    self.cache_misses))
-        print("GET percentage:", self.received_replies[Operation.Type.GET] / len(self.latencies))
-        print("PUT percentage:", self.received_replies[Operation.Type.PUT] / len(self.latencies))
-        print("DEL percentage:", self.received_replies[Operation.Type.DEL] / len(self.latencies))
+        print("Cache Hit Rate:", "{0:.2f}".format(self.cache_hits / (self.cache_hits + self.cache_misses)))
+        print("GET percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.GET] / len(self.latencies)))
+        print("PUT percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.PUT] / len(self.latencies)))
+        print("DEL percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.DEL] / len(self.latencies)))
 
 
 class KV(pegasus.application.Application):
@@ -87,7 +86,7 @@ class KV(pegasus.application.Application):
         self._store = {}
         self._generator = generator
         self._stats = stats
-        if generator != None:
+        if generator is not None:
             self._next_op, self._next_op_time = generator.next_operation()
 
     def _execute_op(self, op):
@@ -119,10 +118,10 @@ class KV(pegasus.application.Application):
         raise NotImplementedError
 
     def execute(self, end_time):
-        if self._generator != None:
-            while self._next_op_time <= end_time:
+        if self._generator is not None:
+            while self._next_op_time is not None and self._next_op_time <= end_time:
                 self._execute(self._next_op, self._next_op_time)
-                self._next_op, self._next_op_time = generator.next_opeartion()
+                self._next_op, self._next_op_time = self._generator.next_operation()
 
     def process_message(self, message, time):
         self._process_message(message, time)
