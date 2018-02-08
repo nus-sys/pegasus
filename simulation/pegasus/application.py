@@ -10,12 +10,17 @@ class Application(object):
     ``execute`` and ``process_message``.
     """
     def __init__(self):
-        self._local_node = None
-        self._remote_nodes = None
+        self._node = None
+        self._config = None
 
-    def register_nodes(self, local_node, remote_nodes):
-        self._local_node = local_node
-        self._remote_nodes = remote_nodes
+    def register_node(self, node):
+        """
+        Called by node when running ``register_app``.
+        """
+        self._node = node
+
+    def register_config(self, config):
+        self._config = config
 
     def execute(self, end_time):
         """

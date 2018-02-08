@@ -1,6 +1,10 @@
 """
-config.py: Parameters and configuration options for the simulator.
+config.py: Configuration service for applications.
 """
 
-MIN_PROPG_DELAY = 10
-PKT_PROC_LTC = 2
+class Configuration(object):
+    """
+    Root class of all Configuration classes.
+    """
+    def __init__(self):
+        pass

@@ -3,14 +3,30 @@ test_simulator.py: Unit tests for the top level simulator.
 """
 
 import unittest
+import pegasus.node
 import pegasus.simulator
 import pegasus.applications.nullrpc as nullrpc
-from pegasus.config import *
+from pegasus.param import *
 
 class BasicTest(unittest.TestCase):
     def setUp(self):
         self.simulator = pegasus.simulator.Simulator()
-        self.simulator.setup(4, 4, nullrpc.NullRPC())
+        nodes = []
+        n_racks = 4
+        n_nodes_per_rack = 4
+        for i in range(n_racks):
+            rack = pegasus.node.Rack(i)
+            for j in range(n_nodes_per_rack):
+                nodes.append(pegasus.node.Node(rack, j))
+
+        config = nullrpc.NullRPCConfiguration(nodes)
+
+        for node in nodes:
+            node_app = nullrpc.NullRPC()
+            node_app.register_config(config)
+            node.register_app(node_app)
+
+        self.simulator.add_nodes(nodes)
 
     def test_basic(self):
         assert (MIN_PROPG_DELAY // nullrpc.MESSAGE_INTERVAL) * PKT_PROC_LTC < MIN_PROPG_DELAY

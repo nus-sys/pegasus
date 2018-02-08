@@ -6,6 +6,7 @@ from enum import Enum
 import pegasus.node
 import pegasus.application
 import pegasus.message
+import pegasus.stats
 
 OP_TYPE_LEN = 1
 class Operation(object):
@@ -46,16 +47,46 @@ class KVWorkloadGenerator(object):
         raise NotImplementedError
 
 
+class KVStats(pegasus.stats.Stats):
+    """
+    Collects KV application related statistics.
+    """
+    def __init__(self):
+        super().__init__()
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.received_replies = {}
+        for op_type in Operation.Type:
+            self.received_replies[op_type] = 0
+
+    def report_op(self, op_type, latency, hit = True):
+        self.report_latency(latency)
+        self.received_replies[op_type] += 1
+        if (op_type == Operation.Type.GET):
+            if hit:
+                self.cache_hits += 1
+            else:
+                self.cache_misses += 1
+
+    def _dump(self):
+        print("Cache Hit Rate:", self.cache_hits / (self.cache_hits +
+                                                    self.cache_misses))
+        print("GET percentage:", self.received_replies[Operation.Type.GET] / len(self.latencies))
+        print("PUT percentage:", self.received_replies[Operation.Type.PUT] / len(self.latencies))
+        print("DEL percentage:", self.received_replies[Operation.Type.DEL] / len(self.latencies))
+
+
 class KV(pegasus.application.Application):
     """
     Abstract key-value application implementation. A ``None`` generator
     indicates the app runs on a server that does not generate requests.
     Subclass should implement ``_execute`` and ``_process_message``.
     """
-    def __init__(self, generator):
+    def __init__(self, generator, stats):
         super().__init__()
         self._store = {}
         self._generator = generator
+        self._stats = stats
         if generator != None:
             self._next_op, self._next_op_time = generator.next_operation()
 
@@ -65,15 +96,15 @@ class KV(pegasus.application.Application):
         """
         if op.op_type == Operation.Type.GET:
             if op.key in self._store:
-                return (Result.OK, self._store[op.key])
+                return Result.OK, self._store[op.key]
             else:
-                return (Result.NOT_FOUND, "")
+                return Result.NOT_FOUND, ""
         elif op.op_type == Operation.Type.PUT:
             self._store[op.key] = op.value
-            return (Result.OK, "")
+            return Result.OK, ""
         elif op.op_type == Operation.Type.DEL:
             self._store.pop(op.key, None)
-            return (Result.OK, "")
+            return Result.OK, ""
         else:
             raise ValueError("Invalid operation type")
 

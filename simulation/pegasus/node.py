@@ -2,7 +2,7 @@
 node.py: Contains classes and functions for managing nodes in the simulator.
 """
 
-from pegasus.config import *
+from pegasus.param import *
 from sortedcontainers import SortedList
 
 def size_distance_to_time(size, distance):
@@ -53,23 +53,7 @@ class QueuedMessage(object):
         self.time = time
 
     def __lt__(self, other):
-        return self._time < other._time
-
-    @property
-    def message(self):
-        return self._message
-
-    @message.setter
-    def message(self, message):
-        self._message = message
-
-    @property
-    def time(self):
-        return self._time
-
-    @time.setter
-    def time(self, time):
-        self._time = time
+        return self.time < other.time
 
 
 class Node(object):
@@ -93,6 +77,7 @@ class Node(object):
 
     def register_app(self, app):
         self._app = app
+        self._app.register_node(self)
 
     def distance(self, node):
         return self._parent.distance(node._parent)

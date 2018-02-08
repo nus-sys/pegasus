@@ -5,7 +5,7 @@ test_nullrpc.py: Unit tests for the Null RPC application.
 import unittest
 import pegasus.node
 import pegasus.applications.nullrpc as nullrpc
-from pegasus.config import *
+from pegasus.param import *
 
 N_NODES = 4
 
@@ -19,7 +19,7 @@ class BasicTest(unittest.TestCase):
 
         for node in self.nodes:
             app = nullrpc.NullRPC()
-            app.register_nodes(node, self.nodes)
+            app.register_config(nullrpc.NullRPCConfiguration(self.nodes))
             self.apps.append(app)
             node.register_app(app)
 
