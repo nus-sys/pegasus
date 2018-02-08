@@ -77,6 +77,7 @@ class Node(object):
 
     def register_app(self, app):
         self._app = app
+        self._app.register_node(self)
 
     def distance(self, node):
         return self._parent.distance(node._parent)

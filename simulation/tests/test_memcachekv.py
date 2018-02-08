@@ -12,8 +12,7 @@ from pegasus.param import *
 class MemcacheKVSingleAppTest(unittest.TestCase):
     def setUp(self):
         self.kvapp = memcachekv.MemcacheKV(None,
-                                           kv.KVStats(),
-                                           memcachekv.KeyNodeMap(None))
+                                           kv.KVStats())
 
     def test_basic(self):
         result, value = self.kvapp._execute_op(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'))
@@ -34,13 +33,13 @@ class MemcacheKVSingleAppTest(unittest.TestCase):
 
 
 class ClientServerTest(unittest.TestCase):
-    class SingleServerMap(memcachekv.KeyNodeMap):
-        def __init__(self, nodes):
-            assert len(nodes) == 1
-            super().__init__(nodes)
+    class SingleServerConfig(memcachekv.MemcacheKVConfiguration):
+        def __init__(self, cache_nodes, db_node):
+            assert len(cache_nodes) == 1
+            super().__init__(cache_nodes, db_node)
 
         def key_to_node(self, key):
-            return self._nodes[0]
+            return self.cache_nodes[0]
 
     def setUp(self):
         rack = pegasus.node.Rack()
@@ -48,11 +47,10 @@ class ClientServerTest(unittest.TestCase):
         self.server = pegasus.node.Node(rack, 1)
         self.stats = kv.KVStats()
         self.client_app = memcachekv.MemcacheKV(None,
-                                                self.stats,
-                                                self.SingleServerMap([self.server]))
-        self.server_app = memcachekv.MemcacheKV(None, self.stats, None)
-        self.client_app.register_nodes(self.client, [self.client, self.server])
-        self.server_app.register_nodes(self.server, [self.client, self.server])
+                                                self.stats)
+        self.client_app.register_config(self.SingleServerConfig([self.server], None))
+        self.server_app = memcachekv.MemcacheKV(None,
+                                                self.stats)
         self.client.register_app(self.client_app)
         self.server.register_app(self.server_app)
 
