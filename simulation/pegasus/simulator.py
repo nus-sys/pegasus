@@ -9,8 +9,9 @@ import pegasus.application
 from pegasus.param import *
 
 class Simulator(object):
-    def __init__(self):
+    def __init__(self, stats):
         self._nodes = []
+        self._stats = stats
 
     def add_node(self, node):
         self._nodes.append(node)
@@ -28,3 +29,4 @@ class Simulator(object):
                 node.run(timer)
 
             timer += MIN_PROPG_DELAY
+        self._stats.report_end_time(timer)

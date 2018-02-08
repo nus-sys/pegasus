@@ -4,13 +4,14 @@ test_simulator.py: Unit tests for the top level simulator.
 
 import unittest
 import pegasus.node
+import pegasus.stats
 import pegasus.simulator
 import pegasus.applications.nullrpc as nullrpc
 from pegasus.param import *
 
 class BasicTest(unittest.TestCase):
     def setUp(self):
-        self.simulator = pegasus.simulator.Simulator()
+        self.simulator = pegasus.simulator.Simulator(pegasus.stats.Stats())
         nodes = []
         n_racks = 4
         n_nodes_per_rack = 4
