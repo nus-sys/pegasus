@@ -6,13 +6,19 @@ import copy
 
 import pegasus.node
 import pegasus.application
-from pegasus.config import *
+from pegasus.param import *
 
 class Simulator(object):
     def __init__(self):
         self._nodes = []
 
-    def setup(self, n_racks, n_nodes_per_rack, app):
+    def add_node(self, node):
+        self._nodes.append(node)
+
+    def add_nodes(self, nodes):
+        self._nodes.extend(nodes)
+
+    def setup_auto(self, n_racks, n_nodes_per_rack, app):
         assert n_racks > 0
         assert n_nodes_per_rack > 0
         # Setup nodes

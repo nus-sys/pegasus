@@ -4,9 +4,10 @@ test_memcachekv.py: Unit tests for MemcacheKV.
 
 import unittest
 import pegasus.node
+import pegasus.simulator
 import pegasus.applications.kv as kv
 import pegasus.applications.kvimpl.memcachekv as memcachekv
-from pegasus.config import *
+from pegasus.param import *
 
 class MemcacheKVSingleAppTest(unittest.TestCase):
     def setUp(self):

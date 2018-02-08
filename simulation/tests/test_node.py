@@ -6,7 +6,7 @@ import unittest
 import pegasus.node as node
 import pegasus.message as message
 import pegasus.application as application
-from pegasus.config import *
+from pegasus.param import *
 
 class TestApp(application.Application):
     def __init__(self):

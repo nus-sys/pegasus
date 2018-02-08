@@ -5,12 +5,12 @@ test_simulator.py: Unit tests for the top level simulator.
 import unittest
 import pegasus.simulator
 import pegasus.applications.nullrpc as nullrpc
-from pegasus.config import *
+from pegasus.param import *
 
 class BasicTest(unittest.TestCase):
     def setUp(self):
         self.simulator = pegasus.simulator.Simulator()
-        self.simulator.setup(4, 4, nullrpc.NullRPC())
+        self.simulator.setup_auto(4, 4, nullrpc.NullRPC())
 
     def test_basic(self):
         assert (MIN_PROPG_DELAY // nullrpc.MESSAGE_INTERVAL) * PKT_PROC_LTC < MIN_PROPG_DELAY
