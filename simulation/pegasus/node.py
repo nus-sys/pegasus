@@ -59,15 +59,18 @@ class QueuedMessage(object):
 class Node(object):
     """
     Object representing a single node in the simulator. Each node
-    belongs to a single rack.
+    belongs to a single rack. If ``logical_client`` is true, we
+    simulate a logical client with infinite packet processing rate
+    (zero PKT_PROC_LTC).
     """
-    def __init__(self, parent, id=0):
+    def __init__(self, parent, id=0, logical_client=False):
         self._parent = parent
         self._message_queue = SortedList()
         self._time = 0
         self._message_proc_remain_time = -1
         self._app = None
         self._id = id
+        self._logical_client = logical_client
 
     def _add_to_message_queue(self, message, time):
         self._message_queue.add(QueuedMessage(message, time))
@@ -107,7 +110,8 @@ class Node(object):
                 break
             if message.time > timer:
                 timer = message.time
-            timer += PKT_PROC_LTC
+            if not self._logical_client:
+                timer += PKT_PROC_LTC
             if timer > end_time:
                 self._message_proc_remain_time = timer - end_time
                 break
