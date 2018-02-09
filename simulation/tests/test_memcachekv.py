@@ -7,7 +7,7 @@ import pegasus.node
 import pegasus.simulator
 import pegasus.applications.kv as kv
 import pegasus.applications.kvimpl.memcachekv as memcachekv
-from pegasus.param import *
+import pegasus.param as param
 
 class MemcacheKVSingleAppTest(unittest.TestCase):
     def setUp(self):
@@ -58,13 +58,13 @@ class ClientServerTest(unittest.TestCase):
         timer = 0
         self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
                                  timer)
-        timer += MIN_PROPG_DELAY + PKT_PROC_LTC
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
         self.client.run(timer)
         self.server.run(timer)
         self.assertEqual(self.server_app._store['k1'], 'v1')
         self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
                          0)
-        timer += MIN_PROPG_DELAY + PKT_PROC_LTC
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
         self.client.run(timer)
         self.server.run(timer)
         self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
@@ -72,7 +72,7 @@ class ClientServerTest(unittest.TestCase):
         self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
                                  timer)
         for _ in range(2):
-            timer += MIN_PROPG_DELAY + PKT_PROC_LTC
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
             self.client.run(timer)
             self.server.run(timer)
         self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
@@ -84,7 +84,7 @@ class ClientServerTest(unittest.TestCase):
         self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k2'),
                                  timer)
         for _ in range(2):
-            timer += MIN_PROPG_DELAY + PKT_PROC_LTC
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
             self.client.run(timer)
             self.server.run(timer)
         self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
@@ -110,25 +110,34 @@ class SimulatorTest(unittest.TestCase):
         def __init__(self):
             self.ops = [(kv.Operation(kv.Operation.Type.PUT,
                                       "k1",
-                                      "v1"), 0),
+                                      "v1"),
+                         0),
                         (kv.Operation(kv.Operation.Type.PUT,
                                       "k2",
-                                      "v2"), 15),
+                                      "v2"),
+                         round(0.5*param.propg_delay())),
                         (kv.Operation(kv.Operation.Type.GET,
-                                      "k1"), 23),
+                                      "k1"),
+                         round(1.2*param.propg_delay())),
                         (kv.Operation(kv.Operation.Type.GET,
-                                      "k3"), 40),
+                                      "k3"),
+                         round(1.7*param.propg_delay())),
                         (kv.Operation(kv.Operation.Type.PUT,
                                       "k3",
-                                      "v3"), 48),
+                                      "v3"),
+                         round(2.5*param.propg_delay())),
                         (kv.Operation(kv.Operation.Type.GET,
-                                      "k3"), 60),
+                                      "k3"),
+                         round(3*param.propg_delay())),
                         (kv.Operation(kv.Operation.Type.GET,
-                                      "k2"), 71),
+                                      "k2"),
+                         round(3.9*param.propg_delay())),
                         (kv.Operation(kv.Operation.Type.DEL,
-                                      "k1"), 75),
+                                      "k1"),
+                         round(4.3*param.propg_delay())),
                         (kv.Operation(kv.Operation.Type.GET,
-                                      "k1"), 88)]
+                                      "k1"),
+                         round(5*param.propg_delay()))]
 
         def next_operation(self):
             if len(self.ops) > 0:
@@ -139,13 +148,12 @@ class SimulatorTest(unittest.TestCase):
     def setUp(self):
         self.stats = kv.KVStats()
         self.simulator = pegasus.simulator.Simulator(self.stats)
-        # Single client node in a dedicated rack
-        self.client_node = pegasus.node.Node(pegasus.node.Rack(0), 0)
-        # 4 cache nodes in one rack
+        rack = pegasus.node.Rack(0)
+        # Single client node and 4 cache nodes all in one rack
+        self.client_node = pegasus.node.Node(rack, 0)
         self.cache_nodes = []
-        cache_rack = pegasus.node.Rack(1)
         for i in range(4):
-            self.cache_nodes.append(pegasus.node.Node(cache_rack, i))
+            self.cache_nodes.append(pegasus.node.Node(rack, i+1))
 
         config = self.StaticConfig(self.cache_nodes, None)
         # Register applications
@@ -165,7 +173,7 @@ class SimulatorTest(unittest.TestCase):
         self.simulator.add_nodes(self.cache_nodes)
 
     def test_basic(self):
-        self.simulator.run(88 + 6 * MIN_PROPG_DELAY)
+        self.simulator.run((5+2)*param.MAX_PROPG_DELAY+len(self.SimpleGenerator().ops)*param.MAX_PKT_PROC_LTC)
         self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET],
                          5)
         self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],

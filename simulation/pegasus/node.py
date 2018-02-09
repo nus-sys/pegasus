@@ -2,17 +2,17 @@
 node.py: Contains classes and functions for managing nodes in the simulator.
 """
 
-from pegasus.param import *
+import pegasus.param as param
 from sortedcontainers import SortedList
 
 def size_distance_to_time(size, distance):
     """
     Calculate message latency based on message length and
     distance between sender and receiver. Currently assume
-    propagation delay is 10 * distance, and bandwidth is
-    uniformly 10Gbps.
+    propagation delay is propg_delay * distance, and bandwidth
+    is uniformly 10Gbps.
     """
-    propg_delay = distance * MIN_PROPG_DELAY
+    propg_delay = distance * param.propg_delay()
     trans_delay = (size * 8) // (10*10**3)
     return propg_delay + trans_delay
 
@@ -111,7 +111,7 @@ class Node(object):
             if message.time > timer:
                 timer = message.time
             if not self._logical_client:
-                timer += PKT_PROC_LTC
+                timer += param.pkt_proc_ltc()
             if timer > end_time:
                 self._message_proc_remain_time = timer - end_time
                 break

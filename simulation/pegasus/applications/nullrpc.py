@@ -5,9 +5,12 @@ nullrpc.py: A simple Null RPC application.
 import random
 import pegasus.application
 import pegasus.message
+import pegasus.config
+import pegasus.param as param
 
 MESSAGE_LENGTH = 1024
-MESSAGE_INTERVAL = 5
+MESSAGES_PER_EPOCH = 2
+MESSAGE_INTERVAL = param.MIN_PROPG_DELAY // MESSAGES_PER_EPOCH
 
 class NullRPCConfiguration(pegasus.config.Configuration):
     def __init__(self, nodes):

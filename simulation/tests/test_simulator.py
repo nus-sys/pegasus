@@ -7,7 +7,7 @@ import pegasus.node
 import pegasus.stats
 import pegasus.simulator
 import pegasus.applications.nullrpc as nullrpc
-from pegasus.param import *
+import pegasus.param as param
 
 class BasicTest(unittest.TestCase):
     def setUp(self):
@@ -30,16 +30,15 @@ class BasicTest(unittest.TestCase):
         self.simulator.add_nodes(nodes)
 
     def test_basic(self):
-        assert (MIN_PROPG_DELAY // nullrpc.MESSAGE_INTERVAL) * PKT_PROC_LTC < MIN_PROPG_DELAY
         n_rounds = 4
         msg_sent_sum = 0
         msg_received_sum = 0
-        timer = n_rounds * nullrpc.MESSAGE_INTERVAL
+        timer = (n_rounds / nullrpc.MESSAGES_PER_EPOCH) * param.MIN_PROPG_DELAY
 
         self.simulator.run(timer)
 
         # Process remaining messages
-        timer += (2 * MIN_PROPG_DELAY + len(self.simulator._nodes) * PKT_PROC_LTC)
+        timer += (2 * param.MAX_PROPG_DELAY + len(self.simulator._nodes) * param.MAX_PKT_PROC_LTC)
         for node in self.simulator._nodes:
             node.process_messages(timer)
 

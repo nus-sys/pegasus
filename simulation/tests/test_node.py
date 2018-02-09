@@ -6,7 +6,7 @@ import unittest
 import pegasus.node as node
 import pegasus.message as message
 import pegasus.application as application
-from pegasus.param import *
+import pegasus.param as param
 
 class TestApp(application.Application):
     def __init__(self):
@@ -37,7 +37,7 @@ class TwoNodesTest(unittest.TestCase):
         arrv_time = self.node_b._message_queue[0].time
         self.node_b.run(arrv_time)
         self.assertEqual(len(self.node_b._message_queue), 1)
-        self.node_b.run(arrv_time+PKT_PROC_LTC+1)
+        self.node_b.run(arrv_time+param.MAX_PKT_PROC_LTC+1)
         self.assertEqual(len(self.node_b._message_queue), 0)
 
     def test_multiple_messages(self):
@@ -48,16 +48,18 @@ class TwoNodesTest(unittest.TestCase):
         self.node_b.send_message(msg, self.node_a, self.node_b._time)
         self.assertEqual(len(self.node_a._message_queue), 2)
         self.assertEqual(len(self.node_b._message_queue), 2)
-        timer = self.node_a._message_queue[0].time
-        timer += PKT_PROC_LTC + 1
+        timer = self.node_a._message_queue[0].time + param.MAX_PKT_PROC_LTC
         self.node_a.run(timer)
-        self.node_b.run(timer)
         self.assertEqual(len(self.node_a._message_queue), 1)
-        self.assertEqual(len(self.node_b._message_queue), 1)
-        timer += PKT_PROC_LTC + 1
+        timer += param.MAX_PKT_PROC_LTC + (param.MAX_PROPG_DELAY - param.MIN_PROPG_DELAY)
         self.node_a.run(timer)
-        self.node_b.run(timer)
         self.assertEqual(len(self.node_a._message_queue), 0)
+
+        timer = self.node_b._message_queue[0].time + param.MAX_PKT_PROC_LTC
+        self.node_b.run(timer)
+        self.assertEqual(len(self.node_b._message_queue), 1)
+        timer += param.MAX_PKT_PROC_LTC + (param.MAX_PROPG_DELAY - param.MIN_PROPG_DELAY)
+        self.node_b.run(timer)
         self.assertEqual(len(self.node_b._message_queue), 0)
 
 
@@ -83,7 +85,7 @@ class TwoRacksTest(unittest.TestCase):
         self.assertEqual(len(self.node_b2._message_queue), 2)
         self.assertTrue(self.node_b2._message_queue[0].message is msg_b)
         arrv_time = self.node_b2._message_queue[0].time
-        self.node_b2.run(arrv_time+PKT_PROC_LTC+1)
+        self.node_b2.run(arrv_time+param.MAX_PKT_PROC_LTC)
         self.assertEqual(len(self.node_b2._message_queue), 1)
         self.assertTrue(self.node_b2._message_queue[0].message is msg_a)
 

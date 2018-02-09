@@ -6,7 +6,7 @@ import copy
 
 import pegasus.node
 import pegasus.application
-from pegasus.param import *
+import pegasus.param as param
 
 class Simulator(object):
     def __init__(self, stats):
@@ -23,10 +23,10 @@ class Simulator(object):
         """
         Run the simulator for ``duration`` usecs.
         """
-        timer = MIN_PROPG_DELAY
+        timer = param.MIN_PROPG_DELAY
         while timer <= duration:
             for node in self._nodes:
                 node.run(timer)
 
-            timer += MIN_PROPG_DELAY
+            timer += param.MIN_PROPG_DELAY
         self._stats.report_end_time(timer)
