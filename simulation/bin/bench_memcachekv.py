@@ -64,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument('-g', '--gets', type=float, required=True, help="GET ratio (0.0 to 1.0)")
     parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
     parser.add_argument('-d', '--duration', type=int, required=True, help="Duration of simulation (s)")
+    parser.add_argument('-s', '--progress', action='store_true', help="Display progress bar")
     args = parser.parse_args()
 
     # Construct keys
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     # Initialize simulator
     generator = UniformWorkloadGenerator(keys, args.values, args.gets, args.puts, args.interval)
     stats = kv.KVStats()
-    simulator = pegasus.simulator.Simulator(stats)
+    simulator = pegasus.simulator.Simulator(stats, args.progress)
     rack = pegasus.node.Rack()
     client_node = pegasus.node.Node(rack, 0, True) # use a single logical client node
     cache_nodes = []
