@@ -70,9 +70,9 @@ class KVStats(pegasus.stats.Stats):
 
     def _dump(self):
         print("Cache Hit Rate:", "{0:.2f}".format(self.cache_hits / (self.cache_hits + self.cache_misses)))
-        print("GET percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.GET] / len(self.latencies)))
-        print("PUT percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.PUT] / len(self.latencies)))
-        print("DEL percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.DEL] / len(self.latencies)))
+        print("GET percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.GET] / self.total_ops))
+        print("PUT percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.PUT] / self.total_ops))
+        print("DEL percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.DEL] / self.total_ops))
 
 
 class KV(pegasus.application.Application):
