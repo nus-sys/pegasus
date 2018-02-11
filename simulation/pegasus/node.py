@@ -63,13 +63,19 @@ class Node(object):
     simulate a logical client with infinite packet processing rate
     (zero PKT_PROC_LTC).
     """
-    def __init__(self, parent, id=0, logical_client=False):
+    class UnfinishedMessage(object):
+        def __init__(self, message, remain_time):
+            self.message = message
+            self.remain_time = remain_time
+
+    def __init__(self, parent, id=0, nprocs=1, logical_client=False):
         self._parent = parent
         self._message_queue = SortedList()
+        self._unfinished_messages = []
         self._time = 0
-        self._message_proc_remain_time = -1
         self._app = None
         self._id = id
+        self._nprocs = nprocs
         self._logical_client = logical_client
 
     def _add_to_message_queue(self, message, time):
@@ -95,29 +101,39 @@ class Node(object):
         """
         Process all queued messages up to ``end_time``
         """
-        timer = self._time
-        # Process the last message from last batch
-        if self._message_proc_remain_time >= 0:
-            timer += self._message_proc_remain_time
-            self._message_proc_remain_time = -1
-            self._app.process_message(self._message_queue[0].message, timer)
-            del self._message_queue[0]
+        proc_times = SortedList()
+        # Process unfinished messages from last epoch
+        if len(self._unfinished_messages) > 0:
+            for msg in self._unfinished_messages:
+                finished_time = self._time + msg.remain_time
+                self._app.process_message(msg.message, finished_time)
+                proc_times.add(finished_time)
+            self._unfinished_messages = []
+
+        # Initialize processors' time
+        while len(proc_times) < self._nprocs:
+            proc_times.add(self._time)
 
         # Now process other messages
-        while len(self._message_queue) > 0:
+        while len(self._message_queue) > 0 and len(proc_times) > 0:
             message = self._message_queue[0]
             if message.time > end_time:
                 break
-            if message.time > timer:
-                timer = message.time
+            proc_time = proc_times.pop(0)
+            if message.time > proc_time:
+                proc_time = message.time
             if not self._logical_client:
-                timer += param.pkt_proc_ltc()
-            if timer > end_time:
-                self._message_proc_remain_time = timer - end_time
-                break
+                proc_time += param.pkt_proc_ltc()
 
-            self._app.process_message(message.message, timer)
+            if proc_time > end_time:
+                # Couldn't finish message in this epoch
+                self._unfinished_messages.append(self.UnfinishedMessage(message.message, proc_time - end_time))
+                del self._message_queue[0]
+                continue
+
+            self._app.process_message(message.message, proc_time)
             del self._message_queue[0]
+            proc_times.add(proc_time)
 
     def execute_app(self, end_time):
         """
