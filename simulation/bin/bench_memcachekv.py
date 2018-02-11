@@ -65,6 +65,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
     parser.add_argument('-d', '--duration', type=int, required=True, help="Duration of simulation (s)")
     parser.add_argument('-s', '--progress', action='store_true', help="Display progress bar")
+    parser.add_argument('-o', '--outputfile', default="", help="CDF output file name")
     args = parser.parse_args()
 
     # Construct keys
@@ -98,4 +99,12 @@ if __name__ == "__main__":
 
     # Run simulation
     simulator.run(args.duration*1000000)
-    stats.dump()
+    total_ops, latencies = stats.dump()
+
+    # Dump latency CDF
+    if len(args.outputfile) > 0:
+        with open(args.outputfile, 'w') as f:
+            count = 0
+            for latency in sorted(latencies.keys()):
+                count += latencies[latency]
+                f.write(str(latency) + ' ' + str(count / total_ops) + '\n')
