@@ -5,6 +5,8 @@ bench_memcachekv.py: MemcacheKV benchmark.
 import random
 import string
 import argparse
+import enum
+import sys
 
 import pegasus.node
 import pegasus.simulator
@@ -18,18 +20,67 @@ class StaticConfig(memcachekv.MemcacheKVConfiguration):
     def key_to_node(self, key):
         return self.cache_nodes[hash(key) % len(self.cache_nodes)]
 
-class UniformWorkloadGenerator(kv.KVWorkloadGenerator):
-    def __init__(self, keys, value_len, get_ratio, put_ratio, interval):
+
+class KeyType(enum.Enum):
+    UNIFORM = 1,
+    ZIPF = 2
+
+class IntervalType(enum.Enum):
+    UNIFORM = 1,
+    POISS = 2
+
+
+class WorkloadGenerator(kv.KVWorkloadGenerator):
+    def __init__(self, keys, value_len, get_ratio, put_ratio, key_type, interval_type, mean_interval, alpha):
         assert get_ratio + put_ratio <= 1
         self._keys = keys
         self._value = 'v'*value_len
         self._get_ratio = get_ratio
         self._put_ratio = put_ratio
-        self._interval = interval
+        self._key_type = key_type
+        self._interval_type = interval_type
+        self._mean_interval = mean_interval
         self._timer = 0
+        if key_type == KeyType.ZIPF:
+            # Generator zipf distribution data
+            self._zipf = [0] * len(keys)
+            c = 0.0
+            for i in range(len(keys)):
+                c = c + (1.0 / (i+1)**alpha)
+            c = 1 / c
+            sum = 0.0
+            for i in range(len(keys)):
+                sum += (c / (i+1)**alpha)
+                self._zipf[i] = sum
+
+
+    def zipf_key_index(self):
+        """
+        Return the next zipf key index
+        """
+        rand = 0
+        while rand == 0:
+            rand = random.random()
+
+        l = 0
+        r = len(self._keys)
+        while l < r:
+            mid = (l + r) // 2
+            if rand > self._zipf[mid]:
+                l = mid + 1
+            elif rand < self._zipf[mid]:
+                r = mid - 1
+            else:
+                break
+        return mid
 
     def next_operation(self):
-        key = random.choice(self._keys)
+        if self._key_type == KeyType.UNIFORM:
+            key = random.choice(self._keys)
+        elif self._key_type == KeyType.ZIPF:
+            key = self._keys[self.zipf_key_index()]
+        else:
+            raise ValueError("Invalide key distribution type")
 
         op_choice = random.uniform(0, 1)
         op_type = None
@@ -46,7 +97,12 @@ class UniformWorkloadGenerator(kv.KVWorkloadGenerator):
         else:
             op = kv.Operation(op_type, key)
 
-        self._timer += self._interval
+        if self._interval_type == IntervalType.UNIFORM:
+            self._timer += self._mean_interval
+        elif self._interval_type == IntervalType.POISS:
+            self._timer += random.expovariate(1/self._mean_interval)
+        else:
+            raise ValueError("Invalid interval distribution type")
         return (op, self._timer)
 
 
@@ -59,6 +115,9 @@ if __name__ == "__main__":
     parser.add_argument('-k', '--keys', type=int, required=True, help="number of keys")
     parser.add_argument('-l', '--length', type=int, required=True, help="key length")
     parser.add_argument('-v', '--values', type=int, required=True, help="value length")
+    parser.add_argument('-e', '--keytype', required=True, help="key distribution type (unif/zipf)")
+    parser.add_argument('-a', '--alpha', type=float, default=0.5, help="zipf distribution parameter")
+    parser.add_argument('-t', '--intervaltype', required=True, help="interval distribution type (unif/poiss)")
     parser.add_argument('-i', '--interval', type=float, required=True, help="interval between operations (us)")
     parser.add_argument('-n', '--nodes', type=int, required=True, help="number of cache nodes")
     parser.add_argument('-c', '--procs', type=int, required=True, help="number of processors per node")
@@ -75,7 +134,23 @@ if __name__ == "__main__":
         keys.append(rand_string(args.length))
 
     # Initialize simulator
-    generator = UniformWorkloadGenerator(keys, args.values, args.gets, args.puts, args.interval)
+    if args.keytype == 'unif':
+        key_type = KeyType.UNIFORM
+    elif args.keytype == 'zipf':
+        key_type = KeyType.ZIPF
+    else:
+        print("option -e (--keytype) should be one of unif/zipf")
+        sys.exit(1)
+
+    if args.intervaltype == 'unif':
+        interval_type = IntervalType.UNIFORM
+    elif args.intervaltype == 'poiss':
+        interval_type = IntervalType.POISS
+    else:
+        print("option -t (--intervaltype) should be one of unif/poiss")
+        sys.exit(1)
+
+    generator = WorkloadGenerator(keys, args.values, args.gets, args.puts, key_type, interval_type, args.interval, args.alpha)
     stats = kv.KVStats()
     simulator = pegasus.simulator.Simulator(stats, args.progress)
     rack = pegasus.node.Rack()
