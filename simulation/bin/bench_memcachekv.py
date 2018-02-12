@@ -59,8 +59,9 @@ if __name__ == "__main__":
     parser.add_argument('-k', '--keys', type=int, required=True, help="number of keys")
     parser.add_argument('-l', '--length', type=int, required=True, help="key length")
     parser.add_argument('-v', '--values', type=int, required=True, help="value length")
-    parser.add_argument('-i', '--interval', type=int, required=True, help="interval between operations (us)")
+    parser.add_argument('-i', '--interval', type=float, required=True, help="interval between operations (us)")
     parser.add_argument('-n', '--nodes', type=int, required=True, help="number of cache nodes")
+    parser.add_argument('-c', '--procs', type=int, required=True, help="number of processors per node")
     parser.add_argument('-g', '--gets', type=float, required=True, help="GET ratio (0.0 to 1.0)")
     parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
     parser.add_argument('-d', '--duration', type=int, required=True, help="Duration of simulation (s)")
@@ -78,10 +79,14 @@ if __name__ == "__main__":
     stats = kv.KVStats()
     simulator = pegasus.simulator.Simulator(stats, args.progress)
     rack = pegasus.node.Rack()
-    client_node = pegasus.node.Node(rack, 0, True) # use a single logical client node
+    client_node = pegasus.node.Node(parent=rack,
+                                    id=0,
+                                    logical_client=True) # use a single logical client node
     cache_nodes = []
     for i in range(args.nodes):
-        cache_nodes.append(pegasus.node.Node(rack, i+1))
+        cache_nodes.append(pegasus.node.Node(parent=rack,
+                                             id=i+1,
+                                             nprocs=args.procs))
     config = StaticConfig(cache_nodes, None) # no DB node
 
     # Register applications
