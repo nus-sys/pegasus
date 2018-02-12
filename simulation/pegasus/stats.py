@@ -16,6 +16,7 @@ class Stats(object):
         self.end_time = end_time
 
     def report_latency(self, latency):
+        latency = round(latency, 2)
         count = self.latencies.setdefault(latency, 0)
         self.latencies[latency] = count + 1
         self.total_ops += 1
