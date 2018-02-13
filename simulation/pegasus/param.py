@@ -4,6 +4,8 @@ param.py: Parameters and configuration options for the simulator.
 
 import random
 
+NODE_MSG_QUEUE_LENGTH = 1024
+
 MED_PROPG_DELAY = 50
 PROPG_DELAY_SD = 2.5
 MIN_PROPG_DELAY = round(MED_PROPG_DELAY - 2 * PROPG_DELAY_SD)
