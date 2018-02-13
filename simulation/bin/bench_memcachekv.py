@@ -161,7 +161,8 @@ if __name__ == "__main__":
     for i in range(args.nodes):
         cache_nodes.append(pegasus.node.Node(parent=rack,
                                              id=i+1,
-                                             nprocs=args.procs))
+                                             nprocs=args.procs,
+                                             drop_tail=True))
     config = StaticConfig(cache_nodes, None) # no DB node
 
     # Register applications
