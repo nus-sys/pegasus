@@ -20,6 +20,12 @@ class Operation(object):
         self.key = key
         self.value = value
 
+    def __eq__(self, other):
+        if isinstance(other, Operation):
+            return self.op_type == other.op_type and \
+                self.key == other.key and \
+                self.value == other.value
+
     def len(self):
         return OP_TYPE_LEN + len(self.key) + len(self.value)
 
@@ -125,3 +131,70 @@ class KV(pegasus.application.Application):
 
     def process_message(self, message, time):
         self._process_message(message, time)
+
+
+class DBRequest(pegasus.message.Message):
+    """
+    DB request message.
+    """
+    def __init__(self, src, src_time, operation):
+        super().__init__(operation.len())
+        self.src = src
+        self.src_time = src_time
+        self.operation = operation
+
+
+class DBReply(pegasus.message.Message):
+    """
+    DB reply message.
+    """
+    def __init__(self, src_time, operation, result, value):
+        super().__init__(len(value))
+        self.src_time = src_time
+        self.operation = operation
+        self.result = result
+        self.value = value
+
+
+class DB(pegasus.application.Application):
+    """
+    Simple DB implementation.
+    """
+    def __init__(self):
+        super().__init__()
+        self._store = {}
+
+    def _execute_op(self, op):
+        """
+        Execute a single op. Returns a (result, value) tuple.
+        """
+        if op.op_type == Operation.Type.GET:
+            if op.key in self._store:
+                return Result.OK, self._store[op.key]
+            else:
+                return Result.NOT_FOUND, ""
+        elif op.op_type == Operation.Type.PUT:
+            self._store[op.key] = op.value
+            return Result.OK, ""
+        elif op.op_type == Operation.Type.DEL:
+            self._store.pop(op.key, None)
+            return Result.OK, ""
+        else:
+            raise ValueError("Invalid operation type")
+
+    def execute(self, end_time):
+        """
+        DB does not generate any request.
+        """
+        pass
+
+    def process_message(self, message, time):
+        if isinstance(message, DBRequest):
+            result, value = self._execute_op(message.operation)
+            reply = DBReply(src_time = message.src_time,
+                            operation = message.operation,
+                            result = result,
+                            value = value)
+            self._node.send_message(reply, message.src, time)
+        else:
+            raise ValueError("Invalid message type")
