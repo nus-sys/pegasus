@@ -64,9 +64,9 @@ class Node(object):
     (zero PKT_PROC_LTC).
     """
     class UnfinishedMessage(object):
-        def __init__(self, message, remain_time):
+        def __init__(self, message, finish_time):
             self.message = message
-            self.remain_time = remain_time
+            self.finish_time = finish_time
 
     def __init__(self, parent, id=0, nprocs=1, logical_client=False, drop_tail=False):
         self._parent = parent
@@ -109,7 +109,7 @@ class Node(object):
             if message.time > end_time:
                 break
             del self._inflight_messages[0]
-            if self._drop_tail:
+            if self._drop_tail and not self._logical_client:
                 if len(self._message_queue) < param.NODE_MSG_QUEUE_LENGTH + (end_time - self._time) // param.MIN_PKT_PROC_LTC:
                     self._message_queue.append(message)
             else:
@@ -118,14 +118,18 @@ class Node(object):
         proc_times = SortedList()
         # Process unfinished messages from last epoch
         if len(self._unfinished_messages) > 0:
+            unfinished_messages = []
             for msg in self._unfinished_messages:
-                finished_time = self._time + msg.remain_time
-                self._app.process_message(msg.message, finished_time)
-                proc_times.add(finished_time)
-            self._unfinished_messages = []
+                if msg.finish_time > end_time:
+                    # Still can not finish in this epoch
+                    unfinished_messages.append(msg)
+                else :
+                    self._app.process_message(msg.message, msg.finish_time)
+                    proc_times.add(msg.finish_time)
+            self._unfinished_messages = unfinished_messages
 
         # Initialize processors' time
-        while len(proc_times) < self._nprocs:
+        while len(proc_times) + len(self._unfinished_messages) < self._nprocs:
             proc_times.add(self._time)
 
         # Now process other messages
@@ -135,11 +139,11 @@ class Node(object):
             if message.time > proc_time:
                 proc_time = message.time
             if not self._logical_client:
-                proc_time += param.pkt_proc_ltc()
+                proc_time += (param.pkt_proc_ltc() + self._app.message_proc_ltc(message.message))
 
             if proc_time > end_time:
                 # Couldn't finish message in this epoch
-                self._unfinished_messages.append(self.UnfinishedMessage(message.message, proc_time - end_time))
+                self._unfinished_messages.append(self.UnfinishedMessage(message.message, proc_time))
                 del self._message_queue[0]
                 continue
 
