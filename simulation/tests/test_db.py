@@ -36,7 +36,7 @@ class BasicTest(unittest.TestCase):
         op = kv.Operation(kv.Operation.Type.PUT, "k1", "v1")
         request = kv.DBRequest(self.client, timer, op)
         self.client.send_message(request, self.server, timer)
-        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC + kv.DB_REQUEST_LTC
         self.server.run(timer)
         self.client.run(timer)
         self.assertEqual(self.server_app._store['k1'], 'v1')
@@ -53,7 +53,7 @@ class BasicTest(unittest.TestCase):
         op = kv.Operation(kv.Operation.Type.GET, "k1")
         request = kv.DBRequest(self.client, timer, op)
         self.client.send_message(request, self.server, timer)
-        timer += 2 * (param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC)
+        timer += 2 * (param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC) + kv.DB_REQUEST_LTC
         self.server.run(timer)
         self.client.run(timer)
         self.assertEqual(len(self.client_app.received_replies), 2)
@@ -65,7 +65,7 @@ class BasicTest(unittest.TestCase):
         op = kv.Operation(kv.Operation.Type.DEL, "k1")
         request = kv.DBRequest(self.client, timer, op)
         self.client.send_message(request, self.server, timer)
-        timer += 2 * (param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC)
+        timer += 2 * (param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC) + kv.DB_REQUEST_LTC
         self.server.run(timer)
         self.client.run(timer)
         self.assertEqual(len(self.client_app.received_replies), 3)
@@ -76,7 +76,7 @@ class BasicTest(unittest.TestCase):
         op = kv.Operation(kv.Operation.Type.GET, "k1")
         request = kv.DBRequest(self.client, timer, op)
         self.client.send_message(request, self.server, timer)
-        timer += 2 * (param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC)
+        timer += 2 * (param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC) + kv.DB_REQUEST_LTC
         self.server.run(timer)
         self.client.run(timer)
         self.assertEqual(len(self.client_app.received_replies), 4)

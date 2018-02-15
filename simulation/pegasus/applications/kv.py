@@ -156,6 +156,7 @@ class DBReply(pegasus.message.Message):
         self.value = value
 
 
+DB_REQUEST_LTC = 100
 class DB(pegasus.application.Application):
     """
     Simple DB implementation.
@@ -198,3 +199,9 @@ class DB(pegasus.application.Application):
             self._node.send_message(reply, message.src, time)
         else:
             raise ValueError("Invalid message type")
+
+    def message_proc_ltc(self, message):
+        """
+        DB requests take a constant latency
+        """
+        return DB_REQUEST_LTC
