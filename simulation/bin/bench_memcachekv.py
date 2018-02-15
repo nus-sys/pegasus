@@ -13,14 +13,6 @@ import pegasus.simulator
 import pegasus.applications.kv as kv
 import pegasus.applications.kvimpl.memcachekv as memcachekv
 
-class StaticConfig(memcachekv.MemcacheKVConfiguration):
-    def __init__(self, cache_nodes, db_node):
-        super().__init__(cache_nodes, db_node)
-
-    def key_to_node(self, key):
-        return self.cache_nodes[hash(key) % len(self.cache_nodes)]
-
-
 class KeyType(enum.Enum):
     UNIFORM = 1,
     ZIPF = 2
@@ -163,7 +155,7 @@ if __name__ == "__main__":
                                              id=i+1,
                                              nprocs=args.procs,
                                              drop_tail=True))
-    config = StaticConfig(cache_nodes, None) # no DB node
+    config = memcachekv.StaticConfig(cache_nodes, None) # no DB node
 
     # Register applications
     client_app = memcachekv.MemcacheKV(generator, stats)

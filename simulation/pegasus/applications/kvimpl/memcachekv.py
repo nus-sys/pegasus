@@ -46,6 +46,14 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
         raise NotImplementedError
 
 
+class StaticConfig(MemcacheKVConfiguration):
+    def __init__(self, cache_nodes, db_node):
+        super().__init__(cache_nodes, db_node)
+
+    def key_to_node(self, key):
+        return self.cache_nodes[hash(key) % len(self.cache_nodes)]
+
+
 class MemcacheKV(kv.KV):
     """
     Implementation of a memcache style distributed key-value store.
