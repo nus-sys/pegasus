@@ -6,25 +6,24 @@ import pegasus.message
 import pegasus.config
 import pegasus.applications.kv as kv
 
-class Request(pegasus.message.Message):
+class MemcacheKVRequest(pegasus.message.Message):
     """
     Request message used by MemcacheKV.
     """
-    def __init__(self, src, src_time, operation):
+    def __init__(self, src, req_id, operation):
         super().__init__(operation.len())
         self.src = src
-        self.src_time = src_time
+        self.req_id = req_id
         self.operation = operation
 
 
-class Reply(pegasus.message.Message):
+class MemcacheKVReply(pegasus.message.Message):
     """
     Reply message used by MemcacheKV.
     """
-    def __init__(self, src_time, op_type, result, value):
+    def __init__(self, req_id, result, value):
         super().__init__(kv.RES_LEN + len(value))
-        self.src_time = src_time
-        self.op_type = op_type
+        self.req_id = req_id
         self.result = result
         self.value = value
 
@@ -58,8 +57,15 @@ class MemcacheKV(kv.KV):
     """
     Implementation of a memcache style distributed key-value store.
     """
+    class PendingRequest(object):
+        def __init__(self, operation, time):
+            self.operation = operation
+            self.time = time
+
     def __init__(self, generator, stats):
         super().__init__(generator, stats)
+        self._pending_requests = {} # req_id -> PendingRequest
+        self._next_req_id = 1
 
     def _execute(self, op, time):
         """
@@ -68,26 +74,30 @@ class MemcacheKV(kv.KV):
         """
         dest_node = self._config.key_to_node(op.key)
         assert dest_node is not self._node
-        msg = Request(src = self._node,
-                      src_time = time,
-                      operation = op)
+        self._pending_requests[self._next_req_id] = self.PendingRequest(operation = op,
+                                                                        time = time)
+        msg = MemcacheKVRequest(src = self._node,
+                                req_id = self._next_req_id,
+                                operation = op)
         self._node.send_message(msg, dest_node, time)
+        self._next_req_id += 1
 
     def _process_message(self, message, time):
-        if isinstance(message, Request):
+        if isinstance(message, MemcacheKVRequest):
             result, value = self._execute_op(message.operation)
-            reply = Reply(src_time = message.src_time,
-                          op_type = message.operation.op_type,
-                          result = result,
-                          value = value)
+            reply = MemcacheKVReply(req_id = message.req_id,
+                                    result = result,
+                                    value = value)
             self._node.send_message(reply, message.src, time)
-        elif isinstance(message, Reply):
+        elif isinstance(message, MemcacheKVReply):
+            request = self._pending_requests[message.req_id]
             hit = True
-            if (message.op_type == kv.Operation.Type.GET):
+            if request.operation.op_type == kv.Operation.Type.GET:
                 if message.result == kv.Result.NOT_FOUND:
                     hit = False
-            self._stats.report_op(message.op_type,
-                                  time - message.src_time,
+            self._stats.report_op(request.operation.op_type,
+                                  time - request.time,
                                   hit)
+            del self._pending_requests[message.req_id]
         else:
             raise ValueError("Invalid message type")
