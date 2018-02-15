@@ -7,7 +7,8 @@ class Application(object):
     """
     Abstract class, representing a generic application running on
     a node. Subclass of ``Application`` should implement
-    ``execute`` and ``process_message``.
+    ``execute``, ``process_message``. Application that has nonzero
+    latency should override ``message_proc_ltc``.
     """
     def __init__(self):
         self._node = None
@@ -33,3 +34,10 @@ class Application(object):
         Process a single message
         """
         raise NotImplementedError
+
+    def message_proc_ltc(self, message):
+        """
+        Latency of processing a single message. Default
+        latency is 0.
+        """
+        return 0
