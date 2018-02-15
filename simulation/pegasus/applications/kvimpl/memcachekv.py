@@ -57,15 +57,8 @@ class MemcacheKV(kv.KV):
     """
     Implementation of a memcache style distributed key-value store.
     """
-    class PendingRequest(object):
-        def __init__(self, operation, time):
-            self.operation = operation
-            self.time = time
-
     def __init__(self, generator, stats):
         super().__init__(generator, stats)
-        self._pending_requests = {} # req_id -> PendingRequest
-        self._next_req_id = 1
 
     def _execute(self, op, time):
         """
@@ -74,7 +67,7 @@ class MemcacheKV(kv.KV):
         """
         dest_node = self._config.key_to_node(op.key)
         assert dest_node is not self._node
-        self._pending_requests[self._next_req_id] = self.PendingRequest(operation = op,
+        self._pending_requests[self._next_req_id] = kv.KV.PendingRequest(operation = op,
                                                                         time = time)
         msg = MemcacheKVRequest(src = self._node,
                                 req_id = self._next_req_id,

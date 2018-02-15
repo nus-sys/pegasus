@@ -87,11 +87,18 @@ class KV(pegasus.application.Application):
     indicates the app runs on a server that does not generate requests.
     Subclass should implement ``_execute`` and ``_process_message``.
     """
+    class PendingRequest(object):
+        def __init__(self, operation, time):
+            self.operation = operation
+            self.time = time
+
     def __init__(self, generator, stats):
         super().__init__()
         self._store = {}
         self._generator = generator
         self._stats = stats
+        self._pending_requests = {} # req_id -> PendingRequest
+        self._next_req_id = 1
         if generator is not None:
             self._next_op, self._next_op_time = generator.next_operation()
 
