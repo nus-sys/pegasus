@@ -8,6 +8,7 @@ import pegasus.application
 import pegasus.message
 import pegasus.stats
 
+REQ_ID_LEN = 4
 OP_TYPE_LEN = 1
 class Operation(object):
     class Type(Enum):
@@ -25,6 +26,8 @@ class Operation(object):
             return self.op_type == other.op_type and \
                 self.key == other.key and \
                 self.value == other.value
+        else:
+            return False
 
     def len(self):
         return OP_TYPE_LEN + len(self.key) + len(self.value)
