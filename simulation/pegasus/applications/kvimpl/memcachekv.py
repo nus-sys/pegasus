@@ -11,7 +11,7 @@ class MemcacheKVRequest(pegasus.message.Message):
     Request message used by MemcacheKV.
     """
     def __init__(self, src, req_id, operation):
-        super().__init__(operation.len())
+        super().__init__(kv.REQ_ID_LEN + operation.len())
         self.src = src
         self.req_id = req_id
         self.operation = operation
@@ -22,7 +22,7 @@ class MemcacheKVReply(pegasus.message.Message):
     Reply message used by MemcacheKV.
     """
     def __init__(self, req_id, result, value):
-        super().__init__(kv.RES_LEN + len(value))
+        super().__init__(kv.REQ_ID_LEN + kv.RES_LEN + len(value))
         self.req_id = req_id
         self.result = result
         self.value = value
@@ -66,7 +66,6 @@ class MemcacheKV(kv.KV):
         in a MemcacheKV are stateless, and do not store kv pairs.
         """
         dest_node = self._config.key_to_node(op.key)
-        assert dest_node is not self._node
         self._pending_requests[self._next_req_id] = kv.KV.PendingRequest(operation = op,
                                                                         time = time)
         msg = MemcacheKVRequest(src = self._node,
@@ -83,7 +82,7 @@ class MemcacheKV(kv.KV):
                                     value = value)
             self._node.send_message(reply, message.src, time)
         elif isinstance(message, MemcacheKVReply):
-            request = self._pending_requests[message.req_id]
+            request = self._pending_requests.pop(message.req_id)
             hit = True
             if request.operation.op_type == kv.Operation.Type.GET:
                 if message.result == kv.Result.NOT_FOUND:
@@ -91,6 +90,5 @@ class MemcacheKV(kv.KV):
             self._stats.report_op(request.operation.op_type,
                                   time - request.time,
                                   hit)
-            del self._pending_requests[message.req_id]
         else:
             raise ValueError("Invalid message type")

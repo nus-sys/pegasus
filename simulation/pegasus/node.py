@@ -84,7 +84,7 @@ class Node(object):
         self._inflight_messages.add(QueuedMessage(message, time))
 
     def id(self):
-        return '['+str(self._parent.id())+' '+str(self._id)+']'
+        return self._id
 
     def register_app(self, app):
         self._app = app
