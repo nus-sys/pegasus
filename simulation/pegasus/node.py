@@ -75,16 +75,13 @@ class Node(object):
         self._unfinished_messages = []
         self._time = 0
         self._app = None
-        self._id = id
         self._nprocs = nprocs
         self._logical_client = logical_client
         self._drop_tail = drop_tail
+        self.id = id
 
     def _add_to_inflight_messages(self, message, time):
         self._inflight_messages.add(QueuedMessage(message, time))
-
-    def id(self):
-        return self._id
 
     def register_app(self, app):
         self._app = app
