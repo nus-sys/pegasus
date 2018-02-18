@@ -35,6 +35,7 @@ class WorkloadGenerator(kv.KVWorkloadGenerator):
         self._interval_type = interval_type
         self._mean_interval = mean_interval
         self._timer = 0
+        self._initialized_keys = set()
         if key_type == KeyType.ZIPF:
             # Generator zipf distribution data
             self._zipf = [0] * len(keys)
@@ -79,7 +80,10 @@ class WorkloadGenerator(kv.KVWorkloadGenerator):
         op_choice = random.uniform(0, 1)
         op_type = None
         if op_choice < self._get_ratio:
-            op_type = kv.Operation.Type.GET
+            if key not in self._initialized_keys:
+                op_type = kv.Operation.Type.PUT
+            else:
+                op_type = kv.Operation.Type.GET
         elif op_choice < self._get_ratio + self._put_ratio:
             op_type = kv.Operation.Type.PUT
         else:
@@ -87,6 +91,7 @@ class WorkloadGenerator(kv.KVWorkloadGenerator):
 
         op = None
         if op_type == kv.Operation.Type.PUT:
+            self._initialized_keys.add(key)
             op = kv.Operation(op_type, key, self._value)
         else:
             op = kv.Operation(op_type, key)
