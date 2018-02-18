@@ -7,11 +7,13 @@ import string
 import argparse
 import enum
 import sys
+import copy
 
 import pegasus.node
 import pegasus.simulator
 import pegasus.applications.kv as kv
 import pegasus.applications.kvimpl.memcachekv as memcachekv
+import pegasus.applications.kvimpl.pegasuskv as pegasuskv
 
 class KeyType(enum.Enum):
     UNIFORM = 1,
@@ -104,20 +106,24 @@ def rand_string(str_len):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument('-a', '--alpha', type=float, default=0.5, help="zipf distribution parameter")
+    parser.add_argument('-b', '--app', required=True, choices=['memcache', 'pegasus'],
+                        help="application")
+    parser.add_argument('-c', '--procs', type=int, required=True, help="number of processors per node")
+    parser.add_argument('-d', '--duration', type=int, required=True, help="Duration of simulation (s)")
+    parser.add_argument('-e', '--keytype', required=True, choices=['unif', 'zipf'],
+                        help="key distribution type")
+    parser.add_argument('-g', '--gets', type=float, required=True, help="GET ratio (0.0 to 1.0)")
+    parser.add_argument('-i', '--interval', type=float, required=True, help="interval between operations (us)")
     parser.add_argument('-k', '--keys', type=int, required=True, help="number of keys")
     parser.add_argument('-l', '--length', type=int, required=True, help="key length")
-    parser.add_argument('-v', '--values', type=int, required=True, help="value length")
-    parser.add_argument('-e', '--keytype', required=True, help="key distribution type (unif/zipf)")
-    parser.add_argument('-a', '--alpha', type=float, default=0.5, help="zipf distribution parameter")
-    parser.add_argument('-t', '--intervaltype', required=True, help="interval distribution type (unif/poiss)")
-    parser.add_argument('-i', '--interval', type=float, required=True, help="interval between operations (us)")
     parser.add_argument('-n', '--nodes', type=int, required=True, help="number of cache nodes")
-    parser.add_argument('-c', '--procs', type=int, required=True, help="number of processors per node")
-    parser.add_argument('-g', '--gets', type=float, required=True, help="GET ratio (0.0 to 1.0)")
-    parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
-    parser.add_argument('-d', '--duration', type=int, required=True, help="Duration of simulation (s)")
-    parser.add_argument('-s', '--progress', action='store_true', help="Display progress bar")
     parser.add_argument('-o', '--outputfile', default="", help="CDF output file name")
+    parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
+    parser.add_argument('-s', '--progress', action='store_true', help="Display progress bar")
+    parser.add_argument('-t', '--intervaltype', required=True, choices=['unif', 'poiss'],
+                        help="interval distribution type")
+    parser.add_argument('-v', '--values', type=int, required=True, help="value length")
     args = parser.parse_args()
 
     # Construct keys
@@ -130,39 +136,40 @@ if __name__ == "__main__":
         key_type = KeyType.UNIFORM
     elif args.keytype == 'zipf':
         key_type = KeyType.ZIPF
-    else:
-        print("option -e (--keytype) should be one of unif/zipf")
-        sys.exit(1)
 
     if args.intervaltype == 'unif':
         interval_type = IntervalType.UNIFORM
     elif args.intervaltype == 'poiss':
         interval_type = IntervalType.POISS
-    else:
-        print("option -t (--intervaltype) should be one of unif/poiss")
-        sys.exit(1)
 
     generator = WorkloadGenerator(keys, args.values, args.gets, args.puts, key_type, interval_type, args.interval, args.alpha)
     stats = kv.KVStats()
     simulator = pegasus.simulator.Simulator(stats, args.progress)
     rack = pegasus.node.Rack()
     client_node = pegasus.node.Node(parent=rack,
-                                    id=0,
+                                    id=args.nodes,
                                     logical_client=True) # use a single logical client node
     cache_nodes = []
     for i in range(args.nodes):
         cache_nodes.append(pegasus.node.Node(parent=rack,
-                                             id=i+1,
+                                             id=i,
                                              nprocs=args.procs,
                                              drop_tail=True))
-    config = memcachekv.StaticConfig(cache_nodes, None) # no DB node
 
     # Register applications
-    client_app = memcachekv.MemcacheKV(generator, stats)
+    if args.app == 'memcache':
+        config = memcachekv.StaticConfig(cache_nodes, None) # no DB node
+        client_app = memcachekv.MemcacheKV(generator, stats)
+        server_app = memcachekv.MemcacheKV(None, stats)
+    elif args.app == 'pegasus':
+        config = pegasuskv.SingleDirectoryConfig(cache_nodes, None, 0) # cache node 0 as directory
+        client_app = pegasuskv.PegasusKVClient(generator, stats)
+        server_app = pegasuskv.PegasusKVServer(None, stats)
+
     client_app.register_config(config)
     client_node.register_app(client_app)
     for node in cache_nodes:
-        app = memcachekv.MemcacheKV(None, stats)
+        app = copy.deepcopy(server_app)
         app.register_config(config)
         node.register_app(app)
 
