@@ -38,8 +38,8 @@ class ClientServerTest(unittest.TestCase):
             assert len(cache_nodes) == 1
             super().__init__(cache_nodes, db_node)
 
-        def key_to_node(self, key):
-            return self.cache_nodes[0]
+        def key_to_nodes(self, key):
+            return [self.cache_nodes[0]]
 
     def setUp(self):
         rack = pegasus.node.Rack()
@@ -97,14 +97,106 @@ class ClientServerTest(unittest.TestCase):
         self.assertEqual(len(self.server_app._store), 1)
 
 
+class MultiServerTest(unittest.TestCase):
+    class MultiServerConfig(memcachekv.MemcacheKVConfiguration):
+        def __init__(self, cache_nodes, db_node):
+            super().__init__(cache_nodes, db_node)
+            self.next_nodes = []
+
+        def key_to_nodes(self, key):
+            return self.next_nodes
+
+    def setUp(self):
+        rack = pegasus.node.Rack()
+        self.client = pegasus.node.Node(rack, 0)
+        self.servers = []
+        self.server_apps = []
+        for i in range(2):
+            self.servers.append(pegasus.node.Node(rack, i + 1))
+        self.stats = kv.KVStats()
+        self.config = self.MultiServerConfig(self.servers, None)
+        self.client_app = memcachekv.MemcacheKV(None,
+                                                self.stats)
+        self.client_app.register_config(self.config)
+        self.client.register_app(self.client_app)
+        for server in self.servers:
+            app = memcachekv.MemcacheKV(None,
+                                        self.stats)
+            self.server_apps.append(app)
+            server.register_app(app)
+
+    def run_servers(self, end_time):
+        for server in self.servers:
+            server.run(end_time)
+
+    def test_basic(self):
+        timer = 0
+        self.config.next_nodes = self.servers
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.client.run(timer)
+        self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v1')
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         0)
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.client.run(timer)
+        self.run_servers(timer)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         1)
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         1)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET],
+                         1)
+        self.assertEqual(self.stats.cache_hits, 1)
+        self.assertEqual(self.stats.cache_misses, 0)
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.DEL, 'k1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertFalse('k1' in self.server_apps[0]._store)
+        self.assertFalse('k1' in self.server_apps[1]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         1)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET],
+                         1)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.DEL],
+                         1)
+        self.assertEqual(self.stats.cache_hits, 1)
+        self.assertEqual(self.stats.cache_misses, 0)
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET],
+                         2)
+        self.assertEqual(self.stats.cache_hits, 1)
+        self.assertEqual(self.stats.cache_misses, 1)
+
+
 class SimulatorTest(unittest.TestCase):
     class StaticConfig(memcachekv.MemcacheKVConfiguration):
         def __init__(self, cache_nodes, db_node):
             super().__init__(cache_nodes, db_node)
 
-        def key_to_node(self, key):
+        def key_to_nodes(self, key):
             index = sum(map(lambda x : ord(x), key)) % len(self.cache_nodes)
-            return self.cache_nodes[index]
+            return [self.cache_nodes[index]]
 
     class SimpleGenerator(kv.KVWorkloadGenerator):
         def __init__(self):
