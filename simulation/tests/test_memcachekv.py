@@ -358,3 +358,30 @@ class LoadBalanceTest(unittest.TestCase):
                 self.assertEqual(len(keys), 3)
                 self.assertTrue('k2' in keys)
                 self.assertTrue('k4' in keys)
+
+        # Rebalance
+        report = memcachekv.LoadBalanceConfig.LoadReport()
+        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 80),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k2', 60),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k3', 40),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 30),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k5', 20),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k6', 5)]
+        self.config.report_load(None, report)
+
+        self.config.rebalance_load()
+        node_to_keys = {}
+        for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
+            nodes = self.config.key_to_nodes(key)
+            self.assertEqual(len(nodes), 1)
+            keys = node_to_keys.setdefault(nodes[0].id, [])
+            keys.append(key)
+        for _, keys in node_to_keys.items():
+            if 'k1' in keys:
+                self.assertEqual(len(keys), 1)
+            elif 'k2' in keys:
+                self.assertEqual(len(keys), 1)
+            elif 'k3' in keys:
+                self.assertTrue('k6' in keys)
+            elif 'k4' in keys:
+                self.assertTrue('k5' in keys)
