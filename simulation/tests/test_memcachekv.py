@@ -46,11 +46,13 @@ class ClientServerTest(unittest.TestCase):
         self.client = pegasus.node.Node(rack, 0)
         self.server = pegasus.node.Node(rack, 1)
         self.stats = kv.KVStats()
+        config = self.SingleServerConfig([self.server], None)
         self.client_app = memcachekv.MemcacheKVClient(None,
                                                       self.stats)
-        self.client_app.register_config(self.SingleServerConfig([self.server], None))
+        self.client_app.register_config(config)
         self.server_app = memcachekv.MemcacheKVServer(None,
                                                       self.stats)
+        self.server_app.register_config(config)
         self.client.register_app(self.client_app)
         self.server.register_app(self.server_app)
 
@@ -122,6 +124,7 @@ class MultiServerTest(unittest.TestCase):
         for server in self.servers:
             app = memcachekv.MemcacheKVServer(None,
                                               self.stats)
+            app.register_config(self.config)
             self.server_apps.append(app)
             server.register_app(app)
 
@@ -253,6 +256,7 @@ class SimulatorTest(unittest.TestCase):
                                                       self.stats)
         self.client_app.register_config(config)
         self.client_node.register_app(self.client_app)
+        self.simulator.register_config(config)
 
         self.server_apps = []
         for node in self.cache_nodes:
@@ -288,7 +292,7 @@ class LoadBalanceTest(unittest.TestCase):
         self.cache_nodes = []
         for i in range(4):
             self.cache_nodes.append(pegasus.node.Node(rack, i))
-        self.config = memcachekv.LoadBalanceConfig(self.cache_nodes, None, 100)
+        self.config = memcachekv.LoadBalanceConfig(self.cache_nodes, None, 100, 0)
 
     def test_noreplication(self):
         # k1:80, k2:60, k3:40, k4:30, k5:20, k6:5

@@ -17,6 +17,9 @@ class NullRPCConfiguration(pegasus.config.Configuration):
         super().__init__()
         self.nodes = nodes
 
+    def run(self, end_time):
+        pass
+
 class NullRPC(pegasus.application.Application):
     def __init__(self):
         super().__init__()

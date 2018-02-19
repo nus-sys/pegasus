@@ -52,6 +52,9 @@ class PegasusKVConfiguration(pegasus.config.Configuration):
         self.cache_nodes = cache_nodes
         self.db_node = db_node
 
+    def run(self, end_time):
+        pass
+
     def select_cache_node(self, client_node, key):
         """
         Return a cache node based on ``client_node`` and/or ``key``.

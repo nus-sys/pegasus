@@ -40,6 +40,11 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
         super().__init__()
         self.cache_nodes = cache_nodes
         self.db_node = db_node
+        self.is_report_load = False
+        self.report_interval = 0
+
+    def run(self, end_time):
+        pass
 
     def key_to_nodes(self, key):
         """
@@ -89,11 +94,19 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         def __init__(self):
             self.key_request_rates = [] # list of KeyRequestRate
 
-    def __init__(self, cache_nodes, db_node, max_request_rate):
+    def __init__(self, cache_nodes, db_node, max_request_rate, report_interval):
         super().__init__(cache_nodes, db_node)
         self.key_node_map = {} # key -> nodes
         self.agg_key_request_rate = {}
         self.max_request_rate = max_request_rate
+        self.is_report_load = True
+        self.report_interval = report_interval
+        self.last_load_rebalance_time = 0
+
+    def run(self, end_time):
+        if end_time - self.last_load_rebalance_time >= self.report_interval:
+            self.rebalance_load()
+            self.last_load_rebalance_time = end_time
 
     def key_to_nodes(self, key):
         return self.key_node_map.setdefault(key, [self.cache_nodes[hash(key) % len(self.cache_nodes)]])
@@ -208,15 +221,30 @@ class MemcacheKVServer(kv.KV):
     """
     def __init__(self, generator, stats):
         super().__init__(generator, stats)
+        self.key_request_counter = {}
+        self.last_load_report_time = 0
 
     def execute(self, end_time):
         """
         Override KV's execute method.
         """
-        pass
+        if self._config.is_report_load:
+            if end_time - self.last_load_report_time >= self._config.report_interval:
+                # Construct load report
+                interval = end_time - self.last_load_report_time
+                load_report = LoadBalanceConfig.LoadReport()
+                for key, count in self.key_request_counter.items():
+                    load_report.key_request_rates.append(LoadBalanceConfig.KeyRequestRate(key,
+                                                                                          count / (interval / 1000000)))
+                self._config.report_load(self._node, load_report)
+                self.key_request_counter.clear()
+                self.last_load_report_time = end_time
 
     def _process_message(self, message, time):
         if isinstance(message, MemcacheKVRequest):
+            if self._config.is_report_load:
+                count = self.key_request_counter.get(message.operation.key, 0) + 1
+                self.key_request_counter[message.operation.key] = count
             result, value = self._execute_op(message.operation)
             reply = MemcacheKVReply(req_id = message.req_id,
                                     result = result,

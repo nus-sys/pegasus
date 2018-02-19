@@ -28,6 +28,7 @@ class BasicTest(unittest.TestCase):
             node.register_app(node_app)
 
         self.simulator.add_nodes(nodes)
+        self.simulator.register_config(config)
 
     def test_basic(self):
         n_rounds = 4
