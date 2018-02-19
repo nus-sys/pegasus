@@ -221,30 +221,30 @@ class MemcacheKVServer(kv.KV):
     """
     def __init__(self, generator, stats):
         super().__init__(generator, stats)
-        self.key_request_counter = {}
-        self.last_load_report_time = 0
+        self._key_request_counter = {}
+        self._last_load_report_time = 0
 
     def execute(self, end_time):
         """
         Override KV's execute method.
         """
         if self._config.is_report_load:
-            if end_time - self.last_load_report_time >= self._config.report_interval:
+            if end_time - self._last_load_report_time >= self._config.report_interval:
                 # Construct load report
-                interval = end_time - self.last_load_report_time
+                interval = end_time - self._last_load_report_time
                 load_report = LoadBalanceConfig.LoadReport()
-                for key, count in self.key_request_counter.items():
+                for key, count in self._key_request_counter.items():
                     load_report.key_request_rates.append(LoadBalanceConfig.KeyRequestRate(key,
-                                                                                          count / (interval / 1000000)))
+                                                                                          round(count / (interval / 1000000))))
                 self._config.report_load(self._node, load_report)
-                self.key_request_counter.clear()
-                self.last_load_report_time = end_time
+                self._key_request_counter.clear()
+                self._last_load_report_time = end_time
 
     def _process_message(self, message, time):
         if isinstance(message, MemcacheKVRequest):
             if self._config.is_report_load:
-                count = self.key_request_counter.get(message.operation.key, 0) + 1
-                self.key_request_counter[message.operation.key] = count
+                count = self._key_request_counter.get(message.operation.key, 0) + 1
+                self._key_request_counter[message.operation.key] = count
             result, value = self._execute_op(message.operation)
             reply = MemcacheKVReply(req_id = message.req_id,
                                     result = result,
