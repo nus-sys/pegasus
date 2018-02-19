@@ -14,6 +14,7 @@ import pegasus.simulator
 import pegasus.applications.kv as kv
 import pegasus.applications.kvimpl.memcachekv as memcachekv
 import pegasus.applications.kvimpl.pegasuskv as pegasuskv
+from pegasus.param import *
 
 class KeyType(enum.Enum):
     UNIFORM = 1,
@@ -125,6 +126,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--nodes', type=int, required=True, help="number of cache nodes")
     parser.add_argument('-o', '--outputfile', default="", help="CDF output file name")
     parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
+    parser.add_argument('-r', '--report', type=int, default=0, help="load balance report interval (ms)")
     parser.add_argument('-s', '--progress', action='store_true', help="Display progress bar")
     parser.add_argument('-t', '--intervaltype', required=True, choices=['unif', 'poiss'],
                         help="interval distribution type")
@@ -163,7 +165,12 @@ if __name__ == "__main__":
 
     # Register applications
     if args.app == 'memcache':
-        config = memcachekv.StaticConfig(cache_nodes, None) # no DB node
+        if args.report > 0:
+            # Load balancing configuration
+            config = memcachekv.LoadBalanceConfig(cache_nodes, None, 1000000 // MIN_PKT_PROC_LTC, args.report * 1000)
+        else:
+            # Static configuration
+            config = memcachekv.StaticConfig(cache_nodes, None)
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         server_app = memcachekv.MemcacheKVServer(None, stats)
     elif args.app == 'pegasus':
@@ -178,9 +185,10 @@ if __name__ == "__main__":
         app.register_config(config)
         node.register_app(app)
 
-    # Add nodes to simulator
+    # Add nodes and config to simulator
     simulator.add_node(client_node)
     simulator.add_nodes(cache_nodes)
+    simulator.register_config(config)
 
     # Run simulation
     simulator.run(args.duration*1000000)
