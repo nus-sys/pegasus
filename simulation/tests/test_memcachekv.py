@@ -290,9 +290,15 @@ class LoadBalanceTest(unittest.TestCase):
     def setUp(self):
         rack = pegasus.node.Rack(0)
         self.cache_nodes = []
+        self.server_apps = []
         for i in range(4):
             self.cache_nodes.append(pegasus.node.Node(rack, i))
-        self.config = memcachekv.LoadBalanceConfig(self.cache_nodes, None, 100, 0)
+        self.config = memcachekv.LoadBalanceConfig(self.cache_nodes, None, 100, 10)
+        for node in self.cache_nodes:
+            app = memcachekv.MemcacheKVServer(None, None)
+            app.register_config(self.config)
+            node.register_app(app)
+            self.server_apps.append(app)
 
     def test_noreplication(self):
         # k1:80, k2:60, k3:40, k4:30, k5:20, k6:5
@@ -385,3 +391,69 @@ class LoadBalanceTest(unittest.TestCase):
                 self.assertTrue('k6' in keys)
             elif 'k4' in keys:
                 self.assertTrue('k5' in keys)
+
+    def test_nodereport(self):
+        self.server_apps[0]._key_request_counter['k1'] = 50
+        self.server_apps[0]._key_request_counter['k5'] = 20
+        self.server_apps[1]._key_request_counter['k1'] = 30
+        self.server_apps[1]._key_request_counter['k2'] = 30
+        self.server_apps[1]._key_request_counter['k3'] = 40
+        self.server_apps[2]._key_request_counter['k2'] = 30
+        self.server_apps[2]._key_request_counter['k6'] = 5
+        self.server_apps[2]._key_request_counter['k4'] = 30
+
+        for node in self.cache_nodes:
+            node.run(1000000)
+        self.config.run(1000000)
+
+        node_to_keys = {}
+        for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
+            nodes = self.config.key_to_nodes(key)
+            self.assertEqual(len(nodes), 1)
+            keys = node_to_keys.setdefault(nodes[0].id, [])
+            keys.append(key)
+        for _, keys in node_to_keys.items():
+            if 'k1' in keys:
+                self.assertEqual(len(keys), 1)
+            elif 'k2' in keys:
+                self.assertEqual(len(keys), 1)
+            elif 'k3' in keys:
+                self.assertTrue('k6' in keys)
+            elif 'k4' in keys:
+                self.assertTrue('k5' in keys)
+
+        self.server_apps[0]._key_request_counter['k1'] = 90
+        self.server_apps[0]._key_request_counter['k3'] = 10
+        self.server_apps[1]._key_request_counter['k1'] = 90
+        self.server_apps[1]._key_request_counter['k2'] = 10
+        self.server_apps[2]._key_request_counter['k1'] = 30
+        self.server_apps[2]._key_request_counter['k2'] = 70
+        self.server_apps[3]._key_request_counter['k2'] = 40
+        self.server_apps[3]._key_request_counter['k3'] = 30
+        self.server_apps[3]._key_request_counter['k4'] = 10
+
+        for node in self.cache_nodes:
+            node.run(2000000)
+        self.config.run(2000000)
+
+        node_to_keys = {}
+        for key in ['k1', 'k2', 'k3', 'k4']:
+            nodes = self.config.key_to_nodes(key)
+            if key == 'k1':
+                self.assertEqual(len(nodes), 3)
+            elif key == 'k2':
+                self.assertEqual(len(nodes), 4)
+            else:
+                self.assertEqual(len(nodes), 1)
+            for node in nodes:
+                keys = node_to_keys.setdefault(node.id, [])
+                keys.append(key)
+
+        for _, keys in node_to_keys.items():
+            if 'k1' in keys:
+                self.assertEqual(len(keys), 2)
+                self.assertTrue('k2' in keys)
+            elif 'k3' in keys:
+                self.assertEqual(len(keys), 3)
+                self.assertTrue('k2' in keys)
+                self.assertTrue('k4' in keys)
