@@ -164,8 +164,8 @@ if __name__ == "__main__":
     # Register applications
     if args.app == 'memcache':
         config = memcachekv.StaticConfig(cache_nodes, None) # no DB node
-        client_app = memcachekv.MemcacheKV(generator, stats)
-        server_app = memcachekv.MemcacheKV(None, stats)
+        client_app = memcachekv.MemcacheKVClient(generator, stats)
+        server_app = memcachekv.MemcacheKVServer(None, stats)
     elif args.app == 'pegasus':
         config = pegasuskv.SingleDirectoryConfig(cache_nodes, None, 0) # cache node 0 as directory
         client_app = pegasuskv.PegasusKVClient(generator, stats)

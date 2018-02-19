@@ -11,8 +11,8 @@ import pegasus.param as param
 
 class MemcacheKVSingleAppTest(unittest.TestCase):
     def setUp(self):
-        self.kvapp = memcachekv.MemcacheKV(None,
-                                           kv.KVStats())
+        self.kvapp = memcachekv.MemcacheKVServer(None,
+                                                 kv.KVStats())
 
     def test_basic(self):
         result, value = self.kvapp._execute_op(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'))
@@ -46,11 +46,11 @@ class ClientServerTest(unittest.TestCase):
         self.client = pegasus.node.Node(rack, 0)
         self.server = pegasus.node.Node(rack, 1)
         self.stats = kv.KVStats()
-        self.client_app = memcachekv.MemcacheKV(None,
-                                                self.stats)
+        self.client_app = memcachekv.MemcacheKVClient(None,
+                                                      self.stats)
         self.client_app.register_config(self.SingleServerConfig([self.server], None))
-        self.server_app = memcachekv.MemcacheKV(None,
-                                                self.stats)
+        self.server_app = memcachekv.MemcacheKVServer(None,
+                                                      self.stats)
         self.client.register_app(self.client_app)
         self.server.register_app(self.server_app)
 
@@ -115,13 +115,13 @@ class MultiServerTest(unittest.TestCase):
             self.servers.append(pegasus.node.Node(rack, i + 1))
         self.stats = kv.KVStats()
         self.config = self.MultiServerConfig(self.servers, None)
-        self.client_app = memcachekv.MemcacheKV(None,
-                                                self.stats)
+        self.client_app = memcachekv.MemcacheKVClient(None,
+                                                      self.stats)
         self.client_app.register_config(self.config)
         self.client.register_app(self.client_app)
         for server in self.servers:
-            app = memcachekv.MemcacheKV(None,
-                                        self.stats)
+            app = memcachekv.MemcacheKVServer(None,
+                                              self.stats)
             self.server_apps.append(app)
             server.register_app(app)
 
@@ -249,14 +249,14 @@ class SimulatorTest(unittest.TestCase):
 
         config = self.StaticConfig(self.cache_nodes, None)
         # Register applications
-        self.client_app = memcachekv.MemcacheKV(self.SimpleGenerator(),
-                                                self.stats)
+        self.client_app = memcachekv.MemcacheKVClient(self.SimpleGenerator(),
+                                                      self.stats)
         self.client_app.register_config(config)
         self.client_node.register_app(self.client_app)
 
         self.server_apps = []
         for node in self.cache_nodes:
-            app = memcachekv.MemcacheKV(None, self.stats)
+            app = memcachekv.MemcacheKVServer(None, self.stats)
             app.register_config(config)
             node.register_app(app)
             self.server_apps.append(app)

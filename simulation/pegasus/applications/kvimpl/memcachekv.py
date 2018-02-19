@@ -147,9 +147,9 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         self.agg_key_request_rate.clear()
 
 
-class MemcacheKV(kv.KV):
+class MemcacheKVClient(kv.KV):
     """
-    Implementation of a memcache style distributed key-value store.
+    Implementation of a memcache style distributed key-value store client.
     """
     class PendingRequest(kv.KV.PendingRequest):
         def __init__(self, operation, time):
@@ -184,13 +184,7 @@ class MemcacheKV(kv.KV):
         self._next_req_id += 1
 
     def _process_message(self, message, time):
-        if isinstance(message, MemcacheKVRequest):
-            result, value = self._execute_op(message.operation)
-            reply = MemcacheKVReply(req_id = message.req_id,
-                                    result = result,
-                                    value = value)
-            self._node.send_message(reply, message.src, time)
-        elif isinstance(message, MemcacheKVReply):
+        if isinstance(message, MemcacheKVReply):
             request = self._pending_requests[message.req_id]
             if request.operation.op_type == kv.Operation.Type.GET:
                 self._complete_request(message.req_id, message.result, time)
@@ -207,3 +201,26 @@ class MemcacheKV(kv.KV):
         self._stats.report_op(request.operation.op_type,
                               time - request.time,
                               result == kv.Result.OK)
+
+class MemcacheKVServer(kv.KV):
+    """
+    Implementation of a memcache style distributed key-value store server.
+    """
+    def __init__(self, generator, stats):
+        super().__init__(generator, stats)
+
+    def execute(self, end_time):
+        """
+        Override KV's execute method.
+        """
+        pass
+
+    def _process_message(self, message, time):
+        if isinstance(message, MemcacheKVRequest):
+            result, value = self._execute_op(message.operation)
+            reply = MemcacheKVReply(req_id = message.req_id,
+                                    result = result,
+                                    value = value)
+            self._node.send_message(reply, message.src, time)
+        else:
+            raise ValueError("Invalid message type")
