@@ -280,3 +280,77 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(len(self.server_apps[2]._store), 1)
         self.assertTrue(self.server_apps[2]._store["k3"], "v3")
         self.assertEqual(len(self.server_apps[3]._store), 0)
+
+
+class LoadBalanceTest(unittest.TestCase):
+    def setUp(self):
+        rack = pegasus.node.Rack(0)
+        self.cache_nodes = []
+        for i in range(4):
+            self.cache_nodes.append(pegasus.node.Node(rack, i))
+        self.config = memcachekv.LoadBalanceConfig(self.cache_nodes, None, 100)
+
+    def test_noreplication(self):
+        # k1:80, k2:60, k3:40, k4:30, k5:20, k6:5
+        report = memcachekv.LoadBalanceConfig.LoadReport()
+        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 30),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 20),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k6', 5)]
+        self.config.report_load(None, report)
+        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k2', 60),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 10),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k5', 10)]
+        self.config.report_load(None, report)
+        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 50),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k3', 40),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k5', 10)]
+        self.config.report_load(None, report)
+
+        self.config.rebalance_load()
+        node_to_keys = {}
+        for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
+            nodes = self.config.key_to_nodes(key)
+            self.assertEqual(len(nodes), 1)
+            keys = node_to_keys.setdefault(nodes[0].id, [])
+            keys.append(key)
+        for _, keys in node_to_keys.items():
+            if 'k1' in keys:
+                self.assertEqual(len(keys), 1)
+            elif 'k2' in keys:
+                self.assertEqual(len(keys), 1)
+            elif 'k3' in keys:
+                self.assertTrue('k6' in keys)
+            elif 'k4' in keys:
+                self.assertTrue('k5' in keys)
+
+    def test_replication(self):
+        # k1:220, k2:120, k3:40, k4:10
+        report = memcachekv.LoadBalanceConfig.LoadReport()
+        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 210),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k2', 120),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k3', 40),
+                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 10)]
+        self.config.report_load(None, report)
+        self.config.rebalance_load()
+
+        node_to_keys = {}
+        for key in ['k1', 'k2', 'k3', 'k4']:
+            nodes = self.config.key_to_nodes(key)
+            if key == 'k1':
+                self.assertEqual(len(nodes), 3)
+            elif key == 'k2':
+                self.assertEqual(len(nodes), 4)
+            else:
+                self.assertEqual(len(nodes), 1)
+            for node in nodes:
+                keys = node_to_keys.setdefault(node.id, [])
+                keys.append(key)
+
+        for _, keys in node_to_keys.items():
+            if 'k1' in keys:
+                self.assertEqual(len(keys), 2)
+                self.assertTrue('k2' in keys)
+            elif 'k3' in keys:
+                self.assertEqual(len(keys), 3)
+                self.assertTrue('k2' in keys)
+                self.assertTrue('k4' in keys)
