@@ -120,8 +120,8 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         # Construct sorted key request rates and node request rates
         sorted_krr = SortedList()
         sorted_nrr = SortedList()
-        for item in self.agg_key_request_rate.items():
-            sorted_krr.add(self.KeyRequestRate(item[0], item[1]))
+        for key, rate in self.agg_key_request_rate.items():
+            sorted_krr.add(self.KeyRequestRate(key, rate))
         for node in self.cache_nodes:
             sorted_nrr.add(self.NodeRequestRate(node.id, 0))
 
