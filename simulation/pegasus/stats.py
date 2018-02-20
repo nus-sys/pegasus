@@ -1,16 +1,22 @@
 """
 stats.py: Classes and functions related to statistics collection and dumping.
 """
+import copy
 
 class Stats(object):
     """
     Abstract class. Collects application level statistics. Subclass
     of ``Stats`` should implement ``_dump``.
     """
-    def __init__(self):
+    def __init__(self, epoch_len=0):
         self.latencies = {}
         self.total_ops = 0
         self.end_time = 0
+        self.epoch_len = epoch_len
+        self.last_epoch = 0
+        self.epoch_latencies = {}
+        self.epoch_total_ops = 0
+        self.all_epoch_latencies = []
 
     def report_end_time(self, end_time):
         self.end_time = end_time
@@ -20,6 +26,19 @@ class Stats(object):
         count = self.latencies.setdefault(latency, 0)
         self.latencies[latency] = count + 1
         self.total_ops += 1
+        # Update epoch latencies
+        if self.epoch_len > 0:
+            count = self.epoch_latencies.setdefault(latency, 0)
+            self.epoch_latencies[latency] = count + 1
+            self.epoch_total_ops += 1
+
+    def run(self, time):
+        if self.epoch_len > 0:
+            if time - self.last_epoch > self.epoch_len:
+                self.all_epoch_latencies.append((self.epoch_total_ops, copy.deepcopy(self.epoch_latencies)))
+                self.epoch_latencies.clear()
+                self.epoch_total_ops = 0
+                self.last_epoch = time
 
     def _dump(self):
         raise NotImplementedError
@@ -48,4 +67,4 @@ class Stats(object):
         print("99% Latency:", nn_latency)
 
         self._dump()
-        return (self.total_ops, self.latencies)
+        return (self.total_ops, self.latencies, self.all_epoch_latencies)

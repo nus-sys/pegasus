@@ -119,12 +119,14 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--duration', type=int, required=True, help="Duration of simulation (s)")
     parser.add_argument('-e', '--keytype', required=True, choices=['unif', 'zipf'],
                         help="key distribution type")
+    parser.add_argument('-f', '--epoch', type=int, default = 0, help="Latency report epoch (ms)")
     parser.add_argument('-g', '--gets', type=float, required=True, help="GET ratio (0.0 to 1.0)")
     parser.add_argument('-i', '--interval', type=float, required=True, help="interval between operations (us)")
+    parser.add_argument('-j', '--epochfile', default="", help="Epoch latencies output file name")
     parser.add_argument('-k', '--keys', type=int, required=True, help="number of keys")
     parser.add_argument('-l', '--length', type=int, required=True, help="key length")
     parser.add_argument('-n', '--nodes', type=int, required=True, help="number of cache nodes")
-    parser.add_argument('-o', '--outputfile', default="", help="CDF output file name")
+    parser.add_argument('-o', '--cdffile', default="", help="CDF output file name")
     parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
     parser.add_argument('-r', '--report', type=int, default=0, help="load balance report interval (ms)")
     parser.add_argument('-s', '--progress', action='store_true', help="Display progress bar")
@@ -150,7 +152,7 @@ if __name__ == "__main__":
         interval_type = IntervalType.POISS
 
     generator = WorkloadGenerator(keys, args.values, args.gets, args.puts, key_type, interval_type, args.interval, args.alpha)
-    stats = kv.KVStats()
+    stats = kv.KVStats(args.epoch * 1000)
     simulator = pegasus.simulator.Simulator(stats, args.progress)
     rack = pegasus.node.Rack()
     client_node = pegasus.node.Node(parent=rack,
@@ -192,12 +194,33 @@ if __name__ == "__main__":
 
     # Run simulation
     simulator.run(args.duration*1000000)
-    total_ops, latencies = stats.dump()
+    total_ops, latencies, all_epoch_latencies = stats.dump()
 
     # Dump latency CDF
-    if len(args.outputfile) > 0:
-        with open(args.outputfile, 'w') as f:
+    if len(args.cdffile) > 0:
+        with open(args.cdffile, 'w') as f:
             count = 0
             for latency in sorted(latencies.keys()):
                 count += latencies[latency]
                 f.write(str(latency) + ' ' + str(count / total_ops) + '\n')
+    # Dump epoch latencies
+    if len(args.epochfile) > 0 and len(all_epoch_latencies) > 0:
+        with open(args.epochfile, 'w') as f:
+            time = args.epoch
+            for total_ops, epoch_latencies in all_epoch_latencies:
+                count = 0
+                total_latency = 0
+                med_latency = -1
+                n_latency = -1
+                nn_latency = -1
+                for latency in sorted(epoch_latencies.keys()):
+                    total_latency += (latency * epoch_latencies[latency])
+                    count += epoch_latencies[latency]
+                    if count >= total_ops // 2 and med_latency == -1:
+                        med_latency = latency
+                    if count >= total_ops * 0.9 and n_latency == -1:
+                        n_latency = latency
+                    if count >= total_ops * 0.99 and nn_latency == -1:
+                        nn_latency = latency
+                f.write(str(time) + ' ' + str(total_latency / total_ops) + ' ' + str(med_latency) + ' ' + str(n_latency) + ' ' + str(nn_latency) + '\n')
+                time += args.epoch

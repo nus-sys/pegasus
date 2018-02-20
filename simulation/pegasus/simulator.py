@@ -39,6 +39,7 @@ class Simulator(object):
             for node in self._nodes:
                 node.run(timer)
             self._config.run(timer)
+            self._stats.run(timer)
             timer += param.MIN_PROPG_DELAY
 
         self._stats.report_end_time(timer)

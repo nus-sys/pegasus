@@ -60,8 +60,8 @@ class KVStats(pegasus.stats.Stats):
     """
     Collects KV application related statistics.
     """
-    def __init__(self):
-        super().__init__()
+    def __init__(self, epoch_len=0):
+        super().__init__(epoch_len)
         self.cache_hits = 0
         self.cache_misses = 0
         self.received_replies = {}
