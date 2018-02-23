@@ -78,7 +78,10 @@ class KVStats(pegasus.stats.Stats):
                 self.cache_misses += 1
 
     def _dump(self):
-        print("Cache Hit Rate:", "{0:.2f}".format(self.cache_hits / (self.cache_hits + self.cache_misses)))
+        if self.cache_hits + self.cache_misses > 0:
+            print("Cache Hit Rate:", "{0:.2f}".format(self.cache_hits / (self.cache_hits + self.cache_misses)))
+        else:
+            print("Cache Hit Rate: 0")
         print("GET percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.GET] / self.total_ops))
         print("PUT percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.PUT] / self.total_ops))
         print("DEL percentage:", "{0:.2f}".format(self.received_replies[Operation.Type.DEL] / self.total_ops))
