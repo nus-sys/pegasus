@@ -26,7 +26,7 @@ class IntervalType(enum.Enum):
 
 
 class WorkloadGenerator(kv.KVWorkloadGenerator):
-    def __init__(self, keys, value_len, get_ratio, put_ratio, key_type, interval_type, mean_interval, alpha):
+    def __init__(self, keys, value_len, get_ratio, put_ratio, key_type, interval_type, mean_interval, alpha, initkey):
         assert get_ratio + put_ratio <= 1
         self._keys = keys
         self._value = 'v'*value_len
@@ -36,7 +36,9 @@ class WorkloadGenerator(kv.KVWorkloadGenerator):
         self._interval_type = interval_type
         self._mean_interval = mean_interval
         self._timer = 0
-        self._initialized_keys = set()
+        self._initkey = initkey
+        if initkey:
+            self._initialized_keys = set()
         if key_type == KeyType.ZIPF:
             # Generator zipf distribution data
             self._zipf = [0] * len(keys)
@@ -81,8 +83,11 @@ class WorkloadGenerator(kv.KVWorkloadGenerator):
         op_choice = random.uniform(0, 1)
         op_type = None
         if op_choice < self._get_ratio:
-            if key not in self._initialized_keys:
-                op_type = kv.Operation.Type.PUT
+            if self._initkey:
+                if key not in self._initialized_keys:
+                    op_type = kv.Operation.Type.PUT
+                else:
+                    op_type = kv.Operation.Type.GET
             else:
                 op_type = kv.Operation.Type.GET
         elif op_choice < self._get_ratio + self._put_ratio:
@@ -92,7 +97,8 @@ class WorkloadGenerator(kv.KVWorkloadGenerator):
 
         op = None
         if op_type == kv.Operation.Type.PUT:
-            self._initialized_keys.add(key)
+            if self._initkey:
+                self._initialized_keys.add(key)
             op = kv.Operation(op_type, key, self._value)
         else:
             op = kv.Operation(op_type, key)
@@ -125,6 +131,7 @@ if __name__ == "__main__":
     parser.add_argument('-j', '--epochfile', default="", help="Epoch latencies output file name")
     parser.add_argument('-k', '--keys', type=int, required=True, help="number of keys")
     parser.add_argument('-l', '--length', type=int, required=True, help="key length")
+    parser.add_argument('-m', '--initkey', action='store_true', help="load uninitialized keys on first GET requests")
     parser.add_argument('-n', '--nodes', type=int, required=True, help="number of cache nodes")
     parser.add_argument('-o', '--cdffile', default="", help="CDF output file name")
     parser.add_argument('-p', '--puts', type=float, required=True, help="PUT ratio (0.0 to 1.0)")
@@ -151,7 +158,7 @@ if __name__ == "__main__":
     elif args.intervaltype == 'poiss':
         interval_type = IntervalType.POISS
 
-    generator = WorkloadGenerator(keys, args.values, args.gets, args.puts, key_type, interval_type, args.interval, args.alpha)
+    generator = WorkloadGenerator(keys, args.values, args.gets, args.puts, key_type, interval_type, args.interval, args.alpha, args.initkey)
     stats = kv.KVStats(args.epoch * 1000)
     simulator = pegasus.simulator.Simulator(stats, args.progress)
     rack = pegasus.node.Rack()
@@ -169,7 +176,7 @@ if __name__ == "__main__":
     if args.app == 'memcache':
         if args.report > 0:
             # Load balancing configuration
-            config = memcachekv.LoadBalanceConfig(cache_nodes, None, 1000000 // MIN_PKT_PROC_LTC, args.report * 1000)
+            config = memcachekv.LoadBalanceConfig(cache_nodes, None, 1000000 // MED_PKT_PROC_LTC, args.report * 1000)
         else:
             # Static configuration
             config = memcachekv.StaticConfig(cache_nodes, None)
