@@ -24,8 +24,9 @@ class MemcacheKVReply(pegasus.message.Message):
     """
     Reply message used by MemcacheKV.
     """
-    def __init__(self, req_id, result, value):
+    def __init__(self, src, req_id, result, value):
         super().__init__(kv.REQ_ID_LEN + kv.RES_LEN + len(value))
+        self.src = src
         self.req_id = req_id
         self.result = result
         self.value = value
@@ -51,6 +52,18 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
         Return node/nodes the ``key`` is mapped to.
         """
         raise NotImplementedError
+
+    def report_op_send(self, node):
+        """
+        (Client) reporting that it is sending an op to ``node``.
+        """
+        pass
+
+    def report_op_receive(self, node):
+        """
+        (Client) reporting that it has received a reply from ``node``.
+        """
+        pass
 
 
 class StaticConfig(MemcacheKVConfiguration):
@@ -160,6 +173,32 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         self.agg_key_request_rate.clear()
 
 
+class ConsistentHashingWithBoundedLoadConfig(MemcacheKVConfiguration):
+    def __init__(self, cache_nodes, db_node, c):
+        super().__init__(cache_nodes, db_node)
+        self.c = c
+        self.outstanding_requests = {} # node id -> number of outstanding requests
+        for node in self.cache_nodes:
+            self.outstanding_requests[node.id] = 0
+
+    def key_hash(self, key):
+        return hash(key)
+
+    def key_to_nodes(self, key):
+        total_load = sum(self.outstanding_requests.values())
+        expected_load = (self.c * total_load) / len(self.cache_nodes)
+        next_node_id = self.key_hash(key) % len(self.cache_nodes)
+        while self.outstanding_requests[next_node_id] > expected_load:
+            next_node_id = (next_node_id + 1) % len(self.cache_nodes)
+        return [self.cache_nodes[next_node_id]]
+
+    def report_op_send(self, node):
+        self.outstanding_requests[node.id] += 1
+
+    def report_op_receive(self, node):
+        self.outstanding_requests[node.id] -= 1
+
+
 class MemcacheKVClient(kv.KV):
     """
     Implementation of a memcache style distributed key-value store client.
@@ -188,16 +227,20 @@ class MemcacheKVClient(kv.KV):
                                 req_id = self._next_req_id,
                                 operation = op)
         if op.op_type == kv.Operation.Type.GET:
-            self._node.send_message(msg, random.choice(dest_nodes), time)
+            node = random.choice(dest_nodes)
+            self._node.send_message(msg, node, time)
+            self._config.report_op_send(node)
         else:
             for node in dest_nodes:
                 self._node.send_message(msg, node, time)
+                self._config.report_op_send(node)
             pending_req.expected_acks = len(dest_nodes)
         self._pending_requests[self._next_req_id] = pending_req
         self._next_req_id += 1
 
     def _process_message(self, message, time):
         if isinstance(message, MemcacheKVReply):
+            self._config.report_op_receive(message.src)
             request = self._pending_requests[message.req_id]
             if request.operation.op_type == kv.Operation.Type.GET:
                 self._complete_request(message.req_id, message.result, time)
@@ -246,7 +289,8 @@ class MemcacheKVServer(kv.KV):
                 count = self._key_request_counter.get(message.operation.key, 0) + 1
                 self._key_request_counter[message.operation.key] = count
             result, value = self._execute_op(message.operation)
-            reply = MemcacheKVReply(req_id = message.req_id,
+            reply = MemcacheKVReply(src = self._node,
+                                    req_id = message.req_id,
                                     result = result,
                                     value = value)
             self._node.send_message(reply, message.src, time)
