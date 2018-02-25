@@ -457,3 +457,108 @@ class LoadBalanceTest(unittest.TestCase):
                 self.assertEqual(len(keys), 3)
                 self.assertTrue('k2' in keys)
                 self.assertTrue('k4' in keys)
+
+class ConsistentHashingWithBoundedLoadTest(unittest.TestCase):
+    class TestConfig(memcachekv.ConsistentHashingWithBoundedLoadConfig):
+        def __init__(self, cache_nodes, db_node, c):
+            super().__init__(cache_nodes, db_node, c)
+
+        def key_hash(self, key):
+            return sum(map(lambda x : ord(x), key))
+
+    def setUp(self):
+        rack = pegasus.node.Rack(0)
+        self.cache_nodes = []
+        self.server_apps = []
+        for i in range(4):
+            self.cache_nodes.append(pegasus.node.Node(rack, i))
+        self.config = self.TestConfig(self.cache_nodes, None, 2)
+        for node in self.cache_nodes:
+            app = memcachekv.MemcacheKVServer(None, None)
+            app.register_config(self.config)
+            node.register_app(app)
+            self.server_apps.append(app)
+        self.client_node = pegasus.node.Node(rack, 4)
+        self.stats = kv.KVStats()
+        self.client_app = memcachekv.MemcacheKVClient(None, self.stats)
+        self.client_app.register_config(self.config)
+        self.client_node.register_app(self.client_app)
+
+    def run_servers(self, end_time):
+        for node in self.cache_nodes:
+            node.run(end_time)
+
+    def test_basic(self):
+        timer = 0
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k2', 'v2'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k3', 'v3'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k4', 'v4'),
+                                 timer)
+        for node in self.cache_nodes:
+            self.assertEqual(len(node._inflight_messages), 1)
+
+        for _ in range(3):
+            self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 4)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 4)
+        self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 2)
+        for _ in range(7):
+            self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k4'),
+                                     timer)
+        self.assertEqual(len(self.cache_nodes[3]._inflight_messages), 8)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k4'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[3]._inflight_messages), 8)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 5)
+        timer += param.MAX_PROPG_DELAY + 16 * param.MAX_PKT_PROC_LTC
+        self.run_servers(timer)
+        for node in self.cache_nodes:
+            self.assertEqual(len(node._inflight_messages), 0)
+        timer += param.MAX_PROPG_DELAY
+        self.client_node.run(timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k4'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[3]._inflight_messages), 1)
+
+    def test_queued_messages(self):
+        timer = 0
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 1)
+        timer += (param.MAX_PROPG_DELAY - param.MIN_PROPG_DELAY) + param.MAX_PKT_PROC_LTC + 1
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 1)
+        self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 1)
+        timer += (param.MAX_PROPG_DELAY - param.MIN_PROPG_DELAY) + param.MAX_PKT_PROC_LTC + 1
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 2)
+        self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 1)
+        timer += (param.MAX_PROPG_DELAY - param.MIN_PROPG_DELAY) + param.MAX_PKT_PROC_LTC + 1
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 2)
+        self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 2)
+        timer += (param.MAX_PROPG_DELAY - param.MIN_PROPG_DELAY) + param.MAX_PKT_PROC_LTC + 1
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 3)
+        self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 2)
+        timer = param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.run_servers(timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 2)
+        self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 2)
+        timer += param.MAX_PROPG_DELAY
+        self.client_node.run(timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 3)
+        self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 2)
