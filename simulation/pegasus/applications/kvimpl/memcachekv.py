@@ -103,10 +103,6 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         def __lt__(self, other):
             return self.request_rate < other.request_rate
 
-    class LoadReport(object):
-        def __init__(self):
-            self.key_request_rates = [] # list of KeyRequestRate
-
     def __init__(self, cache_nodes, db_node, max_request_rate, report_interval):
         super().__init__(cache_nodes, db_node)
         self.key_node_map = {} # key -> nodes
@@ -118,16 +114,19 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
 
     def run(self, end_time):
         if end_time - self.last_load_rebalance_time >= self.report_interval:
+            self.collect_load(end_time - self.last_load_rebalance_time)
             self.rebalance_load()
             self.last_load_rebalance_time = end_time
 
     def key_to_nodes(self, key):
         return self.key_node_map.setdefault(key, [self.cache_nodes[hash(key) % len(self.cache_nodes)]])
 
-    def report_load(self, node, report):
-        for krr in report.key_request_rates:
-            rate = self.agg_key_request_rate.get(krr.key, 0)
-            self.agg_key_request_rate[krr.key] = rate + krr.request_rate
+    def collect_load(self, interval):
+        for node in self.cache_nodes:
+            for key, count in node._app._key_request_counter.items():
+                rate = self.agg_key_request_rate.get(key, 0)
+                self.agg_key_request_rate[key] = rate + round(count / (interval / 1000000))
+            node._app._key_request_counter.clear()
 
     def rebalance_load(self):
         # Construct sorted key request rates and node request rates
@@ -266,22 +265,6 @@ class MemcacheKVServer(kv.KV):
         super().__init__(generator, stats)
         self._key_request_counter = {}
         self._last_load_report_time = 0
-
-    def execute(self, end_time):
-        """
-        Override KV's execute method.
-        """
-        if self._config.is_report_load:
-            if end_time - self._last_load_report_time >= self._config.report_interval:
-                # Construct load report
-                interval = end_time - self._last_load_report_time
-                load_report = LoadBalanceConfig.LoadReport()
-                for key, count in self._key_request_counter.items():
-                    load_report.key_request_rates.append(LoadBalanceConfig.KeyRequestRate(key,
-                                                                                          round(count / (interval / 1000000))))
-                self._config.report_load(self._node, load_report)
-                self._key_request_counter.clear()
-                self._last_load_report_time = end_time
 
     def _process_message(self, message, time):
         if isinstance(message, MemcacheKVRequest):

@@ -302,20 +302,17 @@ class LoadBalanceTest(unittest.TestCase):
 
     def test_noreplication(self):
         # k1:80, k2:60, k3:40, k4:30, k5:20, k6:5
-        report = memcachekv.LoadBalanceConfig.LoadReport()
-        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 30),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 20),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k6', 5)]
-        self.config.report_load(None, report)
-        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k2', 60),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 10),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k5', 10)]
-        self.config.report_load(None, report)
-        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 50),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k3', 40),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k5', 10)]
-        self.config.report_load(None, report)
+        self.server_apps[0]._key_request_counter['k1'] = 30
+        self.server_apps[0]._key_request_counter['k4'] = 20
+        self.server_apps[0]._key_request_counter['k6'] = 5
+        self.server_apps[1]._key_request_counter['k2'] = 60
+        self.server_apps[1]._key_request_counter['k4'] = 10
+        self.server_apps[1]._key_request_counter['k5'] = 10
+        self.server_apps[2]._key_request_counter['k1'] = 50
+        self.server_apps[2]._key_request_counter['k3'] = 40
+        self.server_apps[2]._key_request_counter['k5'] = 10
 
+        self.config.collect_load(1000000)
         self.config.rebalance_load()
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
@@ -335,12 +332,11 @@ class LoadBalanceTest(unittest.TestCase):
 
     def test_replication(self):
         # k1:220, k2:120, k3:40, k4:10
-        report = memcachekv.LoadBalanceConfig.LoadReport()
-        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 210),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k2', 120),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k3', 40),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 10)]
-        self.config.report_load(None, report)
+        self.server_apps[0]._key_request_counter['k1'] = 210
+        self.server_apps[0]._key_request_counter['k2'] = 120
+        self.server_apps[0]._key_request_counter['k3'] = 40
+        self.server_apps[0]._key_request_counter['k4'] = 10
+        self.config.collect_load(1000000)
         self.config.rebalance_load()
 
         node_to_keys = {}
@@ -366,15 +362,13 @@ class LoadBalanceTest(unittest.TestCase):
                 self.assertTrue('k4' in keys)
 
         # Rebalance
-        report = memcachekv.LoadBalanceConfig.LoadReport()
-        report.key_request_rates = [memcachekv.LoadBalanceConfig.KeyRequestRate('k1', 80),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k2', 60),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k3', 40),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k4', 30),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k5', 20),
-                                    memcachekv.LoadBalanceConfig.KeyRequestRate('k6', 5)]
-        self.config.report_load(None, report)
-
+        self.server_apps[0]._key_request_counter['k1'] = 80
+        self.server_apps[0]._key_request_counter['k2'] = 60
+        self.server_apps[0]._key_request_counter['k3'] = 40
+        self.server_apps[0]._key_request_counter['k4'] = 30
+        self.server_apps[0]._key_request_counter['k5'] = 20
+        self.server_apps[0]._key_request_counter['k6'] = 5
+        self.config.collect_load(1000000)
         self.config.rebalance_load()
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
