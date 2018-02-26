@@ -43,11 +43,11 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
     Abstract configuration class. Subclass of ``MemcacheKVConfiguration``
     should implement ``key_to_nodes``.
     """
-    def __init__(self, cache_nodes, db_node, write_type):
+    def __init__(self, cache_nodes, db_node, write_mode):
         super().__init__()
         self.cache_nodes = cache_nodes
         self.db_node = db_node
-        self.write_type = write_type
+        self.write_mode = write_mode
         self.report_load = False
         self.report_interval = 0
 
@@ -238,11 +238,37 @@ class MemcacheKVClient(kv.KV):
             node = random.choice(dest_nodes)
             self._node.send_message(msg, node, time)
             self._config.report_op_send(node)
-        else:
+        elif op.op_type == kv.Operation.Type.PUT:
+            write_nodes = []
+            inval_nodes = []
+            if self._config.write_mode == WriteMode.ANYNODE:
+                write_nodes = [random.choice(dest_nodes)]
+            elif self._config.write_mode == WriteMode.UPDATE:
+                write_nodes = dest_nodes
+            elif self._config.write_mode == WriteMode.INVALIDATE:
+                write_nodes = dest_nodes[:1]
+                inval_nodes = dest_nodes[1:]
+            else:
+                raise ValueError("Invalid write mode")
+            for node in write_nodes:
+                self._node.send_message(msg, node, time)
+                self._config.report_op_send(node)
+            inval_msg = MemcacheKVRequest(src = self._node,
+                                          req_id = self._next_req_id,
+                                          operation = kv.Operation(op_type = kv.Operation.Type.DEL,
+                                                                   key = op.key))
+            for node in inval_nodes:
+                self._node.send_message(inval_msg, node, time)
+                self._config.report_op_send(node)
+            pending_req.expected_acks = len(write_nodes) + len(inval_nodes)
+        elif op.op_type == kv.Operation.Type.DEL:
             for node in dest_nodes:
                 self._node.send_message(msg, node, time)
                 self._config.report_op_send(node)
             pending_req.expected_acks = len(dest_nodes)
+        else:
+            raise ValueError("Invalid operation type")
+
         self._pending_requests[self._next_req_id] = pending_req
         self._next_req_id += 1
 
@@ -252,8 +278,7 @@ class MemcacheKVClient(kv.KV):
             request = self._pending_requests[message.req_id]
             if request.operation.op_type == kv.Operation.Type.GET:
                 self._complete_request(message.req_id, message.result, time)
-            elif request.operation.op_type == kv.Operation.Type.PUT or \
-                request.operation.op_type == kv.Operation.Type.DEL:
+            else:
                 request.received_acks += 1
                 if request.received_acks >= request.expected_acks:
                     self._complete_request(message.req_id, kv.Result.OK, time)

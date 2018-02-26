@@ -191,6 +191,107 @@ class MultiServerTest(unittest.TestCase):
         self.assertEqual(self.stats.cache_hits, 1)
         self.assertEqual(self.stats.cache_misses, 1)
 
+    def test_write_modes(self):
+        timer = 0
+        # ANYNODE write mode
+        self.config.write_mode = memcachekv.WriteMode.ANYNODE
+        self.config.next_nodes = self.servers
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.client.run(timer)
+        self.run_servers(timer)
+        if 'k1' in self.server_apps[0]._store:
+            self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+            self.assertFalse('k1' in self.server_apps[1]._store)
+            self.config.next_nodes = [self.servers[1]]
+        if 'k1' in self.server_apps[1]._store:
+            self.assertEqual(self.server_apps[1]._store['k1'], 'v1')
+            self.assertFalse('k1' in self.server_apps[0]._store)
+            self.config.next_nodes = [self.servers[0]]
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         0)
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.client.run(timer)
+        self.run_servers(timer)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         1)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v1')
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         2)
+        self.config.next_nodes = self.servers
+        self.client_app._execute(kv.Operation(kv.Operation.Type.DEL, 'k1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertFalse('k1' in self.server_apps[0]._store)
+        self.assertFalse('k1' in self.server_apps[1]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         2)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.DEL],
+                         1)
+        # INVALIDATE write mode
+        self.config.write_mode = memcachekv.WriteMode.INVALIDATE
+        self.config.next_nodes = [self.servers[0]]
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.config.next_nodes = [self.servers[1]]
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v1')
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         4)
+        self.config.next_nodes = self.servers
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v2'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v2')
+        self.assertFalse('k1' in self.server_apps[1]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         5)
+        self.config.write_mode = memcachekv.WriteMode.UPDATE
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v3'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v3')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v3')
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT],
+                         6)
+        self.config.write_mode = memcachekv.WriteMode.INVALIDATE
+        self.config.next_nodes = [self.servers[1], self.servers[0]]
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v4'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v4')
+        self.assertFalse('k1' in self.server_apps[0]._store)
+
 
 class SimulatorTest(unittest.TestCase):
     class StaticConfig(memcachekv.MemcacheKVConfiguration):
