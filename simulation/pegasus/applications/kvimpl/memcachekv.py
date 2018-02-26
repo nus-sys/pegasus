@@ -3,6 +3,7 @@ memcachekv.py: Memcache style distributed key-value store.
 """
 
 import random
+import enum
 from sortedcontainers import SortedList
 
 import pegasus.message
@@ -47,7 +48,7 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
     def run(self, end_time):
         pass
 
-    def key_to_nodes(self, key):
+    def key_to_nodes(self, key, op_type):
         """
         Return node/nodes the ``key`` is mapped to.
         """
@@ -70,7 +71,7 @@ class StaticConfig(MemcacheKVConfiguration):
     def __init__(self, cache_nodes, db_node):
         super().__init__(cache_nodes, db_node)
 
-    def key_to_nodes(self, key):
+    def key_to_nodes(self, key, op_type):
         return [self.cache_nodes[hash(key) % len(self.cache_nodes)]]
 
 
@@ -118,7 +119,7 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
             self.rebalance_load()
             self.last_load_rebalance_time = end_time
 
-    def key_to_nodes(self, key):
+    def key_to_nodes(self, key, op_type):
         return self.key_node_map.setdefault(key, [self.cache_nodes[hash(key) % len(self.cache_nodes)]])
 
     def collect_load(self, interval):
@@ -172,18 +173,25 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         self.agg_key_request_rate.clear()
 
 
-class ConsistentHashingWithBoundedLoadConfig(MemcacheKVConfiguration):
-    def __init__(self, cache_nodes, db_node, c):
+class BoundedLoadConfig(MemcacheKVConfiguration):
+    class WriteType(enum.Enum):
+        ANYNODE = 1
+        UPDATE = 2
+        INVALIDATE = 3
+
+    def __init__(self, cache_nodes, db_node, c, write_type):
         super().__init__(cache_nodes, db_node)
         self.c = c
         self.outstanding_requests = {} # node id -> number of outstanding requests
+        self.key_node_map = {} # key -> nodes
+        self.write_type = write_type
         for node in self.cache_nodes:
             self.outstanding_requests[node.id] = 0
 
     def key_hash(self, key):
         return hash(key)
 
-    def key_to_nodes(self, key):
+    def key_to_nodes(self, key, op_type):
         total_load = sum(self.outstanding_requests.values())
         expected_load = (self.c * total_load) / len(self.cache_nodes)
         next_node_id = self.key_hash(key) % len(self.cache_nodes)
@@ -220,7 +228,7 @@ class MemcacheKVClient(kv.KV):
         random for GET requests, and send to all replicated nodes
         for PUT and DEL requests.
         """
-        dest_nodes = self._config.key_to_nodes(op.key)
+        dest_nodes = self._config.key_to_nodes(op.key, op.op_type)
         pending_req = self.PendingRequest(operation = op, time = time)
         msg = MemcacheKVRequest(src = self._node,
                                 req_id = self._next_req_id,

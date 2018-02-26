@@ -38,7 +38,7 @@ class ClientServerTest(unittest.TestCase):
             assert len(cache_nodes) == 1
             super().__init__(cache_nodes, db_node)
 
-        def key_to_nodes(self, key):
+        def key_to_nodes(self, key, op_type):
             return [self.cache_nodes[0]]
 
     def setUp(self):
@@ -105,7 +105,7 @@ class MultiServerTest(unittest.TestCase):
             super().__init__(cache_nodes, db_node)
             self.next_nodes = []
 
-        def key_to_nodes(self, key):
+        def key_to_nodes(self, key, op_type):
             return self.next_nodes
 
     def setUp(self):
@@ -197,7 +197,7 @@ class SimulatorTest(unittest.TestCase):
         def __init__(self, cache_nodes, db_node):
             super().__init__(cache_nodes, db_node)
 
-        def key_to_nodes(self, key):
+        def key_to_nodes(self, key, op_type):
             index = sum(map(lambda x : ord(x), key)) % len(self.cache_nodes)
             return [self.cache_nodes[index]]
 
@@ -316,7 +316,7 @@ class LoadBalanceTest(unittest.TestCase):
         self.config.rebalance_load()
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
-            nodes = self.config.key_to_nodes(key)
+            nodes = self.config.key_to_nodes(key, None)
             self.assertEqual(len(nodes), 1)
             keys = node_to_keys.setdefault(nodes[0].id, [])
             keys.append(key)
@@ -341,7 +341,7 @@ class LoadBalanceTest(unittest.TestCase):
 
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4']:
-            nodes = self.config.key_to_nodes(key)
+            nodes = self.config.key_to_nodes(key, None)
             if key == 'k1':
                 self.assertEqual(len(nodes), 3)
             elif key == 'k2':
@@ -372,7 +372,7 @@ class LoadBalanceTest(unittest.TestCase):
         self.config.rebalance_load()
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
-            nodes = self.config.key_to_nodes(key)
+            nodes = self.config.key_to_nodes(key, None)
             self.assertEqual(len(nodes), 1)
             keys = node_to_keys.setdefault(nodes[0].id, [])
             keys.append(key)
@@ -402,7 +402,7 @@ class LoadBalanceTest(unittest.TestCase):
 
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
-            nodes = self.config.key_to_nodes(key)
+            nodes = self.config.key_to_nodes(key, None)
             self.assertEqual(len(nodes), 1)
             keys = node_to_keys.setdefault(nodes[0].id, [])
             keys.append(key)
@@ -432,7 +432,7 @@ class LoadBalanceTest(unittest.TestCase):
 
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4']:
-            nodes = self.config.key_to_nodes(key)
+            nodes = self.config.key_to_nodes(key, None)
             if key == 'k1':
                 self.assertEqual(len(nodes), 3)
             elif key == 'k2':
@@ -452,10 +452,10 @@ class LoadBalanceTest(unittest.TestCase):
                 self.assertTrue('k2' in keys)
                 self.assertTrue('k4' in keys)
 
-class ConsistentHashingWithBoundedLoadTest(unittest.TestCase):
-    class TestConfig(memcachekv.ConsistentHashingWithBoundedLoadConfig):
-        def __init__(self, cache_nodes, db_node, c):
-            super().__init__(cache_nodes, db_node, c)
+class BoundedLoadTest(unittest.TestCase):
+    class TestConfig(memcachekv.BoundedLoadConfig):
+        def __init__(self, cache_nodes, db_node, c, write_type):
+            super().__init__(cache_nodes, db_node, c, write_type)
 
         def key_hash(self, key):
             return sum(map(lambda x : ord(x), key))
@@ -466,7 +466,7 @@ class ConsistentHashingWithBoundedLoadTest(unittest.TestCase):
         self.server_apps = []
         for i in range(4):
             self.cache_nodes.append(pegasus.node.Node(rack, i))
-        self.config = self.TestConfig(self.cache_nodes, None, 2)
+        self.config = self.TestConfig(self.cache_nodes, None, 2, memcachekv.BoundedLoadConfig.WriteType.ANYNODE)
         for node in self.cache_nodes:
             app = memcachekv.MemcacheKVServer(None, None)
             app.register_config(self.config)

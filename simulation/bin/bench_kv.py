@@ -184,9 +184,10 @@ if __name__ == "__main__":
             config = memcachekv.LoadBalanceConfig(cache_nodes, None, 1000000 // MED_PKT_PROC_LTC, args.report * 1000)
         elif args.configtype == 'boundedload':
             assert args.boundconstant >= 1.0
-            config = memcachekv.ConsistentHashingWithBoundedLoadConfig(cache_nodes,
-                                                                       None,
-                                                                       args.boundconstant)
+            config = memcachekv.BoundedLoadConfig(cache_nodes,
+                                                  None,
+                                                  args.boundconstant,
+                                                  memcachekv.BoundedLoadConfig.WriteType.ANYNODE)
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         server_app = memcachekv.MemcacheKVServer(None, stats)
     elif args.app == 'pegasus':
