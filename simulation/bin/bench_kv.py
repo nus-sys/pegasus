@@ -140,6 +140,9 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--intervaltype', required=True, choices=['unif', 'poiss'],
                         help="interval distribution type")
     parser.add_argument('-v', '--values', type=int, required=True, help="value length")
+    parser.add_argument('--configtype', default='static', choices=['static', 'loadbalance', 'boundedload'],
+                        help="configuration type for memcachekv")
+    parser.add_argument('--boundconstant', type=float, default=1.0, help="Bounded load configuration constant")
     args = parser.parse_args()
 
     # Construct keys
@@ -174,12 +177,16 @@ if __name__ == "__main__":
 
     # Register applications
     if args.app == 'memcache':
-        if args.report > 0:
-            # Load balancing configuration
-            config = memcachekv.LoadBalanceConfig(cache_nodes, None, 1000000 // MED_PKT_PROC_LTC, args.report * 1000)
-        else:
-            # Static configuration
+        if args.configtype == 'static':
             config = memcachekv.StaticConfig(cache_nodes, None)
+        elif args.configtype == 'loadbalance':
+            assert args.report > 0
+            config = memcachekv.LoadBalanceConfig(cache_nodes, None, 1000000 // MED_PKT_PROC_LTC, args.report * 1000)
+        elif args.configtype == 'boundedload':
+            assert args.boundconstant >= 1.0
+            config = memcachekv.ConsistentHashingWithBoundedLoadConfig(cache_nodes,
+                                                                       None,
+                                                                       args.boundconstant)
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         server_app = memcachekv.MemcacheKVServer(None, stats)
     elif args.app == 'pegasus':
