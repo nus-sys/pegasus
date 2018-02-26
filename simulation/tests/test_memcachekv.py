@@ -34,9 +34,9 @@ class MemcacheKVSingleAppTest(unittest.TestCase):
 
 class ClientServerTest(unittest.TestCase):
     class SingleServerConfig(memcachekv.MemcacheKVConfiguration):
-        def __init__(self, cache_nodes, db_node):
+        def __init__(self, cache_nodes, db_node, write_type):
             assert len(cache_nodes) == 1
-            super().__init__(cache_nodes, db_node)
+            super().__init__(cache_nodes, db_node, write_type)
 
         def key_to_nodes(self, key, op_type):
             return [self.cache_nodes[0]]
@@ -46,7 +46,7 @@ class ClientServerTest(unittest.TestCase):
         self.client = pegasus.node.Node(rack, 0)
         self.server = pegasus.node.Node(rack, 1)
         self.stats = kv.KVStats()
-        config = self.SingleServerConfig([self.server], None)
+        config = self.SingleServerConfig([self.server], None, memcachekv.WriteMode.UPDATE)
         self.client_app = memcachekv.MemcacheKVClient(None,
                                                       self.stats)
         self.client_app.register_config(config)
@@ -101,8 +101,8 @@ class ClientServerTest(unittest.TestCase):
 
 class MultiServerTest(unittest.TestCase):
     class MultiServerConfig(memcachekv.MemcacheKVConfiguration):
-        def __init__(self, cache_nodes, db_node):
-            super().__init__(cache_nodes, db_node)
+        def __init__(self, cache_nodes, db_node, write_type):
+            super().__init__(cache_nodes, db_node, write_type)
             self.next_nodes = []
 
         def key_to_nodes(self, key, op_type):
@@ -116,7 +116,7 @@ class MultiServerTest(unittest.TestCase):
         for i in range(2):
             self.servers.append(pegasus.node.Node(rack, i + 1))
         self.stats = kv.KVStats()
-        self.config = self.MultiServerConfig(self.servers, None)
+        self.config = self.MultiServerConfig(self.servers, None, memcachekv.WriteMode.UPDATE)
         self.client_app = memcachekv.MemcacheKVClient(None,
                                                       self.stats)
         self.client_app.register_config(self.config)
@@ -194,8 +194,8 @@ class MultiServerTest(unittest.TestCase):
 
 class SimulatorTest(unittest.TestCase):
     class StaticConfig(memcachekv.MemcacheKVConfiguration):
-        def __init__(self, cache_nodes, db_node):
-            super().__init__(cache_nodes, db_node)
+        def __init__(self, cache_nodes, db_node, write_type):
+            super().__init__(cache_nodes, db_node, write_type)
 
         def key_to_nodes(self, key, op_type):
             index = sum(map(lambda x : ord(x), key)) % len(self.cache_nodes)
@@ -250,7 +250,7 @@ class SimulatorTest(unittest.TestCase):
         for i in range(4):
             self.cache_nodes.append(pegasus.node.Node(rack, i+1))
 
-        config = self.StaticConfig(self.cache_nodes, None)
+        config = self.StaticConfig(self.cache_nodes, None, memcachekv.WriteMode.UPDATE)
         # Register applications
         self.client_app = memcachekv.MemcacheKVClient(self.SimpleGenerator(),
                                                       self.stats)
@@ -293,7 +293,7 @@ class LoadBalanceTest(unittest.TestCase):
         self.server_apps = []
         for i in range(4):
             self.cache_nodes.append(pegasus.node.Node(rack, i))
-        self.config = memcachekv.LoadBalanceConfig(self.cache_nodes, None, 100, 10)
+        self.config = memcachekv.LoadBalanceConfig(self.cache_nodes, None, memcachekv.WriteMode.UPDATE, 100, 10)
         for node in self.cache_nodes:
             app = memcachekv.MemcacheKVServer(None, None)
             app.register_config(self.config)
@@ -454,8 +454,8 @@ class LoadBalanceTest(unittest.TestCase):
 
 class BoundedLoadTest(unittest.TestCase):
     class TestConfig(memcachekv.BoundedLoadConfig):
-        def __init__(self, cache_nodes, db_node, c, write_type):
-            super().__init__(cache_nodes, db_node, c, write_type)
+        def __init__(self, cache_nodes, db_node, write_type, c):
+            super().__init__(cache_nodes, db_node, write_type, c)
 
         def key_hash(self, key):
             return sum(map(lambda x : ord(x), key))
@@ -466,7 +466,7 @@ class BoundedLoadTest(unittest.TestCase):
         self.server_apps = []
         for i in range(4):
             self.cache_nodes.append(pegasus.node.Node(rack, i))
-        self.config = self.TestConfig(self.cache_nodes, None, 2, memcachekv.BoundedLoadConfig.WriteType.ANYNODE)
+        self.config = self.TestConfig(self.cache_nodes, None, memcachekv.WriteMode.UPDATE, 2)
         for node in self.cache_nodes:
             app = memcachekv.MemcacheKVServer(None, None)
             app.register_config(self.config)

@@ -178,16 +178,16 @@ if __name__ == "__main__":
     # Register applications
     if args.app == 'memcache':
         if args.configtype == 'static':
-            config = memcachekv.StaticConfig(cache_nodes, None)
+            config = memcachekv.StaticConfig(cache_nodes, None, memcachekv.WriteMode.UPDATE)
         elif args.configtype == 'loadbalance':
             assert args.report > 0
-            config = memcachekv.LoadBalanceConfig(cache_nodes, None, 1000000 // MED_PKT_PROC_LTC, args.report * 1000)
+            config = memcachekv.LoadBalanceConfig(cache_nodes, None, memcachekv.WriteMode.UPDATE, 1000000 // MED_PKT_PROC_LTC, args.report * 1000)
         elif args.configtype == 'boundedload':
             assert args.boundconstant >= 1.0
             config = memcachekv.BoundedLoadConfig(cache_nodes,
                                                   None,
-                                                  args.boundconstant,
-                                                  memcachekv.BoundedLoadConfig.WriteType.ANYNODE)
+                                                  memcachekv.WriteMode.UPDATE,
+                                                  args.boundconstant)
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         server_app = memcachekv.MemcacheKVServer(None, stats)
     elif args.app == 'pegasus':

@@ -33,16 +33,22 @@ class MemcacheKVReply(pegasus.message.Message):
         self.value = value
 
 
+class WriteMode(enum.Enum):
+    ANYNODE = 1
+    UPDATE = 2
+    INVALIDATE = 3
+
 class MemcacheKVConfiguration(pegasus.config.Configuration):
     """
     Abstract configuration class. Subclass of ``MemcacheKVConfiguration``
     should implement ``key_to_nodes``.
     """
-    def __init__(self, cache_nodes, db_node):
+    def __init__(self, cache_nodes, db_node, write_type):
         super().__init__()
         self.cache_nodes = cache_nodes
         self.db_node = db_node
-        self.is_report_load = False
+        self.write_type = write_type
+        self.report_load = False
         self.report_interval = 0
 
     def run(self, end_time):
@@ -68,8 +74,8 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
 
 
 class StaticConfig(MemcacheKVConfiguration):
-    def __init__(self, cache_nodes, db_node):
-        super().__init__(cache_nodes, db_node)
+    def __init__(self, cache_nodes, db_node, write_type):
+        super().__init__(cache_nodes, db_node, write_type)
 
     def key_to_nodes(self, key, op_type):
         return [self.cache_nodes[hash(key) % len(self.cache_nodes)]]
@@ -104,12 +110,12 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         def __lt__(self, other):
             return self.request_rate < other.request_rate
 
-    def __init__(self, cache_nodes, db_node, max_request_rate, report_interval):
-        super().__init__(cache_nodes, db_node)
+    def __init__(self, cache_nodes, db_node, write_type, max_request_rate, report_interval):
+        super().__init__(cache_nodes, db_node, write_type)
         self.key_node_map = {} # key -> nodes
         self.agg_key_request_rate = {}
         self.max_request_rate = max_request_rate
-        self.is_report_load = True
+        self.report_load = True
         self.report_interval = report_interval
         self.last_load_rebalance_time = 0
 
@@ -174,13 +180,8 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
 
 
 class BoundedLoadConfig(MemcacheKVConfiguration):
-    class WriteType(enum.Enum):
-        ANYNODE = 1
-        UPDATE = 2
-        INVALIDATE = 3
-
-    def __init__(self, cache_nodes, db_node, c, write_type):
-        super().__init__(cache_nodes, db_node)
+    def __init__(self, cache_nodes, db_node, write_type, c):
+        super().__init__(cache_nodes, db_node, write_type)
         self.c = c
         self.outstanding_requests = {} # node id -> number of outstanding requests
         self.key_node_map = {} # key -> nodes
@@ -276,7 +277,7 @@ class MemcacheKVServer(kv.KV):
 
     def _process_message(self, message, time):
         if isinstance(message, MemcacheKVRequest):
-            if self._config.is_report_load:
+            if self._config.report_load:
                 count = self._key_request_counter.get(message.operation.key, 0) + 1
                 self._key_request_counter[message.operation.key] = count
             result, value = self._execute_op(message.operation)
