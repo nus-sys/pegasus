@@ -598,7 +598,7 @@ class BoundedLoadTest(unittest.TestCase):
 
         for _ in range(3):
             self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
-                                 timer)
+                                     timer)
         self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 4)
         self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
                                  timer)
@@ -657,3 +657,76 @@ class BoundedLoadTest(unittest.TestCase):
                                  timer)
         self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 3)
         self.assertEqual(len(self.cache_nodes[1]._inflight_messages), 2)
+
+    def test_write_modes(self):
+        timer = 0
+        self.config.c = 1.5
+        self.config.write_mode = memcachekv.WriteMode.UPDATE
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+
+        for _ in range(3):
+            self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                     timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + 3 * param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v2'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        for i in range(3):
+            self.assertEqual(self.server_apps[i]._store['k1'], 'v2')
+
+        # ANYNODE mode
+        self.config.write_mode = memcachekv.WriteMode.ANYNODE
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v3'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        updated_server = -1
+        self.assertFalse('k1' in self.server_apps[3]._store)
+        for i in range(3):
+            if self.server_apps[i]._store['k1'] == 'v3':
+                updated_server = i
+                break
+        self.assertNotEqual(updated_server, -1)
+        for i in range(3):
+            if i != updated_server:
+                self.assertEqual(self.server_apps[i]._store['k1'], 'v2')
+
+        # INVALIDATE mode
+        self.config.write_mode = memcachekv.WriteMode.INVALIDATE
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v4'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v4')
+        self.assertFalse('k1' in self.server_apps[1]._store)
+        self.assertFalse('k1' in self.server_apps[2]._store)
+        self.assertFalse('k1' in self.server_apps[3]._store)
+
+        self.config.write_mode = memcachekv.WriteMode.UPDATE
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v5'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v5')
+        self.assertFalse('k1' in self.server_apps[1]._store)
+        self.assertFalse('k1' in self.server_apps[2]._store)
+        self.assertFalse('k1' in self.server_apps[3]._store)

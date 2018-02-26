@@ -74,8 +74,8 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
 
 
 class StaticConfig(MemcacheKVConfiguration):
-    def __init__(self, cache_nodes, db_node, write_type):
-        super().__init__(cache_nodes, db_node, write_type)
+    def __init__(self, cache_nodes, db_node, write_mode):
+        super().__init__(cache_nodes, db_node, write_mode)
 
     def key_to_nodes(self, key, op_type):
         return [self.cache_nodes[hash(key) % len(self.cache_nodes)]]
@@ -110,8 +110,8 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
         def __lt__(self, other):
             return self.request_rate < other.request_rate
 
-    def __init__(self, cache_nodes, db_node, write_type, max_request_rate, report_interval):
-        super().__init__(cache_nodes, db_node, write_type)
+    def __init__(self, cache_nodes, db_node, write_mode, max_request_rate, report_interval):
+        super().__init__(cache_nodes, db_node, write_mode)
         self.key_node_map = {} # key -> nodes
         self.agg_key_request_rate = {}
         self.max_request_rate = max_request_rate
@@ -180,12 +180,11 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
 
 
 class BoundedLoadConfig(MemcacheKVConfiguration):
-    def __init__(self, cache_nodes, db_node, write_type, c):
-        super().__init__(cache_nodes, db_node, write_type)
+    def __init__(self, cache_nodes, db_node, write_mode, c):
+        super().__init__(cache_nodes, db_node, write_mode)
         self.c = c
         self.outstanding_requests = {} # node id -> number of outstanding requests
-        self.key_node_map = {} # key -> nodes
-        self.write_type = write_type
+        self.replicated_keys = {} # key -> set of replicated node ids
         for node in self.cache_nodes:
             self.outstanding_requests[node.id] = 0
 
@@ -193,12 +192,25 @@ class BoundedLoadConfig(MemcacheKVConfiguration):
         return hash(key)
 
     def key_to_nodes(self, key, op_type):
-        total_load = sum(self.outstanding_requests.values())
-        expected_load = (self.c * total_load) / len(self.cache_nodes)
-        next_node_id = self.key_hash(key) % len(self.cache_nodes)
-        while self.outstanding_requests[next_node_id] > expected_load:
-            next_node_id = (next_node_id + 1) % len(self.cache_nodes)
-        return [self.cache_nodes[next_node_id]]
+        if op_type == kv.Operation.Type.GET:
+            total_load = sum(self.outstanding_requests.values())
+            expected_load = (self.c * total_load) / len(self.cache_nodes)
+            next_node_id = self.key_hash(key) % len(self.cache_nodes)
+            while self.outstanding_requests[next_node_id] > expected_load:
+                next_node_id = (next_node_id + 1) % len(self.cache_nodes)
+            if next_node_id != self.key_hash(key) % len(self.cache_nodes):
+                nodes = self.replicated_keys.setdefault(key, set())
+                nodes.add(next_node_id)
+            return [self.cache_nodes[next_node_id]]
+        else:
+            nodes = [self.cache_nodes[self.key_hash(key) % len(self.cache_nodes)]]
+            for node_id in self.replicated_keys.get(key, set()):
+                assert node_id != self.key_hash(key) % len(self.cache_nodes)
+                nodes.append(self.cache_nodes[node_id])
+            if (op_type == kv.Operation.Type.PUT and self.write_mode == WriteMode.INVALIDATE) or (op_type == kv.Operation.Type.DEL):
+                self.replicated_keys[key] = set()
+            return nodes
+
 
     def report_op_send(self, node):
         self.outstanding_requests[node.id] += 1
