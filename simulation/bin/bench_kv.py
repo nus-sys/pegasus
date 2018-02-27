@@ -143,6 +143,8 @@ if __name__ == "__main__":
     parser.add_argument('--configtype', default='static', choices=['static', 'loadbalance', 'boundedload'],
                         help="configuration type for memcachekv")
     parser.add_argument('--boundconstant', type=float, default=1.0, help="Bounded load configuration constant")
+    parser.add_argument('--writemode', default='update', choices=['anynode', 'update', 'invalidate'],
+                        help="write mode for memcachekv")
     args = parser.parse_args()
 
     # Construct keys
@@ -177,16 +179,27 @@ if __name__ == "__main__":
 
     # Register applications
     if args.app == 'memcache':
+        if args.writemode == 'anynode':
+            write_mode = memcachekv.WriteMode.ANYNODE
+        elif args.writemode == 'update':
+            write_mode = memcachekv.WriteMode.UPDATE
+        elif args.writemode == 'invalidate':
+            write_mode = memcachekv.WriteMode.INVALIDATE
+
         if args.configtype == 'static':
-            config = memcachekv.StaticConfig(cache_nodes, None, memcachekv.WriteMode.UPDATE)
+            config = memcachekv.StaticConfig(cache_nodes, None, write_mode)
         elif args.configtype == 'loadbalance':
             assert args.report > 0
-            config = memcachekv.LoadBalanceConfig(cache_nodes, None, memcachekv.WriteMode.UPDATE, 1000000 // MED_PKT_PROC_LTC, args.report * 1000)
+            config = memcachekv.LoadBalanceConfig(cache_nodes,
+                                                  None,
+                                                  write_mode,
+                                                  1000000 // MED_PKT_PROC_LTC,
+                                                  args.report * 1000)
         elif args.configtype == 'boundedload':
             assert args.boundconstant >= 1.0
             config = memcachekv.BoundedLoadConfig(cache_nodes,
                                                   None,
-                                                  memcachekv.WriteMode.UPDATE,
+                                                  write_mode,
                                                   args.boundconstant)
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         server_app = memcachekv.MemcacheKVServer(None, stats)
