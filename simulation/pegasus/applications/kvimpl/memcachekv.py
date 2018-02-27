@@ -219,6 +219,59 @@ class BoundedLoadConfig(MemcacheKVConfiguration):
         self.outstanding_requests[node.id] -= 1
 
 
+class BoundedMaxLoadConfig(MemcacheKVConfiguration):
+    def __init__(self, cache_nodes, db_node, write_mode, c, max_load):
+        super().__init__(cache_nodes, db_node, write_mode)
+        self.c = c
+        self.max_load = max_load
+        self.outstanding_requests = {} # node id -> number of outstanding requests
+        self.replicated_keys = {} # key -> set of replicated node ids
+        for node in self.cache_nodes:
+            self.outstanding_requests[node.id] = 0
+
+    def key_hash(self, key):
+        return hash(key)
+
+    def key_to_nodes(self, key, op_type):
+        if op_type == kv.Operation.Type.GET:
+            next_node_id = self.key_hash(key) % len(self.cache_nodes)
+            # First, find a node that is below max_load
+            node_found = True
+            while self.outstanding_requests[next_node_id] > self.max_load:
+                next_node_id = (next_node_id + 1) % len(self.cache_nodes)
+                if next_node_id == self.key_hash(key) % len(self.cache_nodes):
+                    node_found = False
+                    break
+
+            if not node_found:
+                # If all node above max_load, use consistent hashing with
+                # bounded load
+                total_load = sum(self.outstanding_requests.values())
+                expected_load = (self.c * total_load) / len(self.cache_nodes)
+                while self.outstanding_requests[next_node_id] > expected_load:
+                    next_node_id = (next_node_id + 1) % len(self.cache_nodes)
+
+            if next_node_id != self.key_hash(key) % len(self.cache_nodes):
+                nodes = self.replicated_keys.setdefault(key, set())
+                nodes.add(next_node_id)
+            return [self.cache_nodes[next_node_id]]
+        else:
+            nodes = [self.cache_nodes[self.key_hash(key) % len(self.cache_nodes)]]
+            for node_id in self.replicated_keys.get(key, set()):
+                assert node_id != self.key_hash(key) % len(self.cache_nodes)
+                nodes.append(self.cache_nodes[node_id])
+            if (op_type == kv.Operation.Type.PUT and self.write_mode == WriteMode.INVALIDATE) or (op_type == kv.Operation.Type.DEL):
+                self.replicated_keys[key] = set()
+            return nodes
+
+
+    def report_op_send(self, node):
+        self.outstanding_requests[node.id] += 1
+
+    def report_op_receive(self, node):
+        self.outstanding_requests[node.id] -= 1
+
+
 class MemcacheKVClient(kv.KV):
     """
     Implementation of a memcache style distributed key-value store client.
