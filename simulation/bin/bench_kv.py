@@ -140,7 +140,11 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--intervaltype', required=True, choices=['unif', 'poiss'],
                         help="interval distribution type")
     parser.add_argument('-v', '--values', type=int, required=True, help="value length")
-    parser.add_argument('--configtype', default='static', choices=['static', 'loadbalance', 'boundedload'],
+    parser.add_argument('--configtype', default='static',
+                        choices=['static',
+                                 'loadbalance',
+                                 'boundedload',
+                                 'migration'],
                         help="configuration type for memcachekv")
     parser.add_argument('--boundconstant', type=float, default=1.0, help="Bounded load configuration constant")
     parser.add_argument('--writemode', default='update', choices=['anynode', 'update', 'invalidate'],
@@ -201,6 +205,12 @@ if __name__ == "__main__":
                                                   None,
                                                   write_mode,
                                                   args.boundconstant)
+        elif args.configtype == 'migration':
+            assert args.boundconstant >= 1.0
+            config = memcachekv.BoundedLoadMigrationConfig(cache_nodes,
+                                                           None,
+                                                           write_mode,
+                                                           args.boundconstant)
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         server_app = memcachekv.MemcacheKVServer(None, stats)
     elif args.app == 'pegasus':
