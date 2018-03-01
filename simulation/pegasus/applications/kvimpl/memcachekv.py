@@ -19,6 +19,7 @@ class MemcacheKVRequest(pegasus.message.Message):
         self.src = src
         self.req_id = req_id
         self.operation = operation
+        self.migration_dests = None
 
 
 class MemcacheKVReply(pegasus.message.Message):
@@ -37,6 +38,13 @@ class WriteMode(enum.Enum):
     ANYNODE = 1
     UPDATE = 2
     INVALIDATE = 3
+
+
+class MappedNodes(object):
+    def __init__(self, dest_nodes, migration_nodes):
+        self.dest_nodes = dest_nodes
+        self.migration_nodes = migration_nodes
+
 
 class MemcacheKVConfiguration(pegasus.config.Configuration):
     """
@@ -57,6 +65,7 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
     def key_to_nodes(self, key, op_type):
         """
         Return node/nodes the ``key`` is mapped to.
+        Return type should be ``MappedNodes``.
         """
         raise NotImplementedError
 
@@ -78,7 +87,8 @@ class StaticConfig(MemcacheKVConfiguration):
         super().__init__(cache_nodes, db_node, write_mode)
 
     def key_to_nodes(self, key, op_type):
-        return [self.cache_nodes[hash(key) % len(self.cache_nodes)]]
+        return MappedNodes([self.cache_nodes[hash(key) % len(self.cache_nodes)]],
+                           None)
 
 
 class LoadBalanceConfig(MemcacheKVConfiguration):
@@ -126,7 +136,8 @@ class LoadBalanceConfig(MemcacheKVConfiguration):
             self.last_load_rebalance_time = end_time
 
     def key_to_nodes(self, key, op_type):
-        return self.key_node_map.setdefault(key, [self.cache_nodes[hash(key) % len(self.cache_nodes)]])
+        return MappedNodes(self.key_node_map.setdefault(key, [self.cache_nodes[hash(key) % len(self.cache_nodes)]]),
+                           None)
 
     def collect_load(self, interval):
         for node in self.cache_nodes:
@@ -201,7 +212,8 @@ class BoundedLoadConfig(MemcacheKVConfiguration):
             if next_node_id != self.key_hash(key) % len(self.cache_nodes):
                 nodes = self.replicated_keys.setdefault(key, set())
                 nodes.add(next_node_id)
-            return [self.cache_nodes[next_node_id]]
+            return MappedNodes([self.cache_nodes[next_node_id]],
+                               None)
         else:
             nodes = [self.cache_nodes[self.key_hash(key) % len(self.cache_nodes)]]
             for node_id in self.replicated_keys.get(key, set()):
@@ -209,7 +221,7 @@ class BoundedLoadConfig(MemcacheKVConfiguration):
                 nodes.append(self.cache_nodes[node_id])
             if (op_type == kv.Operation.Type.PUT and self.write_mode == WriteMode.INVALIDATE) or (op_type == kv.Operation.Type.DEL):
                 self.replicated_keys[key] = set()
-            return nodes
+            return MappedNodes(nodes, None)
 
     def report_op_send(self, node):
         self.outstanding_requests[node.id] += 1
@@ -231,17 +243,27 @@ class BoundedLoadMigrationConfig(MemcacheKVConfiguration):
         return hash(key)
 
     def key_to_nodes(self, key, op_type):
-        if op_type == kv.Operation.Type.DEL:
+        if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
             node_id = self.key_node_map.setdefault(key, self.key_hash(key) % len(self.cache_nodes))
-            return [self.cache_nodes[node_id]]
+            return MappedNodes([self.cache_nodes[node_id]], None)
         else:
+            # For GET requests, migrate the key if the mapped node is
+            # above the bounded load
             total_load = sum(self.outstanding_requests.values())
             expected_load = (self.c * total_load) / len(self.cache_nodes)
-            next_node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
+            node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
+            if self.outstanding_requests[node_id] <= expected_load:
+                return MappedNodes([self.cache_nodes[node_id]], None)
+
+            # Current mapped node is over-loaded, find the next
+            # node that is below the bounded load (migrate key)
+            next_node_id = (node_id + 1) % len(self.cache_nodes)
             while self.outstanding_requests[next_node_id] > expected_load:
                 next_node_id = (next_node_id + 1) % len(self.cache_nodes)
+            assert node_id != next_node_id
             self.key_node_map[key] = next_node_id
-            return [self.cache_nodes[next_node_id]]
+            return MappedNodes([self.cache_nodes[node_id]],
+                               [self.cache_nodes[next_node_id]])
 
     def report_op_send(self, node):
         self.outstanding_requests[node.id] += 1
@@ -270,27 +292,30 @@ class MemcacheKVClient(kv.KV):
         If the key is replicated on multiple cache nodes
         (key_to_nodes returns multiple nodes), pick one node in
         random for GET requests, and send to all replicated nodes
-        for PUT and DEL requests.
+        for DEL requests. PUT request handling depends on the
+        write_mode.
         """
-        dest_nodes = self._config.key_to_nodes(op.key, op.op_type)
+        mapped_nodes = self._config.key_to_nodes(op.key, op.op_type)
         pending_req = self.PendingRequest(operation = op, time = time)
         msg = MemcacheKVRequest(src = self._node,
                                 req_id = self._next_req_id,
                                 operation = op)
         if op.op_type == kv.Operation.Type.GET:
-            node = random.choice(dest_nodes)
+            node = random.choice(mapped_nodes.dest_nodes)
+            if mapped_nodes.migration_nodes is not None:
+                msg.migration_dests = mapped_nodes.migration_nodes
             self._node.send_message(msg, node, time)
             self._config.report_op_send(node)
         elif op.op_type == kv.Operation.Type.PUT:
             write_nodes = []
             inval_nodes = []
             if self._config.write_mode == WriteMode.ANYNODE:
-                write_nodes = [random.choice(dest_nodes)]
+                write_nodes = [random.choice(mapped_nodes.dest_nodes)]
             elif self._config.write_mode == WriteMode.UPDATE:
-                write_nodes = dest_nodes
+                write_nodes = mapped_nodes.dest_nodes
             elif self._config.write_mode == WriteMode.INVALIDATE:
-                write_nodes = dest_nodes[:1]
-                inval_nodes = dest_nodes[1:]
+                write_nodes = mapped_nodes.dest_nodes[:1]
+                inval_nodes = mapped_nodes.dest_nodes[1:]
             else:
                 raise ValueError("Invalid write mode")
             for node in write_nodes:
@@ -305,10 +330,10 @@ class MemcacheKVClient(kv.KV):
                 self._config.report_op_send(node)
             pending_req.expected_acks = len(write_nodes) + len(inval_nodes)
         elif op.op_type == kv.Operation.Type.DEL:
-            for node in dest_nodes:
+            for node in mapped_nodes.dest_nodes:
                 self._node.send_message(msg, node, time)
                 self._config.report_op_send(node)
-            pending_req.expected_acks = len(dest_nodes)
+            pending_req.expected_acks = len(mapped_nodes.dest_nodes)
         else:
             raise ValueError("Invalid operation type")
 
@@ -349,10 +374,24 @@ class MemcacheKVServer(kv.KV):
                 count = self._key_request_counter.get(message.operation.key, 0) + 1
                 self._key_request_counter[message.operation.key] = count
             result, value = self._execute_op(message.operation)
-            reply = MemcacheKVReply(src = self._node,
-                                    req_id = message.req_id,
-                                    result = result,
-                                    value = value)
-            self._node.send_message(reply, message.src, time)
+            if message.src is not None:
+                reply = MemcacheKVReply(src = self._node,
+                                        req_id = message.req_id,
+                                        result = result,
+                                        value = value)
+                self._node.send_message(reply, message.src, time)
+
+            if message.migration_dests is not None:
+                # Migrate the key-value pair. Set src to
+                # None to prevent the remote node from
+                # sending us a reply.
+                assert message.operation.op_type == kv.Operation.Type.GET
+                request = MemcacheKVRequest(src = None,
+                                            req_id = None,
+                                            operation = kv.Operation(op_type = kv.Operation.Type.PUT,
+                                                                     key = message.operation.key,
+                                                                     value = value))
+                for node in message.migration_dests:
+                    self._node.send_message(request, node, time)
         else:
             raise ValueError("Invalid message type")
