@@ -39,7 +39,7 @@ class ClientServerTest(unittest.TestCase):
             super().__init__(cache_nodes, db_node, write_type)
 
         def key_to_nodes(self, key, op_type):
-            return [self.cache_nodes[0]]
+            return memcachekv.MappedNodes([self.cache_nodes[0]], None)
 
     def setUp(self):
         rack = pegasus.node.Rack()
@@ -106,7 +106,7 @@ class MultiServerTest(unittest.TestCase):
             self.next_nodes = []
 
         def key_to_nodes(self, key, op_type):
-            return self.next_nodes
+            return memcachekv.MappedNodes(self.next_nodes, None)
 
     def setUp(self):
         rack = pegasus.node.Rack()
@@ -300,7 +300,7 @@ class SimulatorTest(unittest.TestCase):
 
         def key_to_nodes(self, key, op_type):
             index = sum(map(lambda x : ord(x), key)) % len(self.cache_nodes)
-            return [self.cache_nodes[index]]
+            return memcachekv.MappedNodes([self.cache_nodes[index]], None)
 
     class SimpleGenerator(kv.KVWorkloadGenerator):
         def __init__(self):
@@ -418,8 +418,8 @@ class LoadBalanceTest(unittest.TestCase):
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
             nodes = self.config.key_to_nodes(key, None)
-            self.assertEqual(len(nodes), 1)
-            keys = node_to_keys.setdefault(nodes[0].id, [])
+            self.assertEqual(len(nodes.dest_nodes), 1)
+            keys = node_to_keys.setdefault(nodes.dest_nodes[0].id, [])
             keys.append(key)
         for _, keys in node_to_keys.items():
             if 'k1' in keys:
@@ -444,12 +444,12 @@ class LoadBalanceTest(unittest.TestCase):
         for key in ['k1', 'k2', 'k3', 'k4']:
             nodes = self.config.key_to_nodes(key, None)
             if key == 'k1':
-                self.assertEqual(len(nodes), 3)
+                self.assertEqual(len(nodes.dest_nodes), 3)
             elif key == 'k2':
-                self.assertEqual(len(nodes), 4)
+                self.assertEqual(len(nodes.dest_nodes), 4)
             else:
-                self.assertEqual(len(nodes), 1)
-            for node in nodes:
+                self.assertEqual(len(nodes.dest_nodes), 1)
+            for node in nodes.dest_nodes:
                 keys = node_to_keys.setdefault(node.id, [])
                 keys.append(key)
 
@@ -474,8 +474,8 @@ class LoadBalanceTest(unittest.TestCase):
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
             nodes = self.config.key_to_nodes(key, None)
-            self.assertEqual(len(nodes), 1)
-            keys = node_to_keys.setdefault(nodes[0].id, [])
+            self.assertEqual(len(nodes.dest_nodes), 1)
+            keys = node_to_keys.setdefault(nodes.dest_nodes[0].id, [])
             keys.append(key)
         for _, keys in node_to_keys.items():
             if 'k1' in keys:
@@ -504,8 +504,8 @@ class LoadBalanceTest(unittest.TestCase):
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
             nodes = self.config.key_to_nodes(key, None)
-            self.assertEqual(len(nodes), 1)
-            keys = node_to_keys.setdefault(nodes[0].id, [])
+            self.assertEqual(len(nodes.dest_nodes), 1)
+            keys = node_to_keys.setdefault(nodes.dest_nodes[0].id, [])
             keys.append(key)
         for _, keys in node_to_keys.items():
             if 'k1' in keys:
@@ -535,12 +535,12 @@ class LoadBalanceTest(unittest.TestCase):
         for key in ['k1', 'k2', 'k3', 'k4']:
             nodes = self.config.key_to_nodes(key, None)
             if key == 'k1':
-                self.assertEqual(len(nodes), 3)
+                self.assertEqual(len(nodes.dest_nodes), 3)
             elif key == 'k2':
-                self.assertEqual(len(nodes), 4)
+                self.assertEqual(len(nodes.dest_nodes), 4)
             else:
-                self.assertEqual(len(nodes), 1)
-            for node in nodes:
+                self.assertEqual(len(nodes.dest_nodes), 1)
+            for node in nodes.dest_nodes:
                 keys = node_to_keys.setdefault(node.id, [])
                 keys.append(key)
 
@@ -730,3 +730,89 @@ class BoundedLoadTest(unittest.TestCase):
         self.assertFalse('k1' in self.server_apps[1]._store)
         self.assertFalse('k1' in self.server_apps[2]._store)
         self.assertFalse('k1' in self.server_apps[3]._store)
+
+class BoundedLoadMigrationTest(unittest.TestCase):
+    class TestConfig(memcachekv.BoundedLoadMigrationConfig):
+        def __init__(self, cache_nodes, db_node, write_type, c):
+            super().__init__(cache_nodes, db_node, write_type, c)
+
+        def key_hash(self, key):
+            return sum(map(lambda x : ord(x), key))
+
+    def setUp(self):
+        rack = pegasus.node.Rack(0)
+        self.cache_nodes = []
+        self.server_apps = []
+        for i in range(4):
+            self.cache_nodes.append(pegasus.node.Node(rack, i))
+        self.config = self.TestConfig(self.cache_nodes, None, memcachekv.WriteMode.UPDATE, 1.5)
+        for node in self.cache_nodes:
+            app = memcachekv.MemcacheKVServer(None, None)
+            app.register_config(self.config)
+            node.register_app(app)
+            self.server_apps.append(app)
+        self.client_node = pegasus.node.Node(rack, 4)
+        self.stats = kv.KVStats()
+        self.client_app = memcachekv.MemcacheKVClient(None, self.stats)
+        self.client_app.register_config(self.config)
+        self.client_node.register_app(self.client_app)
+
+    def run_servers(self, end_time):
+        for node in self.cache_nodes:
+            node.run(end_time)
+
+    def test_basic(self):
+        timer = 0
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertFalse('k1' in self.server_apps[1]._store)
+
+        for _ in range(2):
+            self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                     timer)
+        timer += param.MAX_PROPG_DELAY + 2 * param.MAX_PKT_PROC_LTC
+        self.client_node.run(timer)
+        self.run_servers(timer)
+        self.assertFalse('k1' in self.server_apps[1]._store)
+        timer += param.MAX_PROPG_DELAY + 2 * param.MAX_PKT_PROC_LTC
+        self.client_node.run(timer)
+        self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v1')
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET], 2)
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v2'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v2')
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT], 2)
+
+        for _ in range(2):
+            self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                     timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + 2 * param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v2')
+        self.assertEqual(self.server_apps[2]._store['k1'], 'v2')
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v3'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v2')
+        self.assertEqual(self.server_apps[2]._store['k1'], 'v3')
