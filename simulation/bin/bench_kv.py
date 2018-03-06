@@ -144,9 +144,9 @@ if __name__ == "__main__":
                         choices=['static',
                                  'loadbalance',
                                  'boundedload',
-                                 'migration'],
+                                 'vload'],
                         help="configuration type for memcachekv")
-    parser.add_argument('--boundconstant', type=float, default=1.0, help="Bounded load configuration constant")
+    parser.add_argument('--loadbound', type=float, default=1.0, help="Bounded load configuration load constant")
     parser.add_argument('--writemode', default='update', choices=['anynode', 'update', 'invalidate'],
                         help="write mode for memcachekv")
     args = parser.parse_args()
@@ -200,17 +200,17 @@ if __name__ == "__main__":
                                                   1000000 // MED_PKT_PROC_LTC,
                                                   args.report * 1000)
         elif args.configtype == 'boundedload':
-            assert args.boundconstant >= 1.0
+            assert args.loadbound >= 1.0
             config = memcachekv.BoundedLoadConfig(cache_nodes,
                                                   None,
                                                   write_mode,
-                                                  args.boundconstant)
-        elif args.configtype == 'migration':
-            assert args.boundconstant >= 1.0
-            config = memcachekv.BoundedLoadMigrationConfig(cache_nodes,
-                                                           None,
-                                                           write_mode,
-                                                           args.boundconstant)
+                                                  args.loadbound)
+        elif args.configtype == 'vload':
+            assert args.loadbound >= 1.0
+            config = memcachekv.BoundedVirtualLoadConfig(cache_nodes,
+                                                         None,
+                                                         write_mode,
+                                                         args.loadbound)
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         server_app = memcachekv.MemcacheKVServer(None, stats)
     elif args.app == 'pegasus':
