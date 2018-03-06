@@ -259,7 +259,7 @@ class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
 
     def key_to_nodes(self, key, op_type):
         if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
-            node_id = self.key_node_map.setdefault(key, self.key_hash(key) % len(self.cache_nodes))
+            node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
             return MappedNodes([self.cache_nodes[node_id]], None)
         else:
             # For GET requests, migrate the key if the mapped node is
@@ -275,7 +275,7 @@ class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
             if self.outstanding_requests[node_id] <= expected_oload:
                 return MappedNodes([self.cache_nodes[node_id]], None)
 
-            # Current mapped node is over-loaded, find the node
+            # Current mapped node is overloaded, find the node
             # that has both observable load and virtual load
             # below the expected load. (starting from the node
             # with the lowest virtual node)
@@ -292,7 +292,7 @@ class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
             assert node_id != next_node_id
             self.key_node_map[key] = next_node_id
             # Update virtual loads on both nodes
-            key_rate = self.key_rates.setdefault(key, self.KeyRate())
+            key_rate = self.key_rates.get(key, self.KeyRate())
             self.virtual_load[node_id] -= key_rate.rate()
             self.virtual_load[next_node_id] += key_rate.rate()
 
