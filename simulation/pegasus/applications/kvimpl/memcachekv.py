@@ -278,7 +278,7 @@ class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
             # Current mapped node is overloaded, find the node
             # that has both observable load and virtual load
             # below the expected load. (starting from the node
-            # with the lowest virtual node)
+            # with the lowest virtual load)
             node_found = False
             for next_node_id in sorted(self.virtual_load, key=self.virtual_load.get):
                 if self.virtual_load[next_node_id] > expected_vload:
@@ -310,6 +310,56 @@ class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
 
     def report_op_receive(self, node):
         self.outstanding_requests[node.id] -= 1
+
+
+class BoundedAverageLoadConfig(MemcacheKVConfiguration):
+    class AverageLoad(object):
+        def __init__(self):
+            self.count = 0
+            self.time = 0
+
+        def load(self):
+            if self.time == 0 or self.count <= 1:
+                return 0
+            return self.count / (self.time / 1000000)
+
+    def __init__(self, cache_nodes, db_node, write_mode, c):
+        super().__init__(cache_nodes, db_node, write_mode)
+        self.c = c
+        self.key_node_map = {} # key -> node id
+        self.average_load = {} # node id -> AverageLoad
+        for node in self.cache_nodes:
+            self.average_load[node.id] = self.AverageLoad()
+
+    def key_hash(self, key):
+        return hash(key)
+
+    def key_to_nodes(self, key, op_type):
+        if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
+            node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
+            return MappedNodes([self.cache_nodes[node_id]], None)
+        else:
+            # For GET requests, migrate the key if the mapped node is
+            # exceeding bounded average load
+            node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
+            total_load = sum(item.load() for item in self.average_load.values())
+            expected_load = (self.c * total_load) / len(self.cache_nodes)
+            if self.average_load[node_id].load() <= expected_load:
+                return MappedNodes([self.cache_nodes[node_id]], None)
+
+            # Current mapped node is overloaded, migrate the key to
+            # the node with the lowest average load
+            next_node_id = min(self.average_load, key=lambda x: self.average_load.get(x).load())
+
+            assert node_id != next_node_id
+            self.key_node_map[key] = next_node_id
+
+            return MappedNodes([self.cache_nodes[node_id]],
+                               [self.cache_nodes[next_node_id]])
+
+    def report_op_send(self, node, op, time):
+        self.average_load[node.id].count += 1
+        self.average_load[node.id].time = time
 
 
 class MemcacheKVClient(kv.KV):

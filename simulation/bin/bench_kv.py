@@ -144,7 +144,8 @@ if __name__ == "__main__":
                         choices=['static',
                                  'loadbalance',
                                  'boundedload',
-                                 'vload'],
+                                 'vload',
+                                 'avgload'],
                         help="configuration type for memcachekv")
     parser.add_argument('--loadbound', type=float, default=1.0, help="Bounded load configuration load constant")
     parser.add_argument('--writemode', default='update', choices=['anynode', 'update', 'invalidate'],
@@ -208,6 +209,12 @@ if __name__ == "__main__":
         elif args.configtype == 'vload':
             assert args.loadbound >= 1.0
             config = memcachekv.BoundedVirtualLoadConfig(cache_nodes,
+                                                         None,
+                                                         write_mode,
+                                                         args.loadbound)
+        elif args.configtype == 'avgload':
+            assert args.loadbound >= 1.0
+            config = memcachekv.BoundedAverageLoadConfig(cache_nodes,
                                                          None,
                                                          write_mode,
                                                          args.loadbound)
