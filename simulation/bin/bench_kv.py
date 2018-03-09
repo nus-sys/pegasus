@@ -144,12 +144,14 @@ if __name__ == "__main__":
                         choices=['static',
                                  'loadbalance',
                                  'boundedload',
-                                 'vload',
+                                 'ipload',
                                  'avgload'],
                         help="configuration type for memcachekv")
     parser.add_argument('--loadbound', type=float, default=1.0, help="Bounded load configuration load constant")
     parser.add_argument('--writemode', default='update', choices=['anynode', 'update', 'invalidate'],
                         help="write mode for memcachekv")
+    parser.add_argument('--iploadmode', default='ipload', choices=['iload', 'pload', 'ipload'],
+                        help="mode for ipload configuration")
     args = parser.parse_args()
 
     # Construct keys
@@ -206,12 +208,19 @@ if __name__ == "__main__":
                                                   None,
                                                   write_mode,
                                                   args.loadbound)
-        elif args.configtype == 'vload':
+        elif args.configtype == 'ipload':
             assert args.loadbound >= 1.0
-            config = memcachekv.BoundedVirtualLoadConfig(cache_nodes,
-                                                         None,
-                                                         write_mode,
-                                                         args.loadbound)
+            if args.iploadmode == 'iload':
+                ipload_mode = memcachekv.BoundedIPLoadConfig.Mode.ILOAD
+            elif args.iploadmode == 'pload':
+                ipload_mode = memcachekv.BoundedIPLoadConfig.Mode.PLOAD
+            elif args.iploadmode == 'ipload':
+                ipload_mode = memcachekv.BoundedIPLoadConfig.Mode.IPLOAD
+            config = memcachekv.BoundedIPLoadConfig(cache_nodes,
+                                                    None,
+                                                    write_mode,
+                                                    args.loadbound,
+                                                    ipload_mode)
         elif args.configtype == 'avgload':
             assert args.loadbound >= 1.0
             config = memcachekv.BoundedAverageLoadConfig(cache_nodes,

@@ -232,7 +232,12 @@ class BoundedLoadConfig(MemcacheKVConfiguration):
         self.outstanding_requests[node.id] -= 1
 
 
-class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
+class BoundedIPLoadConfig(MemcacheKVConfiguration):
+    class Mode(enum.Enum):
+        ILOAD = 1
+        PLOAD = 2
+        IPLOAD = 3
+
     class KeyRate(object):
         def __init__(self, count=0, time=0):
             self.count = count
@@ -243,16 +248,17 @@ class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
                 return 0
             return self.count / (self.time / 1000000)
 
-    def __init__(self, cache_nodes, db_node, write_mode, c):
+    def __init__(self, cache_nodes, db_node, write_mode, c, mode):
         super().__init__(cache_nodes, db_node, write_mode)
         self.c = c
+        self.mode = mode
         self.key_node_map = {} # key -> node id
         self.key_rates = {} # key -> KeyRate
-        self.outstanding_requests = {} # node id -> num of outstanding requests
-        self.virtual_load = {} # node id -> virtual load
+        self.iloads = {} # node id -> instantaneous load
+        self.ploads = {} # node id -> projected load
         for node in self.cache_nodes:
-            self.outstanding_requests[node.id] = 0
-            self.virtual_load[node.id] = 0
+            self.iloads[node.id] = 0
+            self.ploads[node.id] = 0
 
     def key_hash(self, key):
         return hash(key)
@@ -263,53 +269,62 @@ class BoundedVirtualLoadConfig(MemcacheKVConfiguration):
             return MappedNodes([self.cache_nodes[node_id]], None)
         else:
             # For GET requests, migrate the key if the mapped node is
-            # exceeding both the bounded observable load, and the
-            # bounded virtual load.
+            # exceeding the bounded iload and/or the bounded pload,
+            # depending on the mode.
             node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
-            total_vload = sum(self.virtual_load.values())
-            expected_vload = (self.c * total_vload) / len(self.cache_nodes)
-            if self.virtual_load[node_id] <= expected_vload:
-                return MappedNodes([self.cache_nodes[node_id]], None)
-            total_oload = sum(self.outstanding_requests.values())
-            expected_oload = (self.c * total_oload) / len(self.cache_nodes)
-            if self.outstanding_requests[node_id] <= expected_oload:
-                return MappedNodes([self.cache_nodes[node_id]], None)
+            total_iload = sum(self.iloads.values())
+            expected_iload = (self.c * total_iload) / len(self.cache_nodes)
+            total_pload = sum(self.ploads.values())
+            expected_pload = (self.c * total_pload) / len(self.cache_nodes)
 
-            # Current mapped node is overloaded, find the node
-            # that has both observable load and virtual load
-            # below the expected load. (starting from the node
-            # with the lowest virtual load)
-            node_found = False
-            for next_node_id in sorted(self.virtual_load, key=self.virtual_load.get):
-                if self.virtual_load[next_node_id] > expected_vload:
-                    break
-                if self.outstanding_requests[next_node_id] <= expected_oload:
-                    node_found = True
-                    break
-            if not node_found:
-                return MappedNodes([self.cache_nodes[node_id]], None)
+            if self.mode == self.Mode.ILOAD or self.mode == self.Mode.IPLOAD:
+                if self.iloads[node_id] <= expected_iload:
+                    return MappedNodes([self.cache_nodes[node_id]], None)
+
+            if self.mode == self.Mode.PLOAD or self.mode == self.Mode.IPLOAD:
+                if self.ploads[node_id] <= expected_pload:
+                    return MappedNodes([self.cache_nodes[node_id]], None)
+
+            # Current mapped node is overloaded, find a node
+            # to migrate to.
+            if self.mode == self.Mode.ILOAD:
+                next_node_id = min(self.iloads, key=self.iloads.get)
+            elif self.mode == self.Mode.PLOAD:
+                next_node_id = min(self.ploads, key=self.ploads.get)
+            elif self.mode == self.Mode.IPLOAD:
+                # For IPLOAD, we need to find a node that has both
+                # iload and pload below the bounded load.
+                node_found = False
+                for next_node_id in sorted(self.ploads, key=self.ploads.get):
+                    if self.ploads[next_node_id] > expected_pload:
+                        break
+                    if self.iloads[next_node_id] <= expected_iload:
+                        node_found = True
+                        break
+                if not node_found:
+                    return MappedNodes([self.cache_nodes[node_id]], None)
 
             assert node_id != next_node_id
             self.key_node_map[key] = next_node_id
             # Update virtual loads on both nodes
             key_rate = self.key_rates.get(key, self.KeyRate())
-            self.virtual_load[node_id] -= key_rate.rate()
-            self.virtual_load[next_node_id] += key_rate.rate()
+            self.ploads[node_id] -= key_rate.rate()
+            self.ploads[next_node_id] += key_rate.rate()
 
             return MappedNodes([self.cache_nodes[node_id]],
                                [self.cache_nodes[next_node_id]])
 
     def report_op_send(self, node, op, time):
-        self.outstanding_requests[node.id] += 1
+        self.iloads[node.id] += 1
         key_rate = self.key_rates.setdefault(op.key, self.KeyRate())
         old_rate = key_rate.rate()
         key_rate.count += 1
         key_rate.time = time
         node_id = self.key_node_map.get(op.key, self.key_hash(op.key) % len(self.cache_nodes))
-        self.virtual_load[node_id] += (key_rate.rate() - old_rate)
+        self.ploads[node_id] += (key_rate.rate() - old_rate)
 
     def report_op_receive(self, node):
-        self.outstanding_requests[node.id] -= 1
+        self.iloads[node.id] -= 1
 
 
 class BoundedAverageLoadConfig(MemcacheKVConfiguration):
