@@ -306,7 +306,7 @@ class BoundedIPLoadConfig(MemcacheKVConfiguration):
 
             assert node_id != next_node_id
             self.key_node_map[key] = next_node_id
-            # Update virtual loads on both nodes
+            # Update ploads on both nodes
             key_rate = self.key_rates.get(key, self.KeyRate())
             self.ploads[node_id] -= key_rate.rate()
             self.ploads[next_node_id] += key_rate.rate()
