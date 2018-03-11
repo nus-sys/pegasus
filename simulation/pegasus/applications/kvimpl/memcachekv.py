@@ -100,6 +100,7 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
     def report_migration(self, key, src, dest):
         """
         (Server) reporting that ``key`` has migrated from ``src`` to ``dest``.
+        Both ``src`` and ``dest`` are node ids.
         """
         pass
 
@@ -421,7 +422,7 @@ class RoutingConfig(MemcacheKVConfiguration):
         self.iloads[node.id] -= 1
 
     def report_migration(self, key, src, dest):
-        self.key_node_map[key] = dest.id
+        self.key_node_map[key] = dest
 
 
 class MemcacheKVClient(kv.KV):
@@ -585,6 +586,9 @@ class MemcacheKVMigrationServer(kv.KV):
                 break
 
         assert dest_node_id != self._node.id
+        key_rate = self._config.key_rates.get(key, KeyRate())
+        self._config.ploads[self._node.id] -= key_rate.rate()
+        self._config.ploads[dest_node_id] += key_rate.rate()
         request = MemcacheKVRequest(type = MemcacheKVRequest.Type.MIGRATION,
                                     src = self._node,
                                     req_id = None,
@@ -614,8 +618,8 @@ class MemcacheKVMigrationServer(kv.KV):
             elif message.type == MemcacheKVRequest.Type.MIGRATION:
                 # Notify config that migration is completed
                 self._config.report_migration(message.operation.key,
-                                              message.src,
-                                              self._node)
+                                              message.src.id,
+                                              self._node.id)
                 # If we have migrated this key away before, remove it
                 # from the migrated keys list
                 self._migrated_keys.discard(message.operation.key)
