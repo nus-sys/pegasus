@@ -558,8 +558,14 @@ class MemcacheKVMigrationServer(kv.KV):
     """
     def __init__(self, generator, stats):
         super().__init__(generator, stats)
+        self._migrated_keys = set() # keys that have already migrated
 
     def _check_load_and_migrate(self, key, time):
+        # If key is already migrated (but the routing is not updated yet),
+        # do not migrate again
+        if key in self._migrated_keys:
+            return None
+
         # Check if node is overloaded. If yes, migrate key value pair
         # to another node.
         total_iload = sum(self._config.iloads.values())
@@ -586,6 +592,7 @@ class MemcacheKVMigrationServer(kv.KV):
                                                              key = key,
                                                              value = self._store.get(key, "")))
         self._node.send_message(request, self._config.cache_nodes[dest_node_id], time)
+        self._migrated_keys.add(key)
 
     def _process_message(self, message, time):
         if isinstance(message, MemcacheKVRequest):
@@ -609,6 +616,9 @@ class MemcacheKVMigrationServer(kv.KV):
                 self._config.report_migration(message.operation.key,
                                               message.src,
                                               self._node)
+                # If we have migrated this key away before, remove it
+                # from the migrated keys list
+                self._migrated_keys.discard(message.operation.key)
             else:
                 raise ValueError("Invalid MemcacheKVRequest type")
         else:
