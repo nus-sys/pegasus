@@ -698,3 +698,101 @@ class BoundedLoadTest(unittest.TestCase):
         self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
         self.assertEqual(self.server_apps[1]._store['k1'], 'v2')
         self.assertEqual(self.server_apps[2]._store['k1'], 'v3')
+
+class MigrationServerTest(unittest.TestCase):
+    class TestConfig(memcachekv.RoutingConfig):
+        def __init__(self, cache_nodes, db_node, write_type, c):
+            super().__init__(cache_nodes, db_node, write_type, c)
+
+        def key_hash(self, key):
+            return sum(map(lambda x : ord(x), key))
+
+    def setUp(self):
+        rack = pegasus.node.Rack(0)
+        self.cache_nodes = []
+        self.server_apps = []
+        for i in range(4):
+            self.cache_nodes.append(pegasus.node.Node(rack, i))
+        self.config = self.TestConfig(self.cache_nodes, None, memcachekv.WriteMode.UPDATE, 1.5)
+        for node in self.cache_nodes:
+            app = memcachekv.MemcacheKVMigrationServer(None, None)
+            app.register_config(self.config)
+            node.register_app(app)
+            self.server_apps.append(app)
+        self.client_node = pegasus.node.Node(rack, 4, logical_client=True)
+        self.stats = kv.KVStats()
+        self.client_app = memcachekv.MemcacheKVClient(None, self.stats)
+        self.client_app.register_config(self.config)
+        self.client_node.register_app(self.client_app)
+
+    def run_servers(self, end_time):
+        for node in self.cache_nodes:
+            node.run(end_time)
+
+    def test_basic(self):
+        timer = 0
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 1)
+
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.run_servers(timer)
+            self.client_node.run(timer)
+
+        # Migrate 'k1' from node 0 to node 2
+        self.assertFalse('k1' in self.server_apps[2]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET], 0)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT], 1)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 1)
+        self.assertEqual(len(self.cache_nodes[2]._inflight_messages), 0)
+        self.config.iloads[0] = 2
+        self.config.iloads[1] = 1
+        self.config.iloads[2] = 1
+        self.config.iloads[3] = 1
+        self.config.ploads[0] = 3
+        self.config.ploads[1] = 2
+        self.config.ploads[2] = 0
+        self.config.ploads[3] = 1
+
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.run_servers(timer)
+        self.assertEqual(len(self.cache_nodes[2]._inflight_messages), 1)
+
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.run_servers(timer)
+        self.client_node.run(timer)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET], 1)
+        self.assertEqual(self.server_apps[2]._store['k1'], 'v1')
+        self.assertEqual(self.config.key_node_map['k1'], 2)
+
+        # Migrate 'k1' from node 2 to node 3
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT], 1)
+        self.assertFalse('k1' in self.server_apps[3]._store)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v2'),
+                                 timer)
+        self.assertEqual(len(self.cache_nodes[0]._inflight_messages), 0)
+        self.assertEqual(len(self.cache_nodes[2]._inflight_messages), 1)
+        self.config.iloads[0] = 2
+        self.config.iloads[1] = 1
+        self.config.iloads[2] = 4
+        self.config.iloads[3] = 3
+        self.config.ploads[0] = 3
+        self.config.ploads[1] = 3
+        self.config.ploads[2] = 5
+        self.config.ploads[3] = 1
+
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.run_servers(timer)
+        self.assertEqual(len(self.cache_nodes[3]._inflight_messages), 1)
+
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.run_servers(timer)
+        self.client_node.run(timer)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT], 2)
+        self.assertEqual(self.server_apps[0]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[2]._store['k1'], 'v2')
+        self.assertEqual(self.server_apps[3]._store['k1'], 'v2')
+        self.assertEqual(self.config.key_node_map['k1'], 3)

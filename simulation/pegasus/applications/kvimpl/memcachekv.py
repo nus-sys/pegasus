@@ -14,8 +14,13 @@ class MemcacheKVRequest(pegasus.message.Message):
     """
     Request message used by MemcacheKV.
     """
-    def __init__(self, src, req_id, operation):
+    class Type(enum.Enum):
+        CLIENT = 1
+        MIGRATION = 2
+
+    def __init__(self, type, src, req_id, operation):
         super().__init__(kv.REQ_ID_LEN + operation.len())
+        self.type = type
         self.src = src
         self.req_id = req_id
         self.operation = operation
@@ -44,6 +49,17 @@ class MappedNodes(object):
     def __init__(self, dest_nodes, migration_nodes):
         self.dest_nodes = dest_nodes
         self.migration_nodes = migration_nodes
+
+
+class KeyRate(object):
+    def __init__(self, count=0, time=0):
+        self.count = count
+        self.time = time
+
+    def rate(self):
+        if self.time == 0 or self.count <= 1:
+            return 0
+        return self.count / (self.time / 1000000)
 
 
 class MemcacheKVConfiguration(pegasus.config.Configuration):
@@ -78,6 +94,12 @@ class MemcacheKVConfiguration(pegasus.config.Configuration):
     def report_op_receive(self, node):
         """
         (Client) reporting that it has received a reply from ``node``.
+        """
+        pass
+
+    def report_migration(self, key, src, dest):
+        """
+        (Server) reporting that ``key`` has migrated from ``src`` to ``dest``.
         """
         pass
 
@@ -238,16 +260,6 @@ class BoundedIPLoadConfig(MemcacheKVConfiguration):
         PLOAD = 2
         IPLOAD = 3
 
-    class KeyRate(object):
-        def __init__(self, count=0, time=0):
-            self.count = count
-            self.time = time
-
-        def rate(self):
-            if self.time == 0 or self.count <= 1:
-                return 0
-            return self.count / (self.time / 1000000)
-
     def __init__(self, cache_nodes, db_node, write_mode, c, mode):
         super().__init__(cache_nodes, db_node, write_mode)
         self.c = c
@@ -307,7 +319,7 @@ class BoundedIPLoadConfig(MemcacheKVConfiguration):
             assert node_id != next_node_id
             self.key_node_map[key] = next_node_id
             # Update ploads on both nodes
-            key_rate = self.key_rates.get(key, self.KeyRate())
+            key_rate = self.key_rates.get(key, KeyRate())
             self.ploads[node_id] -= key_rate.rate()
             self.ploads[next_node_id] += key_rate.rate()
 
@@ -316,7 +328,7 @@ class BoundedIPLoadConfig(MemcacheKVConfiguration):
 
     def report_op_send(self, node, op, time):
         self.iloads[node.id] += 1
-        key_rate = self.key_rates.setdefault(op.key, self.KeyRate())
+        key_rate = self.key_rates.setdefault(op.key, KeyRate())
         old_rate = key_rate.rate()
         key_rate.count += 1
         key_rate.time = time
@@ -377,6 +389,41 @@ class BoundedAverageLoadConfig(MemcacheKVConfiguration):
         self.average_load[node.id].time = time
 
 
+class RoutingConfig(MemcacheKVConfiguration):
+    def __init__(self, cache_nodes, db_node, write_mode, c):
+        super().__init__(cache_nodes, db_node, write_mode)
+        self.c = c
+        self.key_node_map = {} # key -> node id
+        self.key_rates = {} # key -> KeyRate
+        self.iloads = {} # node id -> instantaneous load
+        self.ploads = {} # node id -> projected load
+        for node in self.cache_nodes:
+            self.iloads[node.id] = 0
+            self.ploads[node.id] = 0
+
+    def key_hash(self, key):
+        return hash(key)
+
+    def key_to_nodes(self, key, op_type):
+        node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
+        return MappedNodes([self.cache_nodes[node_id]], None)
+
+    def report_op_send(self, node, op, time):
+        self.iloads[node.id] += 1
+        key_rate = self.key_rates.setdefault(op.key, KeyRate())
+        old_rate = key_rate.rate()
+        key_rate.count += 1
+        key_rate.time = time
+        node_id = self.key_node_map.get(op.key, self.key_hash(op.key) % len(self.cache_nodes))
+        self.ploads[node_id] += (key_rate.rate() - old_rate)
+
+    def report_op_receive(self, node):
+        self.iloads[node.id] -= 1
+
+    def report_migration(self, key, src, dest):
+        self.key_node_map[key] = dest.id
+
+
 class MemcacheKVClient(kv.KV):
     """
     Implementation of a memcache style distributed key-value store client.
@@ -402,7 +449,8 @@ class MemcacheKVClient(kv.KV):
         """
         mapped_nodes = self._config.key_to_nodes(op.key, op.op_type)
         pending_req = self.PendingRequest(operation = op, time = time)
-        msg = MemcacheKVRequest(src = self._node,
+        msg = MemcacheKVRequest(type = MemcacheKVRequest.Type.CLIENT,
+                                src = self._node,
                                 req_id = self._next_req_id,
                                 operation = op)
         if op.op_type == kv.Operation.Type.GET:
@@ -426,7 +474,8 @@ class MemcacheKVClient(kv.KV):
             for node in write_nodes:
                 self._node.send_message(msg, node, time)
                 self._config.report_op_send(node, op, time)
-            inval_msg = MemcacheKVRequest(src = self._node,
+            inval_msg = MemcacheKVRequest(type = MemcacheKVRequest.Type.CLIENT,
+                                          src = self._node,
                                           req_id = self._next_req_id,
                                           operation = kv.Operation(op_type = kv.Operation.Type.DEL,
                                                                    key = op.key))
@@ -464,6 +513,7 @@ class MemcacheKVClient(kv.KV):
                               time - request.time,
                               result == kv.Result.OK)
 
+
 class MemcacheKVServer(kv.KV):
     """
     Implementation of a memcache style distributed key-value store server.
@@ -479,7 +529,8 @@ class MemcacheKVServer(kv.KV):
                 count = self._key_request_counter.get(message.operation.key, 0) + 1
                 self._key_request_counter[message.operation.key] = count
             result, value = self._execute_op(message.operation)
-            if message.src is not None:
+            # Only reply to client requests
+            if message.type == MemcacheKVRequest.Type.CLIENT:
                 reply = MemcacheKVReply(src = self._node,
                                         req_id = message.req_id,
                                         result = result,
@@ -487,16 +538,78 @@ class MemcacheKVServer(kv.KV):
                 self._node.send_message(reply, message.src, time)
 
             if message.migration_dests is not None:
-                # Migrate the key-value pair. Set src to
-                # None to prevent the remote node from
-                # sending us a reply.
                 assert message.operation.op_type == kv.Operation.Type.GET
-                request = MemcacheKVRequest(src = None,
+                request = MemcacheKVRequest(type = MemcacheKVRequest.Type.MIGRATION,
+                                            src = self._node,
                                             req_id = None,
                                             operation = kv.Operation(op_type = kv.Operation.Type.PUT,
                                                                      key = message.operation.key,
                                                                      value = value))
                 for node in message.migration_dests:
                     self._node.send_message(request, node, time)
+        else:
+            raise ValueError("Invalid message type")
+
+
+class MemcacheKVMigrationServer(kv.KV):
+    """
+    Implementation of a memcache style distributed key-value store server.
+    Server actively migrates keys when overloaded.
+    """
+    def __init__(self, generator, stats):
+        super().__init__(generator, stats)
+
+    def _check_load_and_migrate(self, key, time):
+        # Check if node is overloaded. If yes, migrate key value pair
+        # to another node.
+        total_iload = sum(self._config.iloads.values())
+        expected_iload = (self._config.c * total_iload) / len(self._config.cache_nodes)
+        total_pload = sum(self._config.ploads.values())
+        expected_pload = (self._config.c * total_pload) / len(self._config.cache_nodes)
+
+        if self._config.iloads[self._node.id] <= expected_iload:
+            return None
+        if self._config.ploads[self._node.id] <= expected_pload:
+            return None
+
+        for dest_node_id in sorted(self._config.ploads, key=self._config.ploads.get):
+            if self._config.ploads[dest_node_id] > expected_pload:
+                return None
+            if self._config.iloads[dest_node_id] <= expected_iload:
+                break
+
+        assert dest_node_id != self._node.id
+        request = MemcacheKVRequest(type = MemcacheKVRequest.Type.MIGRATION,
+                                    src = self._node,
+                                    req_id = None,
+                                    operation = kv.Operation(op_type = kv.Operation.Type.PUT,
+                                                             key = key,
+                                                             value = self._store.get(key, "")))
+        self._node.send_message(request, self._config.cache_nodes[dest_node_id], time)
+
+    def _process_message(self, message, time):
+        if isinstance(message, MemcacheKVRequest):
+            # Always execute the request regardless
+            # of node's load.
+            result, value = self._execute_op(message.operation)
+
+            if message.type == MemcacheKVRequest.Type.CLIENT:
+                reply = MemcacheKVReply(src = self._node,
+                                        req_id = message.req_id,
+                                        result = result,
+                                        value = value)
+                self._node.send_message(reply, message.src, time)
+
+                # Only do migration for GET and PUT requests.
+                if message.operation.op_type == kv.Operation.Type.GET or \
+                        message.operation.op_type == kv.Operation.Type.PUT:
+                    self._check_load_and_migrate(message.operation.key, time)
+            elif message.type == MemcacheKVRequest.Type.MIGRATION:
+                # Notify config that migration is completed
+                self._config.report_migration(message.operation.key,
+                                              message.src,
+                                              self._node)
+            else:
+                raise ValueError("Invalid MemcacheKVRequest type")
         else:
             raise ValueError("Invalid message type")
