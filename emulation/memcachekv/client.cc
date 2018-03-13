@@ -1,8 +1,10 @@
 #include "memcachekv/client.h"
+#include "memcachekv/memcachekv.pb.h"
 
-using namespace std;
+using std::string;
 
 namespace memcachekv {
+using namespace proto;
 
 Client::Client(Transport *transport, Configuration *config)
 {
@@ -13,13 +15,21 @@ Client::Client(Transport *transport, Configuration *config)
 void
 Client::receive_message(const string &message, const sockaddr &src_addr)
 {
-    printf("Client: received msg %s\n", message.c_str());
+    MemcacheKVReply reply;
+    reply.ParseFromString(message);
 }
 
 void
 Client::run()
 {
-    this->transport->send_message_to_node(string("Hello!"), 0);
+    MemcacheKVRequest request;
+    string request_str;
+    request.set_req_id(1);
+    request.mutable_operation()->set_op_type(Operation_Type_PUT);
+    request.mutable_operation()->set_key("k1");
+    request.mutable_operation()->set_value("v1");
+    request.SerializeToString(&request_str);
+    this->transport->send_message_to_node(request_str, 0);
 }
 
 } // namespace memcachekv

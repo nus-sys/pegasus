@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package memcachekv.proto;
+
+message Operation {
+    enum Type {
+        GET = 0;
+        PUT = 1;
+        DEL = 2;
+    }
+    Type op_type = 1;
+    string key = 2;
+    string value = 3;
+}
+
+message MemcacheKVRequest {
+    uint64 req_id = 1;
+    Operation operation = 2;
+}
+
+enum Result {
+    OK = 0;
+    NOT_FOUND = 1;
+}
+
+message MemcacheKVReply {
+    uint64 req_id = 1;
+    Result result = 2;
+    string value = 3;
+}
