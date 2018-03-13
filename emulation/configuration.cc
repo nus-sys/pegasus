@@ -3,7 +3,7 @@
 #include "logger.h"
 #include "configuration.h"
 
-using namespace std;
+using std::string;
 
 NodeAddress::NodeAddress()
     : address(""), port("")
