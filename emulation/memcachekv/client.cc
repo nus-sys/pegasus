@@ -25,9 +25,9 @@ Client::run()
     MemcacheKVRequest request;
     string request_str;
     request.set_req_id(1);
-    request.mutable_operation()->set_op_type(Operation_Type_PUT);
-    request.mutable_operation()->set_key("k1");
-    request.mutable_operation()->set_value("v1");
+    request.mutable_op()->set_op_type(Operation_Type_PUT);
+    request.mutable_op()->set_key("k1");
+    request.mutable_op()->set_value("v1");
     request.SerializeToString(&request_str);
     this->transport->send_message_to_node(request_str, 0);
 }

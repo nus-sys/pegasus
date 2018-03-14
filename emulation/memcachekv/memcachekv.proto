@@ -15,7 +15,7 @@ message Operation {
 
 message MemcacheKVRequest {
     uint64 req_id = 1;
-    Operation operation = 2;
+    Operation op = 2;
 }
 
 enum Result {
