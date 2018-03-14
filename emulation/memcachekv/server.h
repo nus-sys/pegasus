@@ -2,7 +2,9 @@
 #define __MEMCACHEKV_SERVER_H__
 
 #include <string>
+#include <unordered_map>
 #include "application.h"
+#include "memcachekv/memcachekv.pb.h"
 
 namespace memcachekv {
 
@@ -16,8 +18,12 @@ public:
     void run() override;
 
 private:
+    void process_op(const proto::Operation &op,
+                    proto::MemcacheKVReply &reply);
+
     Transport *transport;
     Configuration *config;
+    std::unordered_map<std::string, std::string> store;
 };
 
 } // namespace memcachekv
