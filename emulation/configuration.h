@@ -19,12 +19,17 @@ public:
 
 class Configuration {
 public:
-    Configuration(int num_nodes, const std::map<int, NodeAddress> &addresses)
-        : num_nodes(num_nodes), addresses(addresses) {};
+    Configuration(int num_nodes,
+                  const std::map<int, NodeAddress> &addresses,
+                  const NodeAddress &router_address)
+        : num_nodes(num_nodes),
+        addresses(addresses),
+        router_address(router_address) {};
     ~Configuration() {};
 
     int num_nodes;
     std::map<int, NodeAddress> addresses;
+    NodeAddress router_address;
 };
 
 #endif /* __CONFIGURATION_H__ */

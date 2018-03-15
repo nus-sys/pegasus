@@ -2,11 +2,15 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <event2/thread.h>
 #include "transport.h"
 #include "logger.h"
 
 Transport::Transport()
-    : event_base(nullptr), socket_fd(-1) {};
+    : event_base(nullptr), socket_fd(-1)
+{
+    evthread_use_pthreads();
+};
 
 Transport::~Transport()
 {
@@ -24,9 +28,9 @@ Transport::~Transport()
 }
 
 void
-Transport::register_node(TransportReceiver *receiver,
-                         Configuration *config,
-                         int node_id)
+Transport::register_address(TransportReceiver *receiver,
+                            Configuration *config,
+                            const NodeAddress &node_addr)
 {
     assert(receiver != nullptr);
     assert(config != nullptr);
@@ -45,15 +49,13 @@ Transport::register_node(TransportReceiver *receiver,
 
     // Bind to address
     struct sockaddr_in sin;
-    if (node_id == -1) {
+    if (node_addr.address.size() == 0) {
         // Client can bind to any port
         memset(&sin, 0, sizeof(sin));
         sin.sin_family = AF_INET;
         sin.sin_port = 0;
     } else {
-        assert(config->addresses.count(node_id) > 0);
-        NodeAddress addr = config->addresses.at(node_id);
-        sin = addr.sin;
+        sin = node_addr.sin;
     }
 
     if (bind(this->socket_fd, (sockaddr *)&sin, sizeof(sin)) != 0) {
@@ -95,9 +97,36 @@ Transport::register_node(TransportReceiver *receiver,
 }
 
 void
+Transport::register_node(TransportReceiver *receiver,
+                         Configuration *config,
+                         int node_id)
+{
+    if (node_id < 0) {
+        // Client node
+        register_address(receiver, config, NodeAddress());
+    } else {
+        assert(config->addresses.count(node_id) > 0);
+        register_address(receiver, config, config->addresses.at(node_id));
+    }
+}
+
+void
+Transport::register_router(TransportReceiver *receiver,
+                           Configuration *config)
+{
+    register_address(receiver, config, config->router_address);
+}
+
+void
 Transport::run()
 {
     event_base_dispatch(this->event_base);
+}
+
+void
+Transport::stop()
+{
+    event_base_loopbreak(this->event_base);
 }
 
 void
@@ -129,7 +158,7 @@ void
 Transport::signal_callback(evutil_socket_t fd, short what, void *arg)
 {
     Transport *transport = (Transport *)arg;
-    event_base_loopbreak(transport->event_base);
+    transport->stop();
 }
 
 void
