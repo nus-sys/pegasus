@@ -28,7 +28,7 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
 }
 
 void
-Server::run()
+Server::run(int duration)
 {
     // Do nothing...
 }

@@ -6,7 +6,7 @@
 class Application : public TransportReceiver {
 public:
     virtual ~Application() {};
-    virtual void run() = 0;
+    virtual void run(int duration) = 0;
 };
 
 #endif /* __APPLICATION_H__ */

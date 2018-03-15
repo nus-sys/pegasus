@@ -15,7 +15,7 @@ public:
 
     void receive_message(const std::string &message,
                          const sockaddr &src_addr) override;
-    void run() override;
+    void run(int duration) override;
 
 private:
     void process_op(const proto::Operation &op,
