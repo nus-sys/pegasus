@@ -16,7 +16,7 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 CPPFLAGS := $(INC_FLAGS) -MMD -MP
 CFLAGS := -g -Wall -pthread -O3
 CXXFLAGS := -std=c++0x -O3
-LDFLAGS := -levent
+LDFLAGS := -levent_pthreads
 
 # Protobuf definitions
 PROTOC := protoc
