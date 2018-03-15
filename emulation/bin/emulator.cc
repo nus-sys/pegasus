@@ -39,22 +39,25 @@ int main(int argc, char *argv[])
 
     std::map<int, NodeAddress> addrs;
     addrs[0] = NodeAddress("localhost", "12345");
-    Configuration *config = new Configuration(1, addrs);
-    Transport *transport = new Transport();
+    NodeAddress router_addr("localhost", "54321");
+    Configuration config(1, addrs, router_addr);
+    Transport transport;
+    memcachekv::MemcacheKVStats stats;
+    memcachekv::KVWorkloadGenerator gen;
 
     Node *node;
     Application *app;
     switch (mode) {
     case CLIENT: {
-        app = new memcachekv::Client(transport, config);
-        transport->register_node(app, config, -1);
-        node = new Node(-1, transport, app);
+        app = new memcachekv::Client(&transport, &stats, &gen);
+        transport.register_node(app, &config, -1);
+        node = new Node(-1, &transport, app, true);
         break;
     }
     case SERVER: {
-        app = new memcachekv::Server(transport, config);
-        transport->register_node(app, config, 0);
-        node = new Node(0, transport, app);
+        app = new memcachekv::Server(&transport, &config);
+        transport.register_node(app, &config, 0);
+        node = new Node(0, &transport, app, false);
         break;
     }
     default:
@@ -62,13 +65,10 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-
-    node->run();
+    node->run(1);
 
     delete node;
     delete app;
-    delete transport;
-    delete config;
 
     return 0;
 }
