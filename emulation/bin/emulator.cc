@@ -16,13 +16,13 @@ int main(int argc, char *argv[])
 {
     int opt;
     AppMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
 
-    while ((opt = getopt(argc, argv, "a:c:d:f:g:i:m:n:p:t:v:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:p:t:v:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -34,6 +34,10 @@ int main(int argc, char *argv[])
         }
         case 'd': {
             duration = stoi(std::string(optarg));
+            break;
+        }
+        case 'e': {
+            node_id = stoi(std::string(optarg));
             break;
         }
         case 'f': {
@@ -132,9 +136,13 @@ int main(int argc, char *argv[])
         break;
     }
     case SERVER: {
+        if (node_id < 0) {
+            printf("server requires argument '-e <node id>'\n");
+            exit(1);
+        }
         app = new memcachekv::Server(&transport, &config);
-        transport.register_node(app, &config, 0);
-        node = new Node(0, &transport, app, false);
+        transport.register_node(app, &config, node_id);
+        node = new Node(node_id, &transport, app, false);
         break;
     }
     default:
