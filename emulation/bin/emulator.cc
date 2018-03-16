@@ -18,14 +18,18 @@ int main(int argc, char *argv[])
     AppMode mode = UNKNOWN;
     int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
-    const char *keys_file_path = nullptr;
+    const char *keys_file_path = nullptr, *config_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
 
-    while ((opt = getopt(argc, argv, "a:d:f:g:i:m:n:p:t:v:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:f:g:i:m:n:p:t:v:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
+            break;
+        }
+        case 'c': {
+            config_file_path = optarg;
             break;
         }
         case 'd': {
@@ -86,10 +90,12 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    std::map<int, NodeAddress> addrs;
-    addrs[0] = NodeAddress("localhost", "12345");
-    NodeAddress router_addr("localhost", "54321");
-    Configuration config(1, addrs, router_addr);
+    if (config_file_path == nullptr) {
+        printf("Option -c <config file> required\n");
+        exit(1);
+    }
+
+    Configuration config(config_file_path);
     Transport transport;
     Node *node = nullptr;
     Application *app = nullptr;

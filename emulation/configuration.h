@@ -1,7 +1,7 @@
 #ifndef __CONFIGURATION_H__
 #define __CONFIGURATION_H__
 
-#include <map>
+#include <vector>
 #include <string>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -19,16 +19,13 @@ public:
 
 class Configuration {
 public:
-    Configuration(int num_nodes,
-                  const std::map<int, NodeAddress> &addresses,
-                  const NodeAddress &router_address)
-        : num_nodes(num_nodes),
-        addresses(addresses),
-        router_address(router_address) {};
+    Configuration(const std::vector<NodeAddress> &addresses,
+                  const NodeAddress &router_address);
+    Configuration(const char *file_path);
     ~Configuration() {};
 
     int num_nodes;
-    std::map<int, NodeAddress> addresses;
+    std::vector<NodeAddress> addresses;
     NodeAddress router_address;
 };
 

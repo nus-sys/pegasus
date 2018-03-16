@@ -105,7 +105,7 @@ Transport::register_node(TransportReceiver *receiver,
         // Client node
         register_address(receiver, config, NodeAddress());
     } else {
-        assert(config->addresses.count(node_id) > 0);
+        assert(node_id < config->num_nodes);
         register_address(receiver, config, config->addresses.at(node_id));
     }
 }
@@ -114,6 +114,7 @@ void
 Transport::register_router(TransportReceiver *receiver,
                            Configuration *config)
 {
+    assert(config->router_address.address.size() > 0);
     register_address(receiver, config, config->router_address);
 }
 
