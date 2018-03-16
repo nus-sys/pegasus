@@ -35,7 +35,7 @@ Stats::dump()
         if (count >= (int)(this->total_ops * 0.9) && n_latency == -1) {
             n_latency = latency.first;
         }
-        if (count >= (int)(this->total_ops * 0.99) & nn_latency == -1) {
+        if (count >= (int)(this->total_ops * 0.99) && nn_latency == -1) {
             nn_latency = latency.first;
         }
     }

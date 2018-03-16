@@ -40,7 +40,7 @@ private:
 
     TransportReceiver *receiver;
     Configuration *config;
-    event_base *event_base;
+    struct event_base *event_base;
     std::list<struct event*> events;
     int socket_fd;
 };

@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     AppMode mode = UNKNOWN;
     int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
-    const char *keys_file_path;
+    const char *keys_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
 
@@ -91,10 +91,10 @@ int main(int argc, char *argv[])
     NodeAddress router_addr("localhost", "54321");
     Configuration config(1, addrs, router_addr);
     Transport transport;
-    Node *node;
-    Application *app;
-    memcachekv::MemcacheKVStats *stats;
-    memcachekv::KVWorkloadGenerator *gen;
+    Node *node = nullptr;
+    Application *app = nullptr;
+    memcachekv::MemcacheKVStats *stats = nullptr;
+    memcachekv::KVWorkloadGenerator *gen = nullptr;
 
     switch (mode) {
     case CLIENT: {

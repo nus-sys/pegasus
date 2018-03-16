@@ -21,12 +21,12 @@ KVWorkloadGenerator::KVWorkloadGenerator(const std::vector<std::string> *keys,
     if (key_type == ZIPF) {
         // Generate zipf distribution data
         float c = 0;
-        for (int i = 0; i < keys->size(); i++) {
+        for (unsigned int i = 0; i < keys->size(); i++) {
             c = c + (1.0 / pow((float)(i+1), alpha));
         }
         c = 1 / c;
         float sum = 0;
-        for (int i = 0; i< keys->size(); i++) {
+        for (unsigned int i = 0; i< keys->size(); i++) {
             sum += (c / pow((float)(i+1), alpha));
             this->zipfs.push_back(sum);
         }
@@ -44,7 +44,7 @@ KVWorkloadGenerator::next_zipf_key_index()
         random = this->unif_real_dist(this->generator);
     }
 
-    int l = 0, r = this->keys->size(), mid;
+    int l = 0, r = this->keys->size(), mid = 0;
     while (l < r) {
         mid = (l + r) / 2;
         if (random > this->zipfs[mid]) {
