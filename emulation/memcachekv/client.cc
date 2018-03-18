@@ -109,15 +109,14 @@ Client::receive_message(const string &message, const sockaddr &src_addr)
 {
     MemcacheKVReply reply;
     reply.ParseFromString(message);
-    assert(this->pending_requests.count(reply.req_id()) > 0);
-    PendingRequest &pending_request = this->pending_requests.at(reply.req_id());
+    PendingRequest &pending_request = get_pending_request(reply.req_id());
 
     if (pending_request.op_type == Operation_Type_GET) {
-        complete_op(reply.req_id(), reply.result());
+        complete_op(reply.req_id(), pending_request, reply.result());
     } else {
         pending_request.received_acks += 1;
         if (pending_request.received_acks >= pending_request.expected_acks) {
-            complete_op(reply.req_id(), reply.result());
+            complete_op(reply.req_id(), pending_request, reply.result());
         }
     }
 }
@@ -147,7 +146,7 @@ Client::execute_op(const proto::Operation &op)
     gettimeofday(&pending_request.start_time, nullptr);
     pending_request.op_type = op.op_type();
     pending_request.expected_acks = 1;
-    this->pending_requests[this->req_id] = pending_request;
+    insert_pending_request(this->req_id, pending_request);
 
     MemcacheKVRequest request;
     string request_str;
@@ -160,14 +159,35 @@ Client::execute_op(const proto::Operation &op)
 }
 
 void
-Client::complete_op(uint64_t req_id, Result result)
+Client::complete_op(uint64_t req_id, const PendingRequest &request, Result result)
 {
-    PendingRequest &pending_request = this->pending_requests.at(req_id);
     struct timeval end_time;
     gettimeofday(&end_time, nullptr);
-    this->stats->report_op(pending_request.op_type,
-                           latency(pending_request.start_time, end_time),
+    this->stats->report_op(request.op_type,
+                           latency(request.start_time, end_time),
                            result == Result::OK);
+    delete_pending_request(req_id);
+}
+
+void
+Client::insert_pending_request(uint64_t req_id, const PendingRequest &request)
+{
+    std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
+    this->pending_requests[req_id] = request;
+}
+
+PendingRequest&
+Client::get_pending_request(uint64_t req_id)
+{
+    std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
+    assert(this->pending_requests.count(req_id) > 0);
+    return this->pending_requests.at(req_id);
+}
+
+void
+Client::delete_pending_request(uint64_t req_id)
+{
+    std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
     this->pending_requests.erase(req_id);
 }
 

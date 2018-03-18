@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <unordered_map>
 #include <random>
+#include <mutex>
 #include "application.h"
 #include "memcachekv/stats.h"
 #include "memcachekv/memcachekv.pb.h"
@@ -77,7 +78,10 @@ public:
 
 private:
     void execute_op(const proto::Operation &op);
-    void complete_op(uint64_t req_id, proto::Result result);
+    void complete_op(uint64_t req_id, const PendingRequest &request, proto::Result result);
+    void insert_pending_request(uint64_t req_id, const PendingRequest &request);
+    PendingRequest& get_pending_request(uint64_t req_id);
+    void delete_pending_request(uint64_t req_id);
 
     Transport *transport;
     MemcacheKVStats *stats;
@@ -85,6 +89,7 @@ private:
 
     uint64_t req_id;
     std::unordered_map<uint64_t, PendingRequest> pending_requests;
+    std::mutex pending_requests_mutex;
 };
 
 } // namespace memcachekv
