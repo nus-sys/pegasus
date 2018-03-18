@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <fstream>
+#include <sched.h>
 #include "configuration.h"
 #include "node.h"
 #include "transport.h"
@@ -16,13 +17,13 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, core_id = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:p:s:t:v:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:s:t:v:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -64,6 +65,10 @@ int main(int argc, char *argv[])
             nkeys = stoi(std::string(optarg));
             break;
         }
+        case 'o': {
+            core_id = stoi(std::string(optarg));
+            break;
+        }
         case 'p': {
             put_ratio = stof(std::string(optarg));
             break;
@@ -101,6 +106,17 @@ int main(int argc, char *argv[])
     if (config_file_path == nullptr) {
         printf("Option -c <config file> required\n");
         exit(1);
+    }
+
+    if (core_id >= 0) {
+        // Pin process to one core
+        cpu_set_t set;
+        CPU_ZERO(&set);
+        CPU_SET(core_id, &set);
+        if (sched_setaffinity(0, sizeof(set), &set) != 0) {
+            printf("Failed to pin process to core %d\n", core_id);
+            exit(1);
+        }
     }
 
     Configuration config(config_file_path);
