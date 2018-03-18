@@ -2,13 +2,14 @@
 #define __APP_STATS_H__
 
 #include <sys/time.h>
+#include <fstream>
 #include <map>
 
 class Stats {
 public:
-    Stats()
-        : total_ops(0) {};
-    virtual ~Stats() {};
+    Stats();
+    Stats(const char *stats_file);
+    virtual ~Stats();
 
     void report_latency(int latency);
     void start();
@@ -18,6 +19,7 @@ public:
 
 protected:
     uint64_t total_ops;
+    std::ofstream file_stream;
 
 private:
     struct timeval start_time;

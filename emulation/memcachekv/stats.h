@@ -10,7 +10,9 @@ namespace memcachekv {
 class MemcacheKVStats : public Stats {
 public:
     MemcacheKVStats()
-        : cache_hits(0), cache_misses(0) {};
+        : Stats(), cache_hits(0), cache_misses(0) {};
+    MemcacheKVStats(const char* stats_file)
+        : Stats(stats_file), cache_hits(0), cache_misses(0) {};
     ~MemcacheKVStats() {};
 
     void report_op(proto::Operation_Type op_type, int latency, bool hit);

@@ -1,4 +1,28 @@
 #include "appstats.h"
+#include "logger.h"
+
+Stats::Stats()
+    : total_ops(0)
+{
+}
+
+Stats::Stats(const char *stats_file)
+    : total_ops(0)
+{
+    if (stats_file != nullptr) {
+        this->file_stream.open(stats_file, std::ofstream::out | std::ofstream::trunc);
+        if (!this->file_stream) {
+            panic("Failed to open stats output file");
+        }
+    }
+}
+
+Stats::~Stats()
+{
+    if (this->file_stream.is_open()) {
+        this->file_stream.close();
+    }
+}
 
 void
 Stats::report_latency(int latency)
@@ -45,6 +69,12 @@ Stats::dump()
     printf("Median Latency: %d\n", med_latency);
     printf("90%% Latency: %d\n", n_latency);
     printf("99%% Latency: %d\n", nn_latency);
+
+    if (this->file_stream.is_open()) {
+        for (auto latency : this->latencies) {
+            this->file_stream << latency.first << " " << latency.second << std::endl;
+        }
+    }
 
     _dump();
 }

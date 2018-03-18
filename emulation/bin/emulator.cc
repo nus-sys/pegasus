@@ -6,7 +6,7 @@
 #include "memcachekv/server.h"
 #include "memcachekv/client.h"
 
-enum AppMode {
+enum NodeMode {
     CLIENT,
     SERVER,
     UNKNOWN
@@ -15,14 +15,14 @@ enum AppMode {
 int main(int argc, char *argv[])
 {
     int opt;
-    AppMode mode = UNKNOWN;
+    NodeMode mode = UNKNOWN;
     int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
-    const char *keys_file_path = nullptr, *config_file_path = nullptr;
+    const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:p:t:v:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:p:s:t:v:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -66,6 +66,10 @@ int main(int argc, char *argv[])
         }
         case 'p': {
             put_ratio = stof(std::string(optarg));
+            break;
+        }
+        case 's': {
+            stats_file_path = optarg;
             break;
         }
         case 't': {
@@ -120,8 +124,9 @@ int main(int argc, char *argv[])
             getline(in, key);
             keys.push_back(key);
         }
+        in.close();
 
-        stats = new memcachekv::MemcacheKVStats();
+        stats = new memcachekv::MemcacheKVStats(stats_file_path);
         gen = new memcachekv::KVWorkloadGenerator(&keys,
                                                   value_len,
                                                   get_ratio,
