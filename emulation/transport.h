@@ -38,6 +38,8 @@ private:
     static void signal_callback(evutil_socket_t fd, short what, void *arg);
     void on_readable(int fd);
 
+    const int SOCKET_BUF_SIZE = 1024 * 1024; // 1MB buffer size
+
     TransportReceiver *receiver;
     Configuration *config;
     struct event_base *event_base;

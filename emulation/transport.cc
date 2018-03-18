@@ -47,6 +47,15 @@ Transport::register_address(TransportReceiver *receiver,
         panic("Failed to set O_NONBLOCK");
     }
 
+    // Increase buffer size
+    int n = this->SOCKET_BUF_SIZE;
+    if (setsockopt(this->socket_fd, SOL_SOCKET, SO_RCVBUF, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_RCVBUF");
+    }
+    if (setsockopt(this->socket_fd, SOL_SOCKET, SO_SNDBUF, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_SNDBUF");
+    }
+
     // Bind to address
     struct sockaddr_in sin;
     if (node_addr.address.size() == 0) {
