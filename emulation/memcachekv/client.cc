@@ -1,3 +1,4 @@
+#include <sys/time.h>
 #include "utils.h"
 #include "logger.h"
 #include "memcachekv/client.h"
@@ -34,6 +35,9 @@ KVWorkloadGenerator::KVWorkloadGenerator(const std::vector<std::string> *keys,
     this->unif_real_dist = std::uniform_real_distribution<float>(0.0, 1.0);
     this->unif_int_dist = std::uniform_int_distribution<int>(0, keys->size()-1);
     this->poisson_dist = std::poisson_distribution<int>(mean_interval);
+    struct timeval time;
+    gettimeofday(&time, nullptr);
+    this->generator.seed(time.tv_sec * 1000000 + time.tv_usec);
 }
 
 int
