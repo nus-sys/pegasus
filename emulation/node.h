@@ -7,7 +7,12 @@
 
 class Node {
 public:
-    Node(int id, Transport *transport, Application *app, bool terminating);
+    Node(int id,
+         Transport *transport,
+         Application *app,
+         bool terminating,
+         int app_core = -1,
+         int transport_core = -1);
     ~Node() {};
 
     void run(int duration);
@@ -19,6 +24,8 @@ private:
     Application *app;
     int id;
     bool terminating;
+    int app_core;
+    int transport_core;
 };
 
 #endif /* __NODE_H__ */

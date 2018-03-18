@@ -17,13 +17,14 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, core_id = -1;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, app_core = -1,
+        transport_core = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:s:t:v:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -66,11 +67,15 @@ int main(int argc, char *argv[])
             break;
         }
         case 'o': {
-            core_id = stoi(std::string(optarg));
+            app_core = stoi(std::string(optarg));
             break;
         }
         case 'p': {
             put_ratio = stof(std::string(optarg));
+            break;
+        }
+        case 'r': {
+            transport_core = stoi(std::string(optarg));
             break;
         }
         case 's': {
@@ -108,17 +113,6 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (core_id >= 0) {
-        // Pin process to one core
-        cpu_set_t set;
-        CPU_ZERO(&set);
-        CPU_SET(core_id, &set);
-        if (sched_setaffinity(0, sizeof(set), &set) != 0) {
-            printf("Failed to pin process to core %d\n", core_id);
-            exit(1);
-        }
-    }
-
     Configuration config(config_file_path);
     Transport transport;
     Node *node = nullptr;
@@ -153,7 +147,7 @@ int main(int argc, char *argv[])
 
         app = new memcachekv::Client(&transport, stats, gen);
         transport.register_node(app, &config, -1);
-        node = new Node(-1, &transport, app, true);
+        node = new Node(-1, &transport, app, true, app_core, transport_core);
         break;
     }
     case SERVER: {
@@ -163,7 +157,7 @@ int main(int argc, char *argv[])
         }
         app = new memcachekv::Server(&transport, &config);
         transport.register_node(app, &config, node_id);
-        node = new Node(node_id, &transport, app, false);
+        node = new Node(node_id, &transport, app, false, app_core, transport_core);
         break;
     }
     default:
