@@ -148,11 +148,16 @@ Transport::send_message(const std::string &msg, const sockaddr &addr)
 }
 
 void
+Transport::send_message_to_addr(const std::string &msg, const NodeAddress &addr)
+{
+    send_message(msg, *(struct sockaddr *)&addr.sin);
+}
+
+void
 Transport::send_message_to_node(const std::string &msg, int dst_node_id)
 {
     assert(dst_node_id < this->config->num_nodes);
-    NodeAddress addr = this->config->addresses.at(dst_node_id);
-    send_message(msg, *(struct sockaddr *)&addr.sin);
+    send_message_to_addr(msg, this->config->addresses.at(dst_node_id));
 }
 
 void
