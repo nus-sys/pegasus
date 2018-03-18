@@ -22,7 +22,9 @@ public:
     Configuration(const std::vector<NodeAddress> &addresses,
                   const NodeAddress &router_address);
     Configuration(const char *file_path);
-    ~Configuration() {};
+    virtual ~Configuration() {};
+
+    virtual const NodeAddress& key_to_address(const std::string &key) = 0;
 
     int num_nodes;
     std::vector<NodeAddress> addresses;

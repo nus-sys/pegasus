@@ -8,6 +8,7 @@
 #include <random>
 #include <mutex>
 #include "application.h"
+#include "configuration.h"
 #include "memcachekv/stats.h"
 #include "memcachekv/memcachekv.pb.h"
 
@@ -68,6 +69,7 @@ struct PendingRequest {
 class Client : public Application {
 public:
     Client(Transport *transport,
+           Configuration *config,
            MemcacheKVStats *stats,
            KVWorkloadGenerator *gen);
     ~Client() {};
@@ -84,6 +86,7 @@ private:
     void delete_pending_request(uint64_t req_id);
 
     Transport *transport;
+    Configuration *config;
     MemcacheKVStats *stats;
     KVWorkloadGenerator *gen;
 

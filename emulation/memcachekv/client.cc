@@ -104,9 +104,11 @@ KVWorkloadGenerator::next_operation()
 }
 
 Client::Client(Transport *transport,
+               Configuration *config,
                MemcacheKVStats *stats,
                KVWorkloadGenerator *gen)
-    : transport(transport), stats(stats), gen(gen), req_id(1) {}
+    : transport(transport), config(config),
+    stats(stats), gen(gen), req_id(1) {}
 
 void
 Client::receive_message(const string &message, const sockaddr &src_addr)
@@ -157,7 +159,8 @@ Client::execute_op(const proto::Operation &op)
     request.set_req_id(this->req_id);
     *(request.mutable_op()) = op;
     request.SerializeToString(&request_str);
-    this->transport->send_message_to_node(request_str, 0);
+    const NodeAddress& addr = this->config->key_to_address(op.key());
+    this->transport->send_message_to_addr(request_str, addr);
 
     this->req_id++;
 }

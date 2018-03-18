@@ -1,9 +1,9 @@
 #include <unistd.h>
 #include <fstream>
 #include <sched.h>
-#include "configuration.h"
 #include "node.h"
 #include "transport.h"
+#include "memcachekv/config.h"
 #include "memcachekv/server.h"
 #include "memcachekv/client.h"
 
@@ -23,8 +23,9 @@ int main(int argc, char *argv[])
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
+    memcachekv::ConfigMode config_mode = memcachekv::STATIC;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -97,6 +98,17 @@ int main(int argc, char *argv[])
             value_len = stoi(std::string(optarg));
             break;
         }
+        case 'w': {
+            if (strcmp(optarg, "static") == 0) {
+                config_mode = memcachekv::STATIC;
+            } else if (strcmp(optarg, "router") == 0) {
+                config_mode = memcachekv::ROUTER;
+            } else {
+                printf("Unknown config mode %s\n", optarg);
+                exit(1);
+            }
+            break;
+        }
         default:
             printf("Unknown argument %s\n", argv[optind]);
             break;
@@ -113,7 +125,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    Configuration config(config_file_path);
+    memcachekv::MemcacheKVConfig config(config_file_path, config_mode);
     Transport transport;
     Node *node = nullptr;
     Application *app = nullptr;
@@ -145,7 +157,7 @@ int main(int argc, char *argv[])
                                                   alpha,
                                                   key_type);
 
-        app = new memcachekv::Client(&transport, stats, gen);
+        app = new memcachekv::Client(&transport, &config, stats, gen);
         transport.register_node(app, &config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
         break;
