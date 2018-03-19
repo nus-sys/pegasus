@@ -5,26 +5,23 @@ using std::string;
 namespace memcachekv {
 using namespace proto;
 
-Server::Server(Transport *transport, Configuration *config)
-{
-    this->transport = transport;
-    this->config = config;
-}
-
 void
 Server::receive_message(const string &message, const sockaddr &src_addr)
 {
-    MemcacheKVRequest request;
-    request.ParseFromString(message);
+    MemcacheKVMessage request_msg;
+    request_msg.ParseFromString(message);
+    assert(request_msg.has_request());
 
+    MemcacheKVMessage reply_msg;
     MemcacheKVReply reply;
-    string reply_str;
-    reply.set_req_id(request.req_id());
+    string reply_msg_str;
+    reply.set_req_id(request_msg.request().req_id());
 
-    process_op(request.op(), reply);
+    process_op(request_msg.request().op(), reply);
 
-    reply.SerializeToString(&reply_str);
-    this->transport->send_message(reply_str, src_addr);
+    *(reply_msg.mutable_reply()) = reply;
+    reply_msg.SerializeToString(&reply_msg_str);
+    this->transport->send_message(reply_msg_str, src_addr);
 }
 
 void

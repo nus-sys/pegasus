@@ -113,16 +113,17 @@ Client::Client(Transport *transport,
 void
 Client::receive_message(const string &message, const sockaddr &src_addr)
 {
-    MemcacheKVReply reply;
-    reply.ParseFromString(message);
-    PendingRequest &pending_request = get_pending_request(reply.req_id());
+    MemcacheKVMessage msg;
+    msg.ParseFromString(message);
+    assert(msg.has_reply());
+    PendingRequest &pending_request = get_pending_request(msg.reply().req_id());
 
     if (pending_request.op_type == Operation_Type_GET) {
-        complete_op(reply.req_id(), pending_request, reply.result());
+        complete_op(msg.reply().req_id(), pending_request, msg.reply().result());
     } else {
         pending_request.received_acks += 1;
         if (pending_request.received_acks >= pending_request.expected_acks) {
-            complete_op(reply.req_id(), pending_request, reply.result());
+            complete_op(msg.reply().req_id(), pending_request, msg.reply().result());
         }
     }
 }
@@ -154,13 +155,13 @@ Client::execute_op(const proto::Operation &op)
     pending_request.expected_acks = 1;
     insert_pending_request(this->req_id, pending_request);
 
-    MemcacheKVRequest request;
-    string request_str;
-    request.set_req_id(this->req_id);
-    *(request.mutable_op()) = op;
-    request.SerializeToString(&request_str);
+    MemcacheKVMessage msg;
+    string msg_str;
+    msg.mutable_request()->set_req_id(this->req_id);
+    *(msg.mutable_request()->mutable_op()) = op;
+    msg.SerializeToString(&msg_str);
     const NodeAddress& addr = this->config->key_to_address(op.key());
-    this->transport->send_message_to_addr(request_str, addr);
+    this->transport->send_message_to_addr(msg_str, addr);
 
     this->req_id++;
 }

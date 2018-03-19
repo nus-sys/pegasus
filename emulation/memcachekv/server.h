@@ -10,7 +10,8 @@ namespace memcachekv {
 
 class Server : public Application {
 public:
-    Server(Transport *transport, Configuration *config);
+    Server(Transport *transport, Configuration *config)
+        : transport(transport), config(config) {};
     ~Server() {};
 
     void receive_message(const std::string &message,

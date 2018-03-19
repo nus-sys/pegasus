@@ -28,3 +28,10 @@ message MemcacheKVReply {
     Result result = 2;
     string value = 3;
 }
+
+message MemcacheKVMessage {
+    oneof msg {
+        MemcacheKVRequest request = 1;
+        MemcacheKVReply reply = 2;
+    }
+}
