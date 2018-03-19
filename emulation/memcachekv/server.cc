@@ -15,6 +15,7 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
     MemcacheKVMessage reply_msg;
     MemcacheKVReply reply;
     string reply_msg_str;
+    reply.set_client_id(request_msg.request().client_id());
     reply.set_req_id(request_msg.request().req_id());
 
     process_op(request_msg.request().op(), reply);

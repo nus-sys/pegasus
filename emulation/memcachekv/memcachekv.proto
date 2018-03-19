@@ -14,8 +14,9 @@ message Operation {
 }
 
 message MemcacheKVRequest {
-    uint64 req_id = 1;
-    Operation op = 2;
+    int32 client_id = 1;
+    uint64 req_id = 2;
+    Operation op = 3;
 }
 
 enum Result {
@@ -24,9 +25,10 @@ enum Result {
 }
 
 message MemcacheKVReply {
-    uint64 req_id = 1;
-    Result result = 2;
-    string value = 3;
+    int32 client_id = 1;
+    uint64 req_id = 2;
+    Result result = 3;
+    string value = 4;
 }
 
 message MemcacheKVMessage {

@@ -148,6 +148,10 @@ int main(int argc, char *argv[])
         }
         in.close();
 
+        if (node_id < 0) {
+            printf("client requires argument '-e <client id>'\n");
+            exit(1);
+        }
         stats = new memcachekv::MemcacheKVStats(stats_file_path);
         gen = new memcachekv::KVWorkloadGenerator(&keys,
                                                   value_len,
@@ -157,7 +161,7 @@ int main(int argc, char *argv[])
                                                   alpha,
                                                   key_type);
 
-        app = new memcachekv::Client(&transport, &config, stats, gen);
+        app = new memcachekv::Client(&transport, &config, stats, gen, node_id);
         transport.register_node(app, &config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
         break;

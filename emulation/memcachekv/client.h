@@ -71,7 +71,8 @@ public:
     Client(Transport *transport,
            Configuration *config,
            MemcacheKVStats *stats,
-           KVWorkloadGenerator *gen);
+           KVWorkloadGenerator *gen,
+           int client_id);
     ~Client() {};
 
     void receive_message(const std::string &message,
@@ -90,6 +91,7 @@ private:
     MemcacheKVStats *stats;
     KVWorkloadGenerator *gen;
 
+    int client_id;
     uint64_t req_id;
     std::unordered_map<uint64_t, PendingRequest> pending_requests;
     std::mutex pending_requests_mutex;

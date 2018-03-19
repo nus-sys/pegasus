@@ -106,9 +106,10 @@ KVWorkloadGenerator::next_operation()
 Client::Client(Transport *transport,
                Configuration *config,
                MemcacheKVStats *stats,
-               KVWorkloadGenerator *gen)
+               KVWorkloadGenerator *gen,
+               int client_id)
     : transport(transport), config(config),
-    stats(stats), gen(gen), req_id(1) {}
+    stats(stats), gen(gen), client_id(client_id), req_id(1) {}
 
 void
 Client::receive_message(const string &message, const sockaddr &src_addr)
@@ -116,6 +117,7 @@ Client::receive_message(const string &message, const sockaddr &src_addr)
     MemcacheKVMessage msg;
     msg.ParseFromString(message);
     assert(msg.has_reply());
+    assert(msg.reply().client_id() == this->client_id);
     PendingRequest &pending_request = get_pending_request(msg.reply().req_id());
 
     if (pending_request.op_type == Operation_Type_GET) {
@@ -157,6 +159,7 @@ Client::execute_op(const proto::Operation &op)
 
     MemcacheKVMessage msg;
     string msg_str;
+    msg.mutable_request()->set_client_id(this->client_id);
     msg.mutable_request()->set_req_id(this->req_id);
     *(msg.mutable_request()->mutable_op()) = op;
     msg.SerializeToString(&msg_str);
