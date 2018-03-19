@@ -6,26 +6,45 @@
 
 namespace memcachekv {
 
-enum ConfigMode {
-    STATIC = 1,
-    ROUTER = 2
-};
+uint64_t key_hash(const std::string &key);
 
 class MemcacheKVConfig : public Configuration {
 public:
+    enum NodeConfigMode {
+        STATIC = 1,
+        ROUTER = 2
+    };
+
     MemcacheKVConfig(const std::vector<NodeAddress> &addresses,
                      const NodeAddress &router_address,
-                     ConfigMode mode);
+                     NodeConfigMode mode);
     MemcacheKVConfig(const char *file_path,
-                     ConfigMode mode);
+                     NodeConfigMode mode);
     ~MemcacheKVConfig() {};
 
     const NodeAddress& key_to_address(const std::string &key) override;
 
 private:
-    uint64_t key_hash(const std::string &key);
+    NodeConfigMode mode;
+};
 
-    ConfigMode mode;
+class RouterConfig : public Configuration {
+public:
+    enum RouterConfigMode {
+        STATIC = 1
+    };
+
+    RouterConfig(const std::vector<NodeAddress> &addresses,
+                 const NodeAddress &router_address,
+                 RouterConfigMode mode);
+    RouterConfig(const char *file_path,
+                 RouterConfigMode mode);
+    ~RouterConfig() {};
+
+    const NodeAddress& key_to_address(const std::string &key) override;
+
+private:
+    RouterConfigMode mode;
 };
 
 } // namespace memcachekv

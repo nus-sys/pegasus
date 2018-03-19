@@ -3,16 +3,25 @@
 
 namespace memcachekv{
 
+uint64_t key_hash(const std::string &key)
+{
+    uint64_t hash = 5381;
+    for (auto c : key) {
+        hash = ((hash << 5) + hash) + (uint64_t)c;
+    }
+    return hash;
+}
+
 MemcacheKVConfig::MemcacheKVConfig(const std::vector<NodeAddress> &addresses,
                                    const NodeAddress &router_address,
-                                   ConfigMode mode)
+                                   NodeConfigMode mode)
     : Configuration(addresses, router_address)
 {
     this->mode = mode;
 }
 
 MemcacheKVConfig::MemcacheKVConfig(const char *file_path,
-                                   ConfigMode mode)
+                                   NodeConfigMode mode)
     : Configuration(file_path)
 {
     this->mode = mode;
@@ -34,14 +43,32 @@ MemcacheKVConfig::key_to_address(const std::string &key)
     }
 }
 
-uint64_t
-MemcacheKVConfig::key_hash(const std::string &key)
+RouterConfig::RouterConfig(const std::vector<NodeAddress> &addresses,
+                           const NodeAddress &router_address,
+                           RouterConfigMode mode)
+    : Configuration(addresses, router_address)
 {
-    uint64_t hash = 5381;
-    for (auto c : key) {
-        hash = ((hash << 5) + hash) + (uint64_t)c;
+    this->mode = mode;
+}
+
+RouterConfig::RouterConfig(const char *file_path,
+                           RouterConfigMode mode)
+    : Configuration(file_path)
+{
+    this->mode = mode;
+}
+
+const NodeAddress&
+RouterConfig::key_to_address(const std::string &key)
+{
+    switch (this->mode) {
+    case STATIC: {
+        uint64_t hash = key_hash(key);
+        return this->addresses[hash % this->num_nodes];
     }
-    return hash;
+    default:
+        panic("Unknown RouterConfig mode");
+    }
 }
 
 } // namespace memcachekv

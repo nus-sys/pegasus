@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
-    memcachekv::ConfigMode config_mode = memcachekv::STATIC;
+    memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
 
     while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:")) != -1) {
         switch (opt) {
@@ -100,11 +100,11 @@ int main(int argc, char *argv[])
         }
         case 'w': {
             if (strcmp(optarg, "static") == 0) {
-                config_mode = memcachekv::STATIC;
+                node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
             } else if (strcmp(optarg, "router") == 0) {
-                config_mode = memcachekv::ROUTER;
+                node_config_mode = memcachekv::MemcacheKVConfig::ROUTER;
             } else {
-                printf("Unknown config mode %s\n", optarg);
+                printf("Unknown node config mode %s\n", optarg);
                 exit(1);
             }
             break;
@@ -125,7 +125,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    memcachekv::MemcacheKVConfig config(config_file_path, config_mode);
+    memcachekv::MemcacheKVConfig node_config(config_file_path, node_config_mode);
     Transport transport;
     Node *node = nullptr;
     Application *app = nullptr;
@@ -161,8 +161,8 @@ int main(int argc, char *argv[])
                                                   alpha,
                                                   key_type);
 
-        app = new memcachekv::Client(&transport, &config, stats, gen, node_id);
-        transport.register_node(app, &config, -1);
+        app = new memcachekv::Client(&transport, &node_config, stats, gen, node_id);
+        transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
         break;
     }
@@ -171,8 +171,8 @@ int main(int argc, char *argv[])
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
-        app = new memcachekv::Server(&transport, &config);
-        transport.register_node(app, &config, node_id);
+        app = new memcachekv::Server(&transport, &node_config);
+        transport.register_node(app, &node_config, node_id);
         node = new Node(node_id, &transport, app, false, app_core, transport_core);
         break;
     }
