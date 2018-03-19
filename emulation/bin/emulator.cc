@@ -6,10 +6,12 @@
 #include "memcachekv/config.h"
 #include "memcachekv/server.h"
 #include "memcachekv/client.h"
+#include "memcachekv/router.h"
 
 enum NodeMode {
     CLIENT,
     SERVER,
+    ROUTER,
     UNKNOWN
 };
 
@@ -24,8 +26,9 @@ int main(int argc, char *argv[])
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
+    memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:x:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -60,6 +63,11 @@ int main(int argc, char *argv[])
                 mode = CLIENT;
             } else if (strcmp(optarg, "server") == 0) {
                 mode = SERVER;
+            } else if (strcmp(optarg, "router") == 0) {
+                mode = ROUTER;
+            } else {
+                printf("Unknown mode %s\n", optarg);
+                exit(1);
             }
             break;
         }
@@ -109,6 +117,15 @@ int main(int argc, char *argv[])
             }
             break;
         }
+        case 'x': {
+            if (strcmp(optarg, "static") == 0) {
+                router_config_mode = memcachekv::RouterConfig::STATIC;
+            } else {
+                printf("Unknown router config mode %s\n", optarg);
+                exit(1);
+            }
+            break;
+        }
         default:
             printf("Unknown argument %s\n", argv[optind]);
             break;
@@ -126,6 +143,7 @@ int main(int argc, char *argv[])
     }
 
     memcachekv::MemcacheKVConfig node_config(config_file_path, node_config_mode);
+    memcachekv::RouterConfig router_config(config_file_path, router_config_mode);
     Transport transport;
     Node *node = nullptr;
     Application *app = nullptr;
@@ -174,6 +192,12 @@ int main(int argc, char *argv[])
         app = new memcachekv::Server(&transport, &node_config);
         transport.register_node(app, &node_config, node_id);
         node = new Node(node_id, &transport, app, false, app_core, transport_core);
+        break;
+    }
+    case ROUTER: {
+        app = new memcachekv::Router(&transport, &router_config);
+        transport.register_router(app, &router_config);
+        node = new Node(-1, &transport, app, false, app_core, transport_core);
         break;
     }
     default:
