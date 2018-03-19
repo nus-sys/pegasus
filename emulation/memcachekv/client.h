@@ -10,15 +10,15 @@
 #include "application.h"
 #include "configuration.h"
 #include "memcachekv/stats.h"
-#include "memcachekv/memcachekv.pb.h"
+#include "memcachekv/message.h"
 
 namespace memcachekv {
 
 struct NextOperation {
-    inline NextOperation(int time, const proto::Operation &op)
+    inline NextOperation(int time, const Operation &op)
         : time(time), op(op) {};
     int time;
-    proto::Operation op;
+    Operation op;
 };
 
 enum KeyType {
@@ -40,7 +40,7 @@ public:
     NextOperation next_operation();
 private:
     int next_zipf_key_index();
-    proto::Operation::Type next_op_type();
+    Operation::Type next_op_type();
 
     const std::vector<std::string> *keys;
     float get_ratio;
@@ -55,13 +55,13 @@ private:
 };
 
 struct PendingRequest {
-    proto::Operation_Type op_type;
+    Operation::Type op_type;
     struct timeval start_time;
     int received_acks;
     int expected_acks;
 
     inline PendingRequest()
-        : op_type(proto::Operation_Type_GET),
+        : op_type(Operation::Type::GET),
         received_acks(0),
         expected_acks(0) {};
 };
@@ -72,6 +72,7 @@ public:
            Configuration *config,
            MemcacheKVStats *stats,
            KVWorkloadGenerator *gen,
+           MessageCodec *codec,
            int client_id);
     ~Client() {};
 
@@ -80,8 +81,8 @@ public:
     void run(int duration) override;
 
 private:
-    void execute_op(const proto::Operation &op);
-    void complete_op(uint64_t req_id, const PendingRequest &request, proto::Result result);
+    void execute_op(const Operation &op);
+    void complete_op(uint64_t req_id, const PendingRequest &request, Result result);
     void insert_pending_request(uint64_t req_id, const PendingRequest &request);
     PendingRequest& get_pending_request(uint64_t req_id);
     void delete_pending_request(uint64_t req_id);
@@ -90,6 +91,7 @@ private:
     Configuration *config;
     MemcacheKVStats *stats;
     KVWorkloadGenerator *gen;
+    MessageCodec *codec;
 
     int client_id;
     uint64_t req_id;

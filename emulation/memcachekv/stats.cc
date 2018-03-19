@@ -1,15 +1,14 @@
 #include "memcachekv/stats.h"
 
 namespace memcachekv {
-using namespace proto;
 
 void
-MemcacheKVStats::report_op(Operation_Type op_type, int latency, bool hit)
+MemcacheKVStats::report_op(Operation::Type op_type, int latency, bool hit)
 {
     report_latency(latency);
     this->received_replies[op_type] += 1;
 
-    if (op_type == Operation_Type_GET) {
+    if (op_type == Operation::Type::GET) {
         if (hit) {
             this->cache_hits++;
         } else {
@@ -26,9 +25,9 @@ MemcacheKVStats::_dump()
     } else {
         printf("Cache Hit Rate: 0\n");
     }
-    printf("GET Percentage: %.2f\n", (float)this->received_replies[Operation_Type_GET] / this->total_ops);
-    printf("PUT Percentage: %.2f\n", (float)this->received_replies[Operation_Type_PUT] / this->total_ops);
-    printf("DEL Percentage: %.2f\n", (float)this->received_replies[Operation_Type_DEL] / this->total_ops);
+    printf("GET Percentage: %.2f\n", (float)this->received_replies[Operation::Type::GET] / this->total_ops);
+    printf("PUT Percentage: %.2f\n", (float)this->received_replies[Operation::Type::PUT] / this->total_ops);
+    printf("DEL Percentage: %.2f\n", (float)this->received_replies[Operation::Type::DEL] / this->total_ops);
 }
 
 } // namespace memcachekv

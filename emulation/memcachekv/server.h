@@ -4,14 +4,18 @@
 #include <string>
 #include <unordered_map>
 #include "application.h"
-#include "memcachekv/memcachekv.pb.h"
+#include "memcachekv/message.h"
 
 namespace memcachekv {
 
 class Server : public Application {
 public:
-    Server(Transport *transport, Configuration *config)
-        : transport(transport), config(config) {};
+    Server(Transport *transport,
+           Configuration *config,
+           MessageCodec *codec)
+        : transport(transport),
+        config(config),
+        codec(codec) {};
     ~Server() {};
 
     void receive_message(const std::string &message,
@@ -19,11 +23,12 @@ public:
     void run(int duration) override;
 
 private:
-    void process_op(const proto::Operation &op,
-                    proto::MemcacheKVReply &reply);
+    void process_op(const Operation &op,
+                    MemcacheKVReply &reply);
 
     Transport *transport;
     Configuration *config;
+    MessageCodec *codec;
     std::unordered_map<std::string, std::string> store;
 };
 

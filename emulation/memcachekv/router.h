@@ -3,14 +3,18 @@
 
 #include <unordered_map>
 #include "application.h"
-#include "memcachekv/memcachekv.pb.h"
+#include "memcachekv/message.h"
 
 namespace memcachekv {
 
 class Router : public Application {
 public:
-    Router(Transport *transport, Configuration *config)
-        : transport(transport), config(config) {};
+    Router(Transport *transport,
+           Configuration *config,
+           MessageCodec *codec)
+        : transport(transport),
+        config(config),
+        codec(codec) {};
     ~Router() {};
 
     void receive_message(const std::string &message,
@@ -20,6 +24,7 @@ public:
 private:
     Transport *transport;
     Configuration *config;
+    MessageCodec *codec;
     std::unordered_map<int, struct sockaddr> client_addresses; /* client_id -> client address */
 };
 

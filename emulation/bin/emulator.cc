@@ -4,6 +4,7 @@
 #include "node.h"
 #include "transport.h"
 #include "memcachekv/config.h"
+#include "memcachekv/message.h"
 #include "memcachekv/server.h"
 #include "memcachekv/client.h"
 #include "memcachekv/router.h"
@@ -13,6 +14,10 @@ enum NodeMode {
     SERVER,
     ROUTER,
     UNKNOWN
+};
+
+enum CodecMode {
+    PROTOBUF
 };
 
 int main(int argc, char *argv[])
@@ -27,8 +32,9 @@ int main(int argc, char *argv[])
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
     memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
+    CodecMode codec_mode = PROTOBUF;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:x:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:x:y:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -126,6 +132,15 @@ int main(int argc, char *argv[])
             }
             break;
         }
+        case 'y': {
+            if (strcmp(optarg, "protobuf") == 0) {
+                codec_mode = PROTOBUF;
+            } else {
+                printf("Unknown codec mode %s\n", optarg);
+                exit(1);
+            }
+            break;
+        }
         default:
             printf("Unknown argument %s\n", argv[optind]);
             break;
@@ -149,6 +164,17 @@ int main(int argc, char *argv[])
     Application *app = nullptr;
     memcachekv::MemcacheKVStats *stats = nullptr;
     memcachekv::KVWorkloadGenerator *gen = nullptr;
+    memcachekv::MessageCodec *codec = nullptr;
+
+    switch (codec_mode) {
+    case PROTOBUF: {
+        codec = new memcachekv::ProtobufCodec();
+        break;
+    }
+    default:
+        printf("Unknown codec mode %d\n", codec_mode);
+        exit(1);
+    }
 
     switch (mode) {
     case CLIENT: {
@@ -179,7 +205,7 @@ int main(int argc, char *argv[])
                                                   alpha,
                                                   key_type);
 
-        app = new memcachekv::Client(&transport, &node_config, stats, gen, node_id);
+        app = new memcachekv::Client(&transport, &node_config, stats, gen, codec, node_id);
         transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
         break;
@@ -189,13 +215,13 @@ int main(int argc, char *argv[])
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
-        app = new memcachekv::Server(&transport, &node_config);
+        app = new memcachekv::Server(&transport, &node_config, codec);
         transport.register_node(app, &node_config, node_id);
         node = new Node(node_id, &transport, app, false, app_core, transport_core);
         break;
     }
     case ROUTER: {
-        app = new memcachekv::Router(&transport, &router_config);
+        app = new memcachekv::Router(&transport, &router_config, codec);
         transport.register_router(app, &router_config);
         node = new Node(-1, &transport, app, false, app_core, transport_core);
         break;
@@ -209,6 +235,7 @@ int main(int argc, char *argv[])
 
     delete node;
     delete app;
+    delete codec;
     if (mode == CLIENT) {
         delete gen;
         delete stats;

@@ -3,7 +3,7 @@
 
 #include <unordered_map>
 #include "appstats.h"
-#include "memcachekv/memcachekv.pb.h"
+#include "memcachekv/message.h"
 
 namespace memcachekv {
 
@@ -15,7 +15,7 @@ public:
         : Stats(stats_file), cache_hits(0), cache_misses(0) {};
     ~MemcacheKVStats() {};
 
-    void report_op(proto::Operation_Type op_type, int latency, bool hit);
+    void report_op(Operation::Type op_type, int latency, bool hit);
     void _dump() override;
 
 private:

@@ -2,12 +2,10 @@
 #include "utils.h"
 #include "logger.h"
 #include "memcachekv/client.h"
-#include "memcachekv/memcachekv.pb.h"
 
 using std::string;
 
 namespace memcachekv {
-using namespace proto;
 
 KVWorkloadGenerator::KVWorkloadGenerator(const std::vector<std::string> *keys,
                                          int value_len,
@@ -68,11 +66,11 @@ KVWorkloadGenerator::next_op_type()
     float op_choice = this->unif_real_dist(this->generator);
     Operation::Type op_type;
     if (op_choice < this->get_ratio) {
-        op_type = Operation_Type_GET;
+        op_type = Operation::Type::GET;
     } else if (op_choice < this->get_ratio + this->put_ratio) {
-        op_type = Operation_Type_PUT;
+        op_type = Operation::Type::PUT;
     } else {
-        op_type = Operation_Type_DEL;
+        op_type = Operation::Type::DEL;
     }
     return op_type;
 }
@@ -83,21 +81,20 @@ KVWorkloadGenerator::next_operation()
     Operation op;
     switch (this->key_type) {
     case UNIFORM: {
-        op.set_key(this->keys->at(this->unif_int_dist(this->generator)));
+        op.key = this->keys->at(this->unif_int_dist(this->generator));
         break;
     }
     case ZIPF: {
-        op.set_key(this->keys->at(next_zipf_key_index()));
+        op.key = this->keys->at(next_zipf_key_index());
         break;
     }
     default:
         panic("Unknown key distribution type");
     }
 
-    Operation::Type op_type = next_op_type();
-    op.set_op_type(op_type);
-    if (op_type == Operation_Type_PUT) {
-        op.set_value(this->value);
+    op.op_type = next_op_type();
+    if (op.op_type == Operation::Type::PUT) {
+        op.value = this->value;
     }
 
     return NextOperation(this->poisson_dist(this->generator), op);
@@ -107,25 +104,27 @@ Client::Client(Transport *transport,
                Configuration *config,
                MemcacheKVStats *stats,
                KVWorkloadGenerator *gen,
+               MessageCodec *codec,
                int client_id)
     : transport(transport), config(config),
-    stats(stats), gen(gen), client_id(client_id), req_id(1) {}
+    stats(stats), gen(gen), codec(codec),
+    client_id(client_id), req_id(1) {}
 
 void
 Client::receive_message(const string &message, const sockaddr &src_addr)
 {
     MemcacheKVMessage msg;
-    msg.ParseFromString(message);
-    assert(msg.has_reply());
-    assert(msg.reply().client_id() == this->client_id);
-    PendingRequest &pending_request = get_pending_request(msg.reply().req_id());
+    this->codec->decode(message, msg);
+    assert(msg.has_reply);
+    assert(msg.reply.client_id == this->client_id);
+    PendingRequest &pending_request = get_pending_request(msg.reply.req_id);
 
-    if (pending_request.op_type == Operation_Type_GET) {
-        complete_op(msg.reply().req_id(), pending_request, msg.reply().result());
+    if (pending_request.op_type == Operation::Type::GET) {
+        complete_op(msg.reply.req_id, pending_request, msg.reply.result);
     } else {
         pending_request.received_acks += 1;
         if (pending_request.received_acks >= pending_request.expected_acks) {
-            complete_op(msg.reply().req_id(), pending_request, msg.reply().result());
+            complete_op(msg.reply.req_id, pending_request, msg.reply.result);
         }
     }
 }
@@ -149,21 +148,24 @@ Client::run(int duration)
 }
 
 void
-Client::execute_op(const proto::Operation &op)
+Client::execute_op(const Operation &op)
 {
     PendingRequest pending_request;
     gettimeofday(&pending_request.start_time, nullptr);
-    pending_request.op_type = op.op_type();
+    pending_request.op_type = op.op_type;
     pending_request.expected_acks = 1;
     insert_pending_request(this->req_id, pending_request);
 
     MemcacheKVMessage msg;
     string msg_str;
-    msg.mutable_request()->set_client_id(this->client_id);
-    msg.mutable_request()->set_req_id(this->req_id);
-    *(msg.mutable_request()->mutable_op()) = op;
-    msg.SerializeToString(&msg_str);
-    const NodeAddress& addr = this->config->key_to_address(op.key());
+    msg.has_request = true;
+    msg.has_reply = false;
+    msg.request.client_id = this->client_id;
+    msg.request.req_id = this->req_id;
+    msg.request.op = op;
+    this->codec->encode(msg_str, msg);
+
+    const NodeAddress& addr = this->config->key_to_address(op.key);
     this->transport->send_message_to_addr(msg_str, addr);
 
     this->req_id++;
