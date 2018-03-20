@@ -17,7 +17,8 @@ enum NodeMode {
 };
 
 enum CodecMode {
-    PROTOBUF
+    PROTOBUF,
+    WIRE
 };
 
 int main(int argc, char *argv[])
@@ -135,6 +136,8 @@ int main(int argc, char *argv[])
         case 'y': {
             if (strcmp(optarg, "protobuf") == 0) {
                 codec_mode = PROTOBUF;
+            } else if (strcmp(optarg, "wire") == 0) {
+                codec_mode = WIRE;
             } else {
                 printf("Unknown codec mode %s\n", optarg);
                 exit(1);
@@ -169,6 +172,10 @@ int main(int argc, char *argv[])
     switch (codec_mode) {
     case PROTOBUF: {
         codec = new memcachekv::ProtobufCodec();
+        break;
+    }
+    case WIRE: {
+        codec = new memcachekv::WireCodec();
         break;
     }
     default:
