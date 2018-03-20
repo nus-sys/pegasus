@@ -193,5 +193,5 @@ Transport::on_readable(int fd)
         printf("Failed to receive message\n");
     }
 
-    this->receiver->receive_message(std::string(buf), src_addr);
+    this->receiver->receive_message(std::string(buf, ret), src_addr);
 }
