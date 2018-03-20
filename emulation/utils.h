@@ -8,9 +8,8 @@ inline int latency(const struct timeval &start, const struct timeval &end) {
     return (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
 }
 
-void wait(int time) {
-    struct timeval start, now;
-    gettimeofday(&start, nullptr);
+void wait(const struct timeval &start, int time) {
+    struct timeval now;
 
     while (true) {
         gettimeofday(&now, nullptr);

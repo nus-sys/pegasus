@@ -134,11 +134,12 @@ Client::run(int duration)
 {
     struct timeval start, now;
     gettimeofday(&start, nullptr);
+    gettimeofday(&now, nullptr);
 
     this->stats->start();
     do {
         NextOperation next_op = this->gen->next_operation();
-        wait(next_op.time);
+        wait(now, next_op.time);
         execute_op(next_op.op);
         gettimeofday(&now, nullptr);
     } while (latency(start, now) / 1000000 < duration);
