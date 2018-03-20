@@ -1,0 +1,4 @@
+*.data
+obj/
+config/cvmx-config.h
+router
