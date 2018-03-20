@@ -82,10 +82,10 @@ public:
 
 private:
     void execute_op(const Operation &op);
-    void complete_op(uint64_t req_id, const PendingRequest &request, Result result);
-    void insert_pending_request(uint64_t req_id, const PendingRequest &request);
-    PendingRequest& get_pending_request(uint64_t req_id);
-    void delete_pending_request(uint64_t req_id);
+    void complete_op(uint32_t req_id, const PendingRequest &request, Result result);
+    void insert_pending_request(uint32_t req_id, const PendingRequest &request);
+    PendingRequest& get_pending_request(uint32_t req_id);
+    void delete_pending_request(uint32_t req_id);
 
     Transport *transport;
     Configuration *config;
@@ -94,8 +94,8 @@ private:
     MessageCodec *codec;
 
     int client_id;
-    uint64_t req_id;
-    std::unordered_map<uint64_t, PendingRequest> pending_requests;
+    uint32_t req_id;
+    std::unordered_map<uint32_t, PendingRequest> pending_requests;
     std::mutex pending_requests_mutex;
 };
 

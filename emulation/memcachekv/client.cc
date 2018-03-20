@@ -172,7 +172,7 @@ Client::execute_op(const Operation &op)
 }
 
 void
-Client::complete_op(uint64_t req_id, const PendingRequest &request, Result result)
+Client::complete_op(uint32_t req_id, const PendingRequest &request, Result result)
 {
     struct timeval end_time;
     gettimeofday(&end_time, nullptr);
@@ -183,14 +183,14 @@ Client::complete_op(uint64_t req_id, const PendingRequest &request, Result resul
 }
 
 void
-Client::insert_pending_request(uint64_t req_id, const PendingRequest &request)
+Client::insert_pending_request(uint32_t req_id, const PendingRequest &request)
 {
     std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
     this->pending_requests[req_id] = request;
 }
 
 PendingRequest&
-Client::get_pending_request(uint64_t req_id)
+Client::get_pending_request(uint32_t req_id)
 {
     std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
     assert(this->pending_requests.count(req_id) > 0);
@@ -198,7 +198,7 @@ Client::get_pending_request(uint64_t req_id)
 }
 
 void
-Client::delete_pending_request(uint64_t req_id)
+Client::delete_pending_request(uint32_t req_id)
 {
     std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
     this->pending_requests.erase(req_id);

@@ -32,7 +32,7 @@ struct MemcacheKVRequest {
         op(request.op()) {};
 
     int client_id;
-    uint64_t req_id;
+    uint32_t req_id;
     Operation op;
 };
 
@@ -51,7 +51,7 @@ struct MemcacheKVReply {
         value(reply.value()) {};
 
     int client_id;
-    uint64_t req_id;
+    uint32_t req_id;
     Result result;
     std::string value;
 };
