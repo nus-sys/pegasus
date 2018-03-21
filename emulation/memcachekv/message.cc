@@ -79,14 +79,14 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         ptr += sizeof(op_type_t);
         key_len_t key_len = *(key_len_t *)ptr;
         ptr += sizeof(key_len_t);
-        assert(buf_size >= REQUEST_BASE_SIZE + key_len);
+        assert(buf_size >= REQUEST_BASE_SIZE + key_len + 1);
         out.request.op.key = string(ptr, key_len);
-        ptr += key_len;
+        ptr += key_len + 1;
         if (out.request.op.op_type == Operation::Type::PUT) {
-            assert(buf_size > REQUEST_BASE_SIZE + key_len + sizeof(value_len_t));
+            assert(buf_size > REQUEST_BASE_SIZE + key_len + 1 + sizeof(value_len_t));
             value_len_t value_len = *(value_len_t *)ptr;
             ptr += sizeof(value_len_t);
-            assert(buf_size >= REQUEST_BASE_SIZE + key_len + sizeof(value_len_t) + value_len);
+            assert(buf_size >= REQUEST_BASE_SIZE + key_len + 1 + sizeof(value_len_t) + value_len + 1);
             out.request.op.value = string(ptr, value_len);
         }
         break;
@@ -103,7 +103,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         ptr += sizeof(result_t);
         value_len_t value_len = *(value_len_t *)ptr;
         ptr += sizeof(value_len_t);
-        assert(buf_size > REPLY_BASE_SIZE + value_len);
+        assert(buf_size > REPLY_BASE_SIZE + value_len + 1);
         out.reply.value = string(ptr, value_len);
         break;
     }
@@ -118,12 +118,13 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     // First determine buffer size
     size_t buf_size;
     if (in.has_request) {
-        buf_size = REQUEST_BASE_SIZE + in.request.op.key.size();
+        // +1 for the terminating null
+        buf_size = REQUEST_BASE_SIZE + in.request.op.key.size() + 1;
         if (in.request.op.op_type == Operation::Type::PUT) {
-            buf_size += sizeof(value_len_t) + in.request.op.value.size();
+            buf_size += sizeof(value_len_t) + in.request.op.value.size() + 1;
         }
     } else if (in.has_reply) {
-        buf_size = REPLY_BASE_SIZE + in.reply.value.size();
+        buf_size = REPLY_BASE_SIZE + in.reply.value.size() + 1;
     } else {
         panic("Input message wrong format");
     }
@@ -145,10 +146,13 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(key_len_t);
         memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
         ptr += in.request.op.key.size();
+        *(ptr++) = '\0';
         if (in.request.op.op_type == Operation::Type::PUT) {
             *(value_len_t *)ptr = (value_len_t)in.request.op.value.size();
             ptr += sizeof(value_len_t);
             memcpy(ptr, in.request.op.value.data(), in.request.op.value.size());
+            ptr += in.request.op.value.size();
+            *(ptr++) = '\0';
         }
     } else if (in.has_reply) {
         *(type_t *)ptr = TYPE_REPLY;
@@ -162,6 +166,8 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         *(value_len_t *)ptr = (value_len_t)in.reply.value.size();
         ptr += sizeof(value_len_t);
         memcpy(ptr, in.reply.value.data(), in.reply.value.size());
+        ptr += in.reply.value.size();
+        *(ptr++) = '\0';
     }
     out = string(buf, buf_size);
     delete[] buf;
