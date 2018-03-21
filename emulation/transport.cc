@@ -43,12 +43,19 @@ Transport::register_address(TransportReceiver *receiver,
         panic("Failed to create socket");
     }
 
+    // Non-blocking mode
     if (fcntl(this->socket_fd, F_SETFL, O_NONBLOCK, 1) == -1) {
         panic("Failed to set O_NONBLOCK");
     }
 
+    // Enable outgoing broadcast
+    int n = 1;
+    if (setsockopt(this->socket_fd, SOL_SOCKET, SO_BROADCAST, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_BROADCAST");
+    }
+
     // Increase buffer size
-    int n = this->SOCKET_BUF_SIZE;
+    n = this->SOCKET_BUF_SIZE;
     if (setsockopt(this->socket_fd, SOL_SOCKET, SO_RCVBUF, (char *)&n, sizeof(n)) < 0) {
         panic("Failed to set SO_RCVBUF");
     }
