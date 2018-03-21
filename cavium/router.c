@@ -60,6 +60,8 @@
 #include "cvmx-helper-cfg.h"
 #include "cvmx-srio.h"
 
+#include "pegasus.h"
+
 /*
  * Configure passthrough to run with lockless pko operations.
  */
@@ -494,6 +496,10 @@ void application_main_loop(void)
         #ifdef SWAP_MAC_ADDR
         if (is_ip)
             swap_mac_addr((uint64_t)cvmx_phys_to_ptr((uint64_t)packet_ptr.s.addr));
+        #endif
+
+        #ifdef PEGASUS_PROC
+        pegasus_packet_proc((uint64_t)cvmx_phys_to_ptr((uint64_t)packet_ptr.s.addr));
         #endif
 
         /*
