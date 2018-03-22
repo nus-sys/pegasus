@@ -121,6 +121,45 @@ private:
         sizeof(result_t) + sizeof(value_len_t);
 };
 
+struct ControllerResetMessage {
+    int num_nodes;
+};
+
+struct ControllerMessage {
+    enum Type {
+        RESET
+    };
+    Type type;
+    ControllerResetMessage reset;
+};
+
+class ControllerCodec {
+    /*
+     * Currently only use wire codec for controller
+     */
+public:
+    ControllerCodec() {};
+    ~ControllerCodec() {};
+
+    void encode(std::string &out, const ControllerMessage &in);
+
+private:
+    /* Wire format:
+     * IDENTIFIER (32) + type (8) + message
+     *
+     * Reset format:
+     * num_nodes (32)
+     */
+    typedef uint32_t identifier_t;
+    typedef uint8_t type_t;
+    typedef uint32_t num_nodes_t;
+
+    static const identifier_t IDENTIFIER = 0xDEADDEAD;
+    static const type_t TYPE_RESET = 1;
+    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(type_t);
+    static const size_t RESET_BASE_SIZE = PACKET_BASE_SIZE + sizeof(num_nodes_t);
+};
+
 } // namespace memcachekv
 
 #endif /* __MEMCACHEKV_MESSAGE_H__ */

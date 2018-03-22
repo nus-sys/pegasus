@@ -8,11 +8,13 @@
 #include "memcachekv/server.h"
 #include "memcachekv/client.h"
 #include "memcachekv/router.h"
+#include "memcachekv/controller.h"
 
 enum NodeMode {
     CLIENT,
     SERVER,
     ROUTER,
+    CONTROLLER,
     UNKNOWN
 };
 
@@ -72,6 +74,8 @@ int main(int argc, char *argv[])
                 mode = SERVER;
             } else if (strcmp(optarg, "router") == 0) {
                 mode = ROUTER;
+            } else if (strcmp(optarg, "controller") == 0) {
+                mode = CONTROLLER;
             } else {
                 printf("Unknown mode %s\n", optarg);
                 exit(1);
@@ -231,6 +235,15 @@ int main(int argc, char *argv[])
         app = new memcachekv::Router(&transport, &router_config, codec);
         transport.register_router(app, &router_config);
         node = new Node(-1, &transport, app, false, app_core, transport_core);
+        break;
+    }
+    case CONTROLLER: {
+        memcachekv::ControllerMessage msg;
+        msg.type = memcachekv::ControllerMessage::Type::RESET;
+        msg.reset.num_nodes = node_config.num_nodes;
+        app = new memcachekv::Controller(&transport, &node_config, msg);
+        transport.register_node(app, &node_config, -1);
+        node = new Node(-1, &transport, app, true, app_core, transport_core);
         break;
     }
     default:

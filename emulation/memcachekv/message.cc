@@ -173,4 +173,33 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     delete[] buf;
 }
 
+void
+ControllerCodec::encode(std::string &out, const ControllerMessage &in)
+{
+    size_t buf_size;
+    switch (in.type) {
+    case ControllerMessage::RESET: {
+        buf_size = RESET_BASE_SIZE;
+        break;
+    }
+    default:
+        panic("Input message wrong format");
+    }
+
+    char *buf = new char[buf_size];
+    char *ptr = buf;
+    *(identifier_t *)ptr = IDENTIFIER;
+    ptr += sizeof(identifier_t);
+
+    switch (in.type) {
+    case ControllerMessage::RESET: {
+        *(type_t *)ptr = TYPE_RESET;
+        ptr += sizeof(type_t);
+        *(num_nodes_t *)ptr = in.reset.num_nodes;
+    }
+    }
+    out = string(buf, buf_size);
+    delete[] buf;
+}
+
 } // namespace memcachekv
