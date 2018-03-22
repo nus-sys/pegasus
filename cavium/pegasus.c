@@ -29,11 +29,12 @@ static size_t num_nodes = 1;
  * Static function declarations
  */
 static void convert_endian(void *dst, const void *src, size_t n);
-static int match_pegasus_packet(uint64_t buf);
-static int decode_packet(uint64_t buf, request_t *request);
+static packet_type_t match_pegasus_packet(uint64_t buf);
+static int decode_kv_packet(uint64_t buf, request_t *request);
 static uint64_t key_hash(const char* key);
 static void forward_to_node(uint64_t buf, int node_id);
 static uint64_t checksum(const void *buf, size_t n);
+static int decode_controller_packet(uint64_t buf, reset_t *reset);
 
 /*
  * Static function definitions
@@ -51,17 +52,20 @@ static void convert_endian(void *dst, const void *src, size_t n)
   }
 }
 
-static int match_pegasus_packet(uint64_t buf)
+static packet_type_t match_pegasus_packet(uint64_t buf)
 {
     identifier_t identifier;
     convert_endian(&identifier, (const void *)(buf+APP_HEADER), sizeof(identifier_t));
-    if (identifier == IDENTIFIER) {
-        return 0;
+    if (identifier == KV_ID) {
+        return KV;
+    } else if (identifier == CONTROLLER_ID) {
+        return CONTROLLER;
+    } else {
+        return UNKNOWN;
     }
-    return -1;
 }
 
-static int decode_packet(uint64_t buf, request_t *request)
+static int decode_kv_packet(uint64_t buf, request_t *request)
 {
     uint64_t ptr = buf;
     ptr += sizeof(identifier_t);
@@ -118,16 +122,41 @@ static uint64_t checksum(const void *buf, size_t n)
     return ~sum;
 }
 
+static int decode_controller_packet(uint64_t buf, reset_t *reset)
+{
+    uint64_t ptr = buf;
+    ptr += sizeof(identifier_t);
+    type_t type = *(type_t *)ptr;
+    ptr += sizeof(type_t);
+    if (type != TYPE_RESET) {
+        return -1;
+    }
+    convert_endian(&reset->num_nodes, (const void *)ptr, sizeof(num_nodes_t));
+    return 0;
+}
+
 /*
  * Public function definitions
  */
 void pegasus_packet_proc(uint64_t buf)
 {
-    if (match_pegasus_packet(buf) == 0) {
-        request_t request;
-        if (decode_packet(buf+APP_HEADER, &request) == 0) {
-            int node_id = key_hash(request.key) % num_nodes;
-            forward_to_node(buf, node_id);
+    switch (match_pegasus_packet(buf)) {
+        case KV: {
+            request_t request;
+            if (decode_kv_packet(buf+APP_HEADER, &request) == 0) {
+                int node_id = key_hash(request.key) % num_nodes;
+                forward_to_node(buf, node_id);
+            }
+            break;
         }
+        case CONTROLLER: {
+            reset_t reset;
+            if (decode_controller_packet(buf+APP_HEADER, &reset) == 0) {
+                num_nodes = reset.num_nodes;
+            }
+            break;
+        }
+        default:
+            return;
     }
 }
