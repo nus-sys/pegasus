@@ -27,8 +27,8 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, app_core = -1,
-        transport_core = -1;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1,
+        app_core = -1, transport_core = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
     CodecMode codec_mode = PROTOBUF;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:x:y:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -148,6 +148,14 @@ int main(int argc, char *argv[])
             }
             break;
         }
+        case 'z': {
+            num_nodes = stoi(std::string(optarg));
+            if (num_nodes < 1) {
+                printf("Number of nodes should be > 0\n");
+                exit(1);
+            }
+            break;
+        }
         default:
             printf("Unknown argument %s\n", argv[optind]);
             break;
@@ -166,6 +174,8 @@ int main(int argc, char *argv[])
 
     memcachekv::MemcacheKVConfig node_config(config_file_path, node_config_mode);
     memcachekv::RouterConfig router_config(config_file_path, router_config_mode);
+    node_config.num_nodes = num_nodes;
+    router_config.num_nodes = num_nodes;
     Transport transport;
     Node *node = nullptr;
     Application *app = nullptr;
