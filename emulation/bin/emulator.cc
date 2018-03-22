@@ -250,7 +250,7 @@ int main(int argc, char *argv[])
     case CONTROLLER: {
         memcachekv::ControllerMessage msg;
         msg.type = memcachekv::ControllerMessage::Type::RESET;
-        msg.reset.num_nodes = node_config.num_nodes;
+        msg.reset.num_nodes = num_nodes;
         app = new memcachekv::Controller(&transport, &node_config, msg);
         transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
