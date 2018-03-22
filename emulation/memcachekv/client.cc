@@ -145,14 +145,14 @@ Client::run(int duration)
 
         switch (this->phase) {
         case WARMUP: {
-            if (latency(start, now) > (duration * 100000)) {
+            if (latency(start, now) > (duration * 200000)) {
                 this->phase = RECORD;
                 this->stats->start();
             }
             break;
         }
         case RECORD: {
-            if (latency(start, now) > (duration * 900000)) {
+            if (latency(start, now) > (duration * 800000)) {
                 this->phase = COOLDOWN;
                 this->stats->done();
             }
