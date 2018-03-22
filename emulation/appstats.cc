@@ -2,12 +2,12 @@
 #include "logger.h"
 
 Stats::Stats()
-    : total_ops(0)
+    : total_ops(0), record(false)
 {
 }
 
 Stats::Stats(const char *stats_file)
-    : total_ops(0)
+    : total_ops(0), record(false)
 {
     if (stats_file != nullptr) {
         this->file_stream.open(stats_file, std::ofstream::out | std::ofstream::trunc);
@@ -27,20 +27,24 @@ Stats::~Stats()
 void
 Stats::report_latency(int latency)
 {
-    this->latencies[latency] += 1;
-    this->total_ops += 1;
+    if (this->record) {
+        this->latencies[latency] += 1;
+        this->total_ops += 1;
+    }
 }
 
 void
 Stats::start()
 {
     gettimeofday(&this->start_time, nullptr);
+    this->record = true;
 }
 
 void
 Stats::done()
 {
     gettimeofday(&this->end_time, nullptr);
+    this->record = false;
 }
 
 void

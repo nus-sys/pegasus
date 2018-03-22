@@ -6,13 +6,15 @@ void
 MemcacheKVStats::report_op(Operation::Type op_type, int latency, bool hit)
 {
     report_latency(latency);
-    this->received_replies[op_type] += 1;
+    if (this->record) {
+        this->received_replies[op_type] += 1;
 
-    if (op_type == Operation::Type::GET) {
-        if (hit) {
-            this->cache_hits++;
-        } else {
-            this->cache_misses++;
+        if (op_type == Operation::Type::GET) {
+            if (hit) {
+                this->cache_hits++;
+            } else {
+                this->cache_misses++;
+            }
         }
     }
 }

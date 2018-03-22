@@ -19,6 +19,7 @@ public:
 
 protected:
     uint64_t total_ops;
+    bool record;
     std::ofstream file_stream;
 
 private:

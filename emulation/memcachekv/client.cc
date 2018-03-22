@@ -108,7 +108,8 @@ Client::Client(Transport *transport,
                int client_id)
     : transport(transport), config(config),
     stats(stats), gen(gen), codec(codec),
-    client_id(client_id), req_id(1) {}
+    client_id(client_id), req_id(1),
+    phase(WARMUP) {}
 
 void
 Client::receive_message(const string &message, const sockaddr &src_addr)
@@ -136,15 +137,32 @@ Client::run(int duration)
     gettimeofday(&start, nullptr);
     gettimeofday(&now, nullptr);
 
-    this->stats->start();
     do {
         NextOperation next_op = this->gen->next_operation();
         wait(now, next_op.time);
         execute_op(next_op.op);
         gettimeofday(&now, nullptr);
-    } while (latency(start, now) / 1000000 < duration);
 
-    this->stats->done();
+        switch (this->phase) {
+        case WARMUP: {
+            if (latency(start, now) > (duration * 100000)) {
+                this->phase = RECORD;
+                this->stats->start();
+            }
+            break;
+        }
+        case RECORD: {
+            if (latency(start, now) > (duration * 900000)) {
+                this->phase = COOLDOWN;
+                this->stats->done();
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    } while (latency(start, now) < duration * 1000000);
+
     this->stats->dump();
 }
 
