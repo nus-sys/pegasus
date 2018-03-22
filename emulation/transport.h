@@ -16,7 +16,7 @@ public:
 
 class Transport {
 public:
-    Transport();
+    Transport(int dscp=-1);
     ~Transport();
 
     void register_address(TransportReceiver *receiver,
@@ -40,6 +40,7 @@ private:
 
     const int SOCKET_BUF_SIZE = 1024 * 1024; // 1MB buffer size
 
+    int dscp;
     TransportReceiver *receiver;
     Configuration *config;
     struct event_base *event_base;

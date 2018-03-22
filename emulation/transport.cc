@@ -6,8 +6,8 @@
 #include "transport.h"
 #include "logger.h"
 
-Transport::Transport()
-    : event_base(nullptr), socket_fd(-1)
+Transport::Transport(int dscp)
+    : dscp(dscp), event_base(nullptr), socket_fd(-1)
 {
     evthread_use_pthreads();
 };
@@ -52,6 +52,14 @@ Transport::register_address(TransportReceiver *receiver,
     int n = 1;
     if (setsockopt(this->socket_fd, SOL_SOCKET, SO_BROADCAST, (char *)&n, sizeof(n)) < 0) {
         panic("Failed to set SO_BROADCAST");
+    }
+
+    // Set DSCP
+    if (this->dscp > 0) {
+        n = this->dscp << 2;
+        if (setsockopt(this->socket_fd, IPPROTO_IP, IP_TOS, (char *)&n, sizeof(n)) < 0) {
+            panic("Failed to set IP_TOS");
+        }
     }
 
     // Increase buffer size
