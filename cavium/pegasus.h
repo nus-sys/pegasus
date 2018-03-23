@@ -65,13 +65,18 @@ typedef struct {
 } node_address_t;
 
 typedef struct {
+    type_t type;
     op_type_t op_type;
     const char* key;
-} request_t;
+} kv_packet_t;
 
 typedef struct {
     uint32_t num_nodes;
 } reset_t;
+
+typedef struct {
+    uint64_t iload;
+} node_load_t;
 
 /*
  * Pegasus packet processing functions

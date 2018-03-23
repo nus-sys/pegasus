@@ -31,22 +31,28 @@ static node_address_t node_addresses[MAX_NUM_NODES] = {
         .ip_addr = 0x0A0A0107,
         .port = 12352 },
 };
+#define PORT_ZERO 12345
 
 /*
  * Global variables
  */
 static size_t num_nodes = 1;
+static node_load_t node_loads[MAX_NUM_NODES];
+static float load_constant = 1.0;
 
 /*
  * Static function declarations
  */
 static void convert_endian(void *dst, const void *src, size_t n);
 static packet_type_t match_pegasus_packet(uint64_t buf);
-static int decode_kv_packet(uint64_t buf, request_t *request);
+static int decode_kv_packet(uint64_t buf, kv_packet_t *kv_packet);
 static uint64_t key_hash(const char* key);
 static void forward_to_node(uint64_t buf, int node_id);
 static uint64_t checksum(const void *buf, size_t n);
 static int decode_controller_packet(uint64_t buf, reset_t *reset);
+static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet);
+static int port_to_node_id(uint16_t port);
+static int key_to_node_id(const char *key);
 
 /*
  * Static function definitions
@@ -77,19 +83,22 @@ static packet_type_t match_pegasus_packet(uint64_t buf)
     }
 }
 
-static int decode_kv_packet(uint64_t buf, request_t *request)
+static int decode_kv_packet(uint64_t buf, kv_packet_t *kv_packet)
 {
     uint64_t ptr = buf;
     ptr += sizeof(identifier_t);
     type_t type = *(type_t *)ptr;
     ptr += sizeof(type_t);
-    if (type != TYPE_REQUEST) {
+    if (type != TYPE_REQUEST && type != TYPE_REPLY) {
         return -1;
     }
-    ptr += sizeof(client_id_t) + sizeof(req_id_t);
-    request->op_type = *(op_type_t *)ptr;
-    ptr += sizeof(op_type_t) + sizeof(key_len_t);
-    request->key = (const char*)ptr;
+    kv_packet->type = type;
+    if (kv_packet->type == TYPE_REQUEST) {
+        ptr += sizeof(client_id_t) + sizeof(req_id_t);
+        kv_packet->op_type = *(op_type_t *)ptr;
+        ptr += sizeof(op_type_t) + sizeof(key_len_t);
+        kv_packet->key = (const char*)ptr;
+    }
     return 0;
 }
 
@@ -147,6 +156,39 @@ static int decode_controller_packet(uint64_t buf, reset_t *reset)
     return 0;
 }
 
+static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet)
+{
+    if (kv_packet->type == TYPE_REQUEST) {
+        int node_id = key_to_node_id(kv_packet->key);
+        node_loads[node_id].iload++;
+        forward_to_node(buf, node_id);
+    } else if (kv_packet->type == TYPE_REPLY) {
+        int node_id = port_to_node_id(*(uint16_t *)(buf+UDP_SRC));
+        node_loads[node_id].iload--;
+    }
+}
+
+static int port_to_node_id(uint16_t port)
+{
+    return port - PORT_ZERO;
+}
+
+static int key_to_node_id(const char *key)
+{
+    size_t i;
+    uint64_t total_iload = 0;
+    for (i = 0; i < num_nodes; i++) {
+        total_iload += node_loads[i].iload;
+    }
+    uint64_t avg_iload = total_iload / num_nodes;
+
+    int node_id = key_hash(key) % num_nodes;
+    while (node_loads[node_id].iload > load_constant * avg_iload) {
+        node_id = (node_id + 1) % num_nodes;
+    }
+    return node_id;
+}
+
 /*
  * Public function definitions
  */
@@ -154,10 +196,9 @@ void pegasus_packet_proc(uint64_t buf)
 {
     switch (match_pegasus_packet(buf)) {
         case KV: {
-            request_t request;
-            if (decode_kv_packet(buf+APP_HEADER, &request) == 0) {
-                int node_id = key_hash(request.key) % num_nodes;
-                forward_to_node(buf, node_id);
+            kv_packet_t kv_packet;
+            if (decode_kv_packet(buf+APP_HEADER, &kv_packet) == 0) {
+                process_kv_packet(buf, &kv_packet);
             }
             break;
         }
@@ -165,6 +206,10 @@ void pegasus_packet_proc(uint64_t buf)
             reset_t reset;
             if (decode_controller_packet(buf+APP_HEADER, &reset) == 0) {
                 num_nodes = reset.num_nodes;
+                size_t i;
+                for (i = 0; i < num_nodes; i++) {
+                    node_loads[i].iload = 0;
+                }
             }
             break;
         }
