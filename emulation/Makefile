@@ -83,7 +83,7 @@ MKDIR_P := mkdir -p
 .PHONY: clean
 clean:
 	$(RM) -r $(BUILD_DIR)
-	$(RM) $(BIN)
+	$(RM) $(BIN) $(TEST_BIN)
 
 .PHONY: all
 all: $(BIN)
