@@ -1,4 +1,3 @@
-#include <thread>
 #include "logger.h"
 #include "node.h"
 
@@ -19,7 +18,7 @@ void
 Node::run(int duration)
 {
     // Create one thread which runs the transport event loop.
-    thread transport_thread = thread(&Node::run_transport, this);
+    this->transport_thread = thread(&Node::run_transport, this);
 
     if (this->app_core >= 0) {
         // Pin app thread to core
@@ -40,7 +39,21 @@ Node::run(int duration)
     }
 
     // Wait for transport thread
-    transport_thread.join();
+    this->transport_thread.join();
+}
+
+void
+Node::test_run()
+{
+    // Create one thread which runs the transport event loop.
+    this->transport_thread = thread(&Node::run_transport, this);
+}
+
+void
+Node::test_stop()
+{
+    this->transport->stop();
+    this->transport_thread.join();
 }
 
 void
