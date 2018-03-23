@@ -116,7 +116,7 @@ Client::receive_message(const string &message, const sockaddr &src_addr)
 {
     MemcacheKVMessage msg;
     this->codec->decode(message, msg);
-    assert(msg.has_reply);
+    assert(msg.type == MemcacheKVMessage::REPLY);
     assert(msg.reply.client_id == this->client_id);
     PendingRequest &pending_request = get_pending_request(msg.reply.req_id);
 
@@ -177,8 +177,7 @@ Client::execute_op(const Operation &op)
 
     MemcacheKVMessage msg;
     string msg_str;
-    msg.has_request = true;
-    msg.has_reply = false;
+    msg.type = MemcacheKVMessage::REQUEST;
     msg.request.client_id = this->client_id;
     msg.request.req_id = this->req_id;
     msg.request.op = op;

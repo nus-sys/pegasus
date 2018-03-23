@@ -56,14 +56,35 @@ struct MemcacheKVReply {
     std::string value;
 };
 
-struct MemcacheKVMessage {
-    MemcacheKVMessage()
-        : has_request(false), has_reply(false) {};
+struct KVRequestWithMigration {
+    KVRequestWithMigration()
+        : client_id(-1), req_id(0), dest_node_id(-1) {};
+    int client_id;
+    uint32_t req_id;
+    Operation op;
+    int dest_node_id;
+};
 
+struct MigrationRequest {
+    Operation op;
+};
+
+struct MemcacheKVMessage {
+    enum Type {
+        REQUEST,
+        REPLY,
+        REQUEST_WITH_MIGRATION,
+        MIGRATION_REQUEST,
+        UNKNOWN
+    };
+    MemcacheKVMessage()
+        : type(UNKNOWN) {};
+
+    Type type;
     MemcacheKVRequest request;
     MemcacheKVReply reply;
-    bool has_request;
-    bool has_reply;
+    KVRequestWithMigration request_with_migration;
+    MigrationRequest migration_request;
 };
 
 class MessageCodec {

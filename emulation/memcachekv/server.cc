@@ -9,12 +9,11 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
 {
     MemcacheKVMessage request_msg;
     this->codec->decode(message, request_msg);
-    assert(request_msg.has_request);
+    assert(request_msg.type == MemcacheKVMessage::REQUEST);
 
     MemcacheKVMessage reply_msg;
     string reply_msg_str;
-    reply_msg.has_request = false;
-    reply_msg.has_reply = true;
+    reply_msg.type = MemcacheKVMessage::REPLY;
     reply_msg.reply.client_id = request_msg.request.client_id;
     reply_msg.reply.req_id = request_msg.request.req_id;
 

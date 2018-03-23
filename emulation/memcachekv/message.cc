@@ -12,12 +12,10 @@ ProtobufCodec::decode(const string &in, MemcacheKVMessage &out)
     msg.ParseFromString(in);
 
     if (msg.has_request()) {
-        out.has_request = true;
-        out.has_reply = false;
+        out.type = MemcacheKVMessage::REQUEST;
         out.request = MemcacheKVRequest(msg.request());
     } else if (msg.has_reply()) {
-        out.has_request = false;
-        out.has_reply = true;
+        out.type = MemcacheKVMessage::REPLY;
         out.reply = MemcacheKVReply(msg.reply());
     } else {
         panic("protobuf MemcacheKVMessage wrong format");
@@ -29,7 +27,8 @@ ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
 {
     proto::MemcacheKVMessage msg;
 
-    if (in.has_request) {
+    switch (in.type) {
+    case MemcacheKVMessage::REQUEST: {
         msg.mutable_request()->set_client_id(in.request.client_id);
         msg.mutable_request()->set_req_id(in.request.req_id);
         proto::Operation op;
@@ -37,12 +36,16 @@ ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
         op.set_key(in.request.op.key);
         op.set_value(in.request.op.value);
         *(msg.mutable_request()->mutable_op()) = op;
-    } else if (in.has_reply) {
+        break;
+    }
+    case MemcacheKVMessage::REPLY: {
         msg.mutable_reply()->set_client_id(in.reply.client_id);
         msg.mutable_reply()->set_req_id(in.reply.req_id);
         msg.mutable_reply()->set_result(static_cast<proto::Result>(in.reply.result));
         msg.mutable_reply()->set_value(in.reply.value);
-    } else {
+        break;
+    }
+    default:
         panic("MemcacheKVMessage wrong format");
     }
 
@@ -69,8 +72,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     switch (type) {
     case TYPE_REQUEST: {
         assert(buf_size > REQUEST_BASE_SIZE);
-        out.has_request = true;
-        out.has_reply = false;
+        out.type = MemcacheKVMessage::REQUEST;
         out.request.client_id = (int)*(client_id_t *)ptr;
         ptr += sizeof(client_id_t);
         out.request.req_id = (uint32_t)*(req_id_t *)ptr;
@@ -93,8 +95,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     }
     case TYPE_REPLY: {
         assert(buf_size > REPLY_BASE_SIZE);
-        out.has_request = false;
-        out.has_reply = true;
+        out.type = MemcacheKVMessage::REPLY;
         out.reply.client_id = (int)*(client_id_t *)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = (uint32_t)*(req_id_t *)ptr;
@@ -117,15 +118,20 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
 {
     // First determine buffer size
     size_t buf_size;
-    if (in.has_request) {
+    switch (in.type) {
+    case MemcacheKVMessage::REQUEST: {
         // +1 for the terminating null
         buf_size = REQUEST_BASE_SIZE + in.request.op.key.size() + 1;
         if (in.request.op.op_type == Operation::Type::PUT) {
             buf_size += sizeof(value_len_t) + in.request.op.value.size() + 1;
         }
-    } else if (in.has_reply) {
+        break;
+    }
+    case MemcacheKVMessage::REPLY: {
         buf_size = REPLY_BASE_SIZE + in.reply.value.size() + 1;
-    } else {
+        break;
+    }
+    default:
         panic("Input message wrong format");
     }
 
@@ -133,7 +139,8 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     char *ptr = buf;
     *(identifier_t *)ptr = IDENTIFIER;
     ptr += sizeof(identifier_t);
-    if (in.has_request) {
+    switch (in.type) {
+    case MemcacheKVMessage::REQUEST: {
         *(type_t *)ptr = TYPE_REQUEST;
         ptr += sizeof(type_t);
         *(client_id_t *)ptr = (client_id_t)in.request.client_id;
@@ -154,7 +161,9 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
             ptr += in.request.op.value.size();
             *(ptr++) = '\0';
         }
-    } else if (in.has_reply) {
+        break;
+    }
+    case MemcacheKVMessage::REPLY: {
         *(type_t *)ptr = TYPE_REPLY;
         ptr += sizeof(type_t);
         *(client_id_t *)ptr = (client_id_t)in.reply.client_id;
@@ -168,7 +177,12 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         memcpy(ptr, in.reply.value.data(), in.reply.value.size());
         ptr += in.reply.value.size();
         *(ptr++) = '\0';
+        break;
     }
+    default:
+        panic("Input message wrong format");
+    }
+
     out = string(buf, buf_size);
     delete[] buf;
 }
@@ -196,6 +210,7 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         *(type_t *)ptr = TYPE_RESET;
         ptr += sizeof(type_t);
         *(num_nodes_t *)ptr = in.reset.num_nodes;
+        break;
     }
     }
     out = string(buf, buf_size);
