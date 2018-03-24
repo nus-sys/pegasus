@@ -25,15 +25,17 @@ struct Operation {
 
 struct MemcacheKVRequest {
     MemcacheKVRequest()
-        : client_id(-1), req_id(0) {};
+        : client_id(-1), req_id(0), migration_node_id(0) {};
     MemcacheKVRequest(const proto::MemcacheKVRequest &request)
         : client_id(request.client_id()),
         req_id(request.req_id()),
-        op(request.op()) {};
+        op(request.op()),
+        migration_node_id(0) {};
 
     int client_id;
     uint32_t req_id;
     Operation op;
+    int migration_node_id;
 };
 
 enum Result {
@@ -56,15 +58,6 @@ struct MemcacheKVReply {
     std::string value;
 };
 
-struct KVRequestWithMigration {
-    KVRequestWithMigration()
-        : client_id(-1), req_id(0), dest_node_id(-1) {};
-    int client_id;
-    uint32_t req_id;
-    Operation op;
-    int dest_node_id;
-};
-
 struct MigrationRequest {
     Operation op;
 };
@@ -73,7 +66,6 @@ struct MemcacheKVMessage {
     enum Type {
         REQUEST,
         REPLY,
-        REQUEST_WITH_MIGRATION,
         MIGRATION_REQUEST,
         UNKNOWN
     };
@@ -83,7 +75,6 @@ struct MemcacheKVMessage {
     Type type;
     MemcacheKVRequest request;
     MemcacheKVReply reply;
-    KVRequestWithMigration request_with_migration;
     MigrationRequest migration_request;
 };
 
@@ -117,15 +108,19 @@ private:
      * IDENTIFIER (32) + type (8) + message
      *
      * Request format:
-     * client_id (32) + req_id (32) + op_type (8) + key_len (16) + key (+ value_len(16) + value)
+     * client_id (32) + req_id (32) + node_id (32) + op_type (8) + key_len (16) + key (+ value_len(16) + value)
      *
      * Reply format:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value
+     *
+     * Migration request format:
+     * key_len (16) + key + value_len(16) + value
      */
     typedef uint32_t identifier_t;
     typedef uint8_t type_t;
     typedef uint32_t client_id_t ;
     typedef uint32_t req_id_t;
+    typedef uint32_t node_id_t;
     typedef uint8_t op_type_t;
     typedef uint16_t key_len_t;
     typedef uint8_t result_t;
@@ -134,12 +129,14 @@ private:
     static const identifier_t IDENTIFIER = 0xDEADBEEF;
     static const type_t TYPE_REQUEST = 1;
     static const type_t TYPE_REPLY = 2;
+    static const type_t TYPE_MIGRATION_REQUEST = 3;
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(type_t);
 
     static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) +
-        sizeof(op_type_t) + sizeof(key_len_t);
+        sizeof(node_id_t) + sizeof(op_type_t) + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) +
         sizeof(result_t) + sizeof(value_len_t);
+    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
 };
 
 struct ControllerResetMessage {

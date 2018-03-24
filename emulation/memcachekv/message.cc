@@ -77,6 +77,8 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         ptr += sizeof(client_id_t);
         out.request.req_id = (uint32_t)*(req_id_t *)ptr;
         ptr += sizeof(req_id_t);
+        out.request.migration_node_id = (int)*(node_id_t *)ptr;
+        ptr += sizeof(node_id_t);
         out.request.op.op_type = static_cast<Operation::Type>(*(op_type_t *)ptr);
         ptr += sizeof(op_type_t);
         key_len_t key_len = *(key_len_t *)ptr;
@@ -108,6 +110,20 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         out.reply.value = string(ptr, value_len);
         break;
     }
+    case TYPE_MIGRATION_REQUEST: {
+        assert(buf_size > MIGRATION_REQUEST_BASE_SIZE);
+        out.type = MemcacheKVMessage::MIGRATION_REQUEST;
+        out.migration_request.op.op_type = Operation::PUT;
+        key_len_t key_len = *(key_len_t *)ptr;
+        ptr += sizeof(key_len_t);
+        out.migration_request.op.key = string(ptr, key_len);
+        ptr += key_len + 1;
+        value_len_t value_len = *(value_len_t *)ptr;
+        ptr += sizeof(value_len_t);
+        assert(buf_size >= MIGRATION_REQUEST_BASE_SIZE + key_len + 1 + value_len + 1);
+        out.migration_request.op.value = string(ptr, value_len);
+        break;
+    }
     default:
         panic("Unknown packet type");
     }
@@ -131,6 +147,10 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         buf_size = REPLY_BASE_SIZE + in.reply.value.size() + 1;
         break;
     }
+    case MemcacheKVMessage::MIGRATION_REQUEST: {
+        buf_size = MIGRATION_REQUEST_BASE_SIZE + in.migration_request.op.key.size() + 1 + in.migration_request.op.value.size() + 1;
+        break;
+    }
     default:
         panic("Input message wrong format");
     }
@@ -147,6 +167,8 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(client_id_t);
         *(req_id_t *)ptr = (req_id_t)in.request.req_id;
         ptr += sizeof(req_id_t);
+        *(node_id_t *)ptr = 0;
+        ptr += sizeof(node_id_t);
         *(op_type_t *)ptr = (op_type_t)in.request.op.op_type;
         ptr += sizeof(op_type_t);
         *(key_len_t *)ptr = (key_len_t)in.request.op.key.size();
@@ -176,6 +198,21 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(value_len_t);
         memcpy(ptr, in.reply.value.data(), in.reply.value.size());
         ptr += in.reply.value.size();
+        *(ptr++) = '\0';
+        break;
+    }
+    case MemcacheKVMessage::MIGRATION_REQUEST: {
+        *(type_t *)ptr = TYPE_MIGRATION_REQUEST;
+        ptr += sizeof(type_t);
+        *(key_len_t *)ptr = (key_len_t)in.migration_request.op.key.size();
+        ptr += sizeof(key_len_t);
+        memcpy(ptr, in.migration_request.op.key.data(), in.migration_request.op.key.size());
+        ptr += in.migration_request.op.key.size();
+        *(ptr++) = '\0';
+        *(value_len_t *)ptr = (value_len_t)in.migration_request.op.value.size();
+        ptr += sizeof(value_len_t);
+        memcpy(ptr, in.migration_request.op.value.data(), in.migration_request.op.value.size());
+        ptr += in.migration_request.op.value.size();
         *(ptr++) = '\0';
         break;
     }

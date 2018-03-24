@@ -25,6 +25,8 @@ public:
 private:
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
+    void migrate_key_to_node(const std::string &key,
+                             int node_id);
 
     Transport *transport;
     Configuration *config;
