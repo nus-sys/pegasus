@@ -47,12 +47,12 @@ static void convert_endian(void *dst, const void *src, size_t n);
 static packet_type_t match_pegasus_packet(uint64_t buf);
 static int decode_kv_packet(uint64_t buf, kv_packet_t *kv_packet);
 static uint64_t key_hash(const char* key);
-static void forward_to_node(uint64_t buf, int node_id);
+static void forward_to_node(uint64_t buf, const dest_node_t *dest_node);
 static uint64_t checksum(const void *buf, size_t n);
 static int decode_controller_packet(uint64_t buf, reset_t *reset);
 static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet);
 static int port_to_node_id(uint16_t port);
-static int key_to_node_id(const char *key);
+static dest_node_t key_to_dest_node(const char *key);
 
 /*
  * Static function definitions
@@ -94,7 +94,7 @@ static int decode_kv_packet(uint64_t buf, kv_packet_t *kv_packet)
     }
     kv_packet->type = type;
     if (kv_packet->type == TYPE_REQUEST) {
-        ptr += sizeof(client_id_t) + sizeof(req_id_t);
+        ptr += sizeof(client_id_t) + sizeof(req_id_t) + sizeof(node_id_t);
         kv_packet->op_type = *(op_type_t *)ptr;
         ptr += sizeof(op_type_t) + sizeof(key_len_t);
         kv_packet->key = (const char*)ptr;
@@ -112,22 +112,28 @@ static uint64_t key_hash(const char* key)
     return hash;
 }
 
-static void forward_to_node(uint64_t buf, int node_id)
+static void forward_to_node(uint64_t buf, const dest_node_t *dest_node)
 {
     // Modify MAC address
     size_t i;
     for (i = 0; i < 6; i++) {
-        *(uint8_t *)(buf + ETH_DST + i) = node_addresses[node_id].mac_addr[i];
+        *(uint8_t *)(buf + ETH_DST + i) = node_addresses[dest_node->forward_node_id].mac_addr[i];
     }
 
     // Modify IP address
-    *(uint32_t *)(buf + IP_DST) = node_addresses[node_id].ip_addr;
+    *(uint32_t *)(buf + IP_DST) = node_addresses[dest_node->forward_node_id].ip_addr;
     *(uint16_t *)(buf + IP_CKSUM) = 0;
     *(uint16_t *)(buf + IP_CKSUM) = (uint16_t)checksum((void *)(buf + IP_HEADER), IP_SIZE);
 
     // Modify UDP address
-    *(uint16_t *)(buf + UDP_DST) = node_addresses[node_id].port;
+    *(uint16_t *)(buf + UDP_DST) = node_addresses[dest_node->forward_node_id].port;
     *(uint16_t *)(buf + UDP_CKSUM) = 0;
+
+    // Set migration node id
+    if (dest_node->migration_node_id >= 0) {
+        node_id_t node_id = dest_node->migration_node_id + 1;
+        convert_endian((void *)(buf+APP_HEADER+sizeof(identifier_t)+sizeof(type_t)+sizeof(client_id_t)+sizeof(req_id_t)), &node_id, sizeof(node_id_t));
+    }
 }
 
 static uint64_t checksum(const void *buf, size_t n)
@@ -159,9 +165,9 @@ static int decode_controller_packet(uint64_t buf, reset_t *reset)
 static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet)
 {
     if (kv_packet->type == TYPE_REQUEST) {
-        int node_id = key_to_node_id(kv_packet->key);
-        node_loads[node_id].iload++;
-        forward_to_node(buf, node_id);
+        dest_node_t dest_node = key_to_dest_node(kv_packet->key);
+        node_loads[dest_node.forward_node_id].iload++;
+        forward_to_node(buf, &dest_node);
     } else if (kv_packet->type == TYPE_REPLY) {
         int node_id = port_to_node_id(*(uint16_t *)(buf+UDP_SRC));
         node_loads[node_id].iload--;
@@ -173,7 +179,7 @@ static int port_to_node_id(uint16_t port)
     return port - PORT_ZERO;
 }
 
-static int key_to_node_id(const char *key)
+static dest_node_t key_to_dest_node(const char *key)
 {
     size_t i;
     uint64_t total_iload = 0;
@@ -186,7 +192,8 @@ static int key_to_node_id(const char *key)
     while (node_loads[node_id].iload > load_constant * avg_iload) {
         node_id = (node_id + 1) % num_nodes;
     }
-    return node_id;
+    dest_node_t dest_node = {node_id, -1};
+    return dest_node;
 }
 
 /*

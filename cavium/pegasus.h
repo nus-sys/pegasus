@@ -29,6 +29,7 @@ typedef uint32_t identifier_t;
 typedef uint8_t type_t;
 typedef uint32_t client_id_t;
 typedef uint32_t req_id_t;
+typedef uint32_t node_id_t;
 typedef uint8_t op_type_t;
 typedef uint16_t key_len_t;
 typedef uint8_t result_t;
@@ -77,6 +78,11 @@ typedef struct {
 typedef struct {
     uint64_t iload;
 } node_load_t;
+
+typedef struct {
+    int forward_node_id;
+    int migration_node_id;
+} dest_node_t;
 
 /*
  * Pegasus packet processing functions
