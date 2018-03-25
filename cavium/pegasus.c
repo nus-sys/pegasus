@@ -190,11 +190,36 @@ static dest_node_t key_to_dest_node(const char *key)
     }
     uint64_t avg_iload = total_iload / num_nodes;
 
-    int node_id = key_hash(key) % num_nodes;
-    while (node_loads[node_id].iload > load_constant * avg_iload) {
-        node_id = (node_id + 1) % num_nodes;
+    // Get mapped node
+    int curr_node_id, *node_id_val;
+    size_t val_size;
+    ht_status ret;
+    uint64_t keyhash = key_hash(key);
+    ret = concur_hashtable_find(key_node_map, key, (void **)&node_id_val, &val_size);
+    curr_node_id = ret == HT_FOUND ? *node_id_val : (int)(keyhash % num_nodes);
+    dest_node_t dest_node = {curr_node_id, -1};
+
+    if (node_loads[curr_node_id].iload > load_constant * avg_iload) {
+        int next_node_id = (curr_node_id + 1) % num_nodes;
+        while (node_loads[next_node_id].iload > load_constant * avg_iload) {
+            next_node_id = (next_node_id + 1) % num_nodes;
+        }
+        dest_node.migration_node_id = next_node_id;
+
+        // Update mapping
+        if (next_node_id == (int)(keyhash % num_nodes)) {
+            concur_hashtable_delete(key_node_map, key);
+        } else {
+            if (ret == HT_FOUND) {
+                *node_id_val = next_node_id;
+            } else {
+                ret = concur_hashtable_insert(key_node_map, key, &next_node_id, sizeof(int));
+                if (ret != HT_INSERT_SUCCESS) {
+                    printf("Failed to insert into key_node_map, error %u\n", ret);
+                }
+            }
+        }
     }
-    dest_node_t dest_node = {node_id, -1};
     return dest_node;
 }
 

@@ -10,7 +10,7 @@
 #define HASHPOWER_DEFAULT 16                    /* default hash table size */
 #define BUCKET_SIZE       4                     /* 4-way set-associate     */
 #define KEY_SIZE          128                   /* Maximum size of the key */
-#define VAL_SIZE          128                   /* Maximum size of the value */
+#define VAL_SIZE          64                    /* Maximum size of the value */
 #define KEY_VER_SIZE      ((uint32_t) 1 << 13)  /* key version size */
 #define KEY_VER_MASK      (KEY_VER_SIZE - 1)    /* key version mask */
 #define HASH_SIZE(n)      ((uint32_t) 1 << n)   /* hash size */
