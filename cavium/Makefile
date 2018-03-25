@@ -204,7 +204,7 @@ else
 	TARGET = router$(PREFIX)
 endif
 
-OBJS = $(OBJ_DIR)/router.o $(OBJ_DIR)/pegasus.o
+OBJS = $(OBJ_DIR)/router.o $(OBJ_DIR)/pegasus.o $(OBJ_DIR)/city_hash.o $(OBJ_DIR)/hash_table.o
 DEPS = $(OBJS:%.o=%.d)
 
 

@@ -53,23 +53,27 @@ void concur_hashtable_free(concurrent_ht_t *ht);
  * @ht: the handler of the hashtable
  * @key: key to inserted
  * @val: value to inserted
+ * @val_len: length of value
  * @return: the hashtable status
  */
 ht_status concur_hashtable_insert(concurrent_ht_t *ht,
                                   const char *key,
-                                  const char *val);
+                                  const void *val,
+                                  size_t val_len);
 
 /*
- * @brief Find the key from the hashtable and write into the val
+ * @brief Find the key from the hashtable
  *
  * @ht: the handler of the hashtable
  * @key: the found key
- * @val: value to write
+ * @val: value
+ * @val_len: value length
  * @return: the hashtable status
  */
 ht_status concur_hashtable_find(concurrent_ht_t *ht,
                                 const char *key,
-                                char *val);
+                                void **val,
+                                size_t *val_len);
 
 /*
  * @breif Delete the key from the hashtable

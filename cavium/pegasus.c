@@ -1,4 +1,5 @@
 #include <string.h>
+#include "hash_table.h"
 #include "pegasus.h"
 
 /*
@@ -39,6 +40,7 @@ static node_address_t node_addresses[MAX_NUM_NODES] = {
 static size_t num_nodes = 1;
 static node_load_t node_loads[MAX_NUM_NODES];
 static float load_constant = 1.0;
+static concurrent_ht_t *key_node_map = NULL;
 
 /*
  * Static function declarations
@@ -199,6 +201,14 @@ static dest_node_t key_to_dest_node(const char *key)
 /*
  * Public function definitions
  */
+void pegasus_init()
+{
+    key_node_map = concur_hashtable_init(8);
+    if (key_node_map == NULL) {
+        printf("Failed to initialize key node map\n");
+    }
+}
+
 void pegasus_packet_proc(uint64_t buf)
 {
     switch (match_pegasus_packet(buf)) {

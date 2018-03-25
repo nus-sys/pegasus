@@ -344,6 +344,9 @@ void application_main_loop(void)
        pko_command.s.reg0 = FAU_OUTSTANDING;
     }
 
+    /* Pegasus initialization */
+    pegasus_init();
+
     while (1)
     {
 

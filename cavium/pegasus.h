@@ -87,6 +87,7 @@ typedef struct {
 /*
  * Pegasus packet processing functions
  */
+void pegasus_init();
 void pegasus_packet_proc(uint64_t buf);
 
 #endif /* __PEGASUS_H__ */

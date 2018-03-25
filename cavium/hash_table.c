@@ -181,7 +181,8 @@ read_from_bucket(concurrent_ht_t *ht,
                  uint32_t tag,
                  size_t index,
                  const char *key,
-                 char *val)
+                 void **val,
+                 size_t *val_len)
 {
     size_t i;
 
@@ -189,9 +190,8 @@ read_from_bucket(concurrent_ht_t *ht,
         if ((int)tag == TABLE_TAG(ht, index, i)) {
 
             if (key_is_equal(key, TABLE_KEY(ht, index, i))) {
-                memcpy(val, TABLE_VAL(ht, index, i).val,
-                       TABLE_VAL(ht, index, i).val_len);
-                val[TABLE_VAL(ht, index, i).val_len] = '\0';
+                *val = TABLE_VAL(ht, index, i).val;
+                *val_len = TABLE_VAL(ht, index, i).val_len;
 
                 return true;
             }
@@ -209,23 +209,22 @@ slot_is_empty(concurrent_ht_t *ht,
     return ((TABLE_KEY(ht, index, sub_index).key_len == 0) ? true: false);
 }
 
-
 static bool
 add_into_bucket(concurrent_ht_t *ht,
                 const char *key,
-                const char *val,
+                const void *val,
+                size_t val_len,
                 uint32_t hv,
                 size_t index,
                 uint32_t keylock)
 {
-    size_t i, key_len, val_len;
+    size_t i, key_len;
 
     for (i = 0; i < BUCKET_SIZE; i++) {
         if (slot_is_empty(ht, index, i)) {
             KVC_START_INCR(ht, keylock);
 
             key_len = strlen(key);
-            val_len = strlen(val);
 
             MY_ASSERT( ((key_len >= 0) && (key_len <= KEY_SIZE)) );
             MY_ASSERT( ((val_len >= 0) && (val_len <= VAL_SIZE)) );
@@ -275,7 +274,8 @@ delete_from_bucket(concurrent_ht_t *ht,
 static ht_status
 cuckoo_find(concurrent_ht_t *ht,
             const char *key,
-            char *val,
+            void **val,
+            size_t *val_len,
             uint32_t hv,
             size_t i1,
             size_t i2,
@@ -289,9 +289,9 @@ cuckoo_find(concurrent_ht_t *ht,
 try_read:
     vc_start = KVC_START_READ(ht, keylock);
 
-    ret = read_from_bucket(ht, tag, i1, key, val);
+    ret = read_from_bucket(ht, tag, i1, key, val, val_len);
     if (!ret) {
-        ret = read_from_bucket(ht, tag, i2, key, val);
+        ret = read_from_bucket(ht, tag, i2, key, val, val_len);
     }
     KVC_END_READ(ht, keylock, vc_end);
 
@@ -432,16 +432,17 @@ run_cuckoo(concurrent_ht_t *ht,
 static ht_status
 cuckoo_insert(concurrent_ht_t *ht,
               const char *key,
-              const char *val,
+              const void *val,
+              size_t val_len,
               uint32_t hv,
               size_t i1,
               size_t i2,
               uint32_t keylock)
 {
-    if (add_into_bucket(ht, key, val, hv, i1, keylock))
+    if (add_into_bucket(ht, key, val, val_len, hv, i1, keylock))
         return HT_INSERT_SUCCESS;
 
-    if (add_into_bucket(ht, key, val, hv, i2, keylock))
+    if (add_into_bucket(ht, key, val, val_len, hv, i2, keylock))
         return HT_INSERT_SUCCESS;
 
     int insert_idx = run_cuckoo(ht, i1, i2);
@@ -450,7 +451,7 @@ cuckoo_insert(concurrent_ht_t *ht,
 
         i = ((cuckoo_record *)ht->cuckoo_path)[0].buckets[insert_idx];
 
-        if (add_into_bucket(ht, key, val, hv, i, keylock))
+        if (add_into_bucket(ht, key, val, val_len, hv, i, keylock))
             return HT_INSERT_SUCCESS;
     }
 
@@ -595,7 +596,8 @@ concur_hashtable_free(concurrent_ht_t *ht)
 ht_status
 concur_hashtable_find(concurrent_ht_t *ht,
                       const char *key,
-                      char *val)
+                      void **val,
+                      size_t *val_len)
 {
     uint32_t hv = get_key_hash(key, strlen(key));
     size_t i1 = get_first_index(ht, hv);
@@ -604,7 +606,7 @@ concur_hashtable_find(concurrent_ht_t *ht,
 
     ht_status ret;
 
-    ret = cuckoo_find(ht, key, val, hv, i1, i2, key_lock);
+    ret = cuckoo_find(ht, key, val, val_len, hv, i1, i2, key_lock);
 
     return ret;
 }
@@ -612,7 +614,8 @@ concur_hashtable_find(concurrent_ht_t *ht,
 ht_status
 concur_hashtable_insert(concurrent_ht_t *ht,
                         const char *key,
-                        const char *val)
+                        const void *val,
+                        size_t val_len)
 {
     uint32_t hv = get_key_hash(key, strlen(key));
     size_t i1 = get_first_index(ht, hv);
@@ -620,17 +623,18 @@ concur_hashtable_insert(concurrent_ht_t *ht,
     uint32_t key_lock = keylock_index(hv);
 
     ht_status ret;
-    char old_val[VAL_SIZE];
+    void *old_val;
+    size_t old_val_len;
 
     mylock_lock(ht);
 
-    ret = cuckoo_find(ht, key, old_val, hv, i1, i2, key_lock);
+    ret = cuckoo_find(ht, key, &old_val, &old_val_len, hv, i1, i2, key_lock);
     if (ret == HT_FOUND) {
         mylock_unlock(ht);
         return  HT_INSERT_FAILURE_KEY_DUPLICATED;
     }
 
-    ret = cuckoo_insert(ht, key, val, hv, i1, i2, key_lock);
+    ret = cuckoo_insert(ht, key, val, val_len, hv, i1, i2, key_lock);
 
     mylock_unlock(ht);
 
