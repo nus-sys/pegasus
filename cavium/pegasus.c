@@ -43,6 +43,7 @@ static node_load_t node_loads[MAX_NUM_NODES];
 static float load_constant = 1.1;
 static concurrent_ht_t *key_node_map = NULL;
 static concurrent_ht_t *key_rates = NULL;
+static lb_type_t lb_type = LB_STATIC;
 
 /*
  * Static function declarations
@@ -59,12 +60,16 @@ static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet);
 static void process_controller_packet(uint64_t buf, const reset_t *reset);
 static int port_to_node_id(uint16_t port);
 static dest_node_t key_to_dest_node(const char *key);
+static void update_load_request(int node_id, const char *key);
+static void update_load_reply(int node_id, const char *key);
 
 /*
  * Static function definitions
  */
 static int init()
 {
+    printf("Pegasus initializing... Number of nodes: %lu LB type %u\n",
+            num_nodes, lb_type);
     size_t i;
     for (i = 0; i < num_nodes; i++) {
         node_loads[i].pload = 0;
@@ -185,6 +190,8 @@ static int decode_controller_packet(uint64_t buf, reset_t *reset)
         return -1;
     }
     convert_endian(&reset->num_nodes, (const void *)ptr, sizeof(num_nodes_t));
+    ptr += sizeof(num_nodes_t);
+    reset->lb_type = *(lb_type_t *)ptr;
     return 0;
 }
 
@@ -192,19 +199,18 @@ static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet)
 {
     if (kv_packet->type == TYPE_REQUEST) {
         dest_node_t dest_node = key_to_dest_node(kv_packet->key);
-        node_loads[dest_node.forward_node_id].iload++;
+        update_load_request(dest_node.forward_node_id, kv_packet->key);
         forward_to_node(buf, &dest_node);
     } else if (kv_packet->type == TYPE_REPLY) {
         int node_id = port_to_node_id(*(uint16_t *)(buf+UDP_SRC));
-        if (node_loads[node_id].iload > 0) {
-            node_loads[node_id].iload--;
-        }
+        update_load_reply(node_id, kv_packet->key);
     }
 }
 
 static void process_controller_packet(uint64_t buf, const reset_t *reset)
 {
     num_nodes = reset->num_nodes;
+    lb_type = reset->lb_type;
     concur_hashtable_free(key_node_map);
     concur_hashtable_free(key_rates);
     init();
@@ -217,39 +223,57 @@ static int port_to_node_id(uint16_t port)
 
 static dest_node_t key_to_dest_node(const char *key)
 {
-    size_t i;
-    uint64_t total_iload = 0;
-    for (i = 0; i < num_nodes; i++) {
-        total_iload += node_loads[i].iload;
-    }
-    uint64_t avg_iload = total_iload / num_nodes;
-
-    // Get mapped node
-    int curr_node_id, *node_id_val;
-    size_t val_size;
-    ht_status ret;
     uint64_t keyhash = key_hash(key);
-    ret = concur_hashtable_find(key_node_map, key, (void **)&node_id_val, &val_size);
-    curr_node_id = ret == HT_FOUND ? *node_id_val : (int)(keyhash % num_nodes);
-    dest_node_t dest_node = {curr_node_id, -1};
+    dest_node_t dest_node = {-1, -1};
 
-    if (node_loads[curr_node_id].iload > load_constant * avg_iload) {
-        int next_node_id = (curr_node_id + 1) % num_nodes;
-        while (node_loads[next_node_id].iload > load_constant * avg_iload) {
-            next_node_id = (next_node_id + 1) % num_nodes;
+    if (lb_type == LB_STATIC) {
+        dest_node.forward_node_id = (int)(keyhash % num_nodes);
+    } else {
+        size_t i;
+        uint64_t total_iload = 0;
+        for (i = 0; i < num_nodes; i++) {
+            total_iload += node_loads[i].iload;
         }
-        dest_node.migration_node_id = next_node_id;
+        uint64_t avg_iload = total_iload / num_nodes;
 
-        if (ret == HT_FOUND) {
-            *node_id_val = next_node_id;
-        } else {
-            ret = concur_hashtable_insert(key_node_map, key, &next_node_id, sizeof(int));
-            if (ret != HT_INSERT_SUCCESS) {
-                printf("Failed to insert into key_node_map, error %u\n", ret);
+        // Get mapped node
+        int curr_node_id, *node_id_val;
+        size_t val_size;
+        ht_status ret;
+        ret = concur_hashtable_find(key_node_map, key, (void **)&node_id_val, &val_size);
+        curr_node_id = ret == HT_FOUND ? *node_id_val : (int)(keyhash % num_nodes);
+        dest_node.forward_node_id = curr_node_id;
+
+        if (node_loads[curr_node_id].iload > load_constant * avg_iload) {
+            int next_node_id = (curr_node_id + 1) % num_nodes;
+            while (node_loads[next_node_id].iload > load_constant * avg_iload) {
+                next_node_id = (next_node_id + 1) % num_nodes;
+            }
+            dest_node.migration_node_id = next_node_id;
+
+            if (ret == HT_FOUND) {
+                *node_id_val = next_node_id;
+            } else {
+                ret = concur_hashtable_insert(key_node_map, key, &next_node_id, sizeof(int));
+                if (ret != HT_INSERT_SUCCESS) {
+                    printf("Failed to insert into key_node_map, error %u\n", ret);
+                }
             }
         }
     }
     return dest_node;
+}
+
+static void update_load_request(int node_id, const char *key)
+{
+    node_loads[node_id].iload++;
+}
+
+static void update_load_reply(int node_id, const char *key)
+{
+    if (node_loads[node_id].iload > 0) {
+        node_loads[node_id].iload--;
+    }
 }
 
 /*

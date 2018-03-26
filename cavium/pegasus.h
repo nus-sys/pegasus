@@ -34,6 +34,7 @@ typedef uint8_t op_type_t;
 typedef uint16_t key_len_t;
 typedef uint8_t result_t;
 typedef uint16_t value_len_t;
+typedef uint8_t lb_type_t;
 
 static const identifier_t KV_ID = 0xDEADBEEF;
 static const type_t TYPE_REQUEST = 1;
@@ -41,6 +42,10 @@ static const type_t TYPE_REPLY = 2;
 static const op_type_t GET = 0;
 static const op_type_t PUT = 1;
 static const op_type_t DEL = 2;
+#define LB_STATIC 0
+#define LB_ILOAD 1
+#define LB_PLOAD 2
+#define LB_IPLOAD 3
 
 /*
  * Controller message header fields
@@ -73,6 +78,7 @@ typedef struct {
 
 typedef struct {
     uint32_t num_nodes;
+    lb_type_t lb_type;
 } reset_t;
 
 typedef struct {
