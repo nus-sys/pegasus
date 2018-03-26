@@ -345,7 +345,9 @@ void application_main_loop(void)
     }
 
     /* Pegasus initialization */
-    pegasus_init();
+    if (pegasus_init()) {
+        return;
+    }
 
     while (1)
     {

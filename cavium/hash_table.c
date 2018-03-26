@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include "hash_table.h"
+#include "nic_mem.h"
 #include "city_hash.h"
 
 #define HASHPOWER_DEFAULT 16                    /* default hash table size */

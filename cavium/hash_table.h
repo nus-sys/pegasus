@@ -6,7 +6,7 @@
 #include "cvmx.h"
 #include "cvmx-spinlock.h"
 
-//#define USE_NIC_MEMORY
+#define USE_NIC_MEMORY
 
 #define CACHE_ALIGN __attribute__((aligned(128)))
 //#define MY_ASSERT(x) assert(x)
