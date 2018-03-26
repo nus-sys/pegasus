@@ -12,10 +12,12 @@ class Server : public Application {
 public:
     Server(Transport *transport,
            Configuration *config,
-           MessageCodec *codec)
+           MessageCodec *codec,
+           int proc_latency = 0)
         : transport(transport),
         config(config),
-        codec(codec) {};
+        codec(codec),
+        proc_latency(proc_latency) {};
     ~Server() {};
 
     void receive_message(const std::string &message,
@@ -32,6 +34,7 @@ private:
     Configuration *config;
     MessageCodec *codec;
     std::unordered_map<std::string, std::string> store;
+    int proc_latency;
 };
 
 } // namespace memcachekv

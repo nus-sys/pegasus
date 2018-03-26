@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1,
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0,
         app_core = -1, transport_core = -1, dscp = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
     CodecMode codec_mode = PROTOBUF;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -69,6 +69,10 @@ int main(int argc, char *argv[])
         }
         case 'j': {
             dscp = stoi(std::string(optarg));
+            break;
+        }
+        case 'l': {
+            proc_latency = stoi(std::string(optarg));
             break;
         }
         case 'm': {
@@ -240,7 +244,7 @@ int main(int argc, char *argv[])
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
-        app = new memcachekv::Server(&transport, &node_config, codec);
+        app = new memcachekv::Server(&transport, &node_config, codec, proc_latency);
         transport.register_node(app, &node_config, node_id);
         node = new Node(node_id, &transport, app, false, app_core, transport_core);
         break;

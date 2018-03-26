@@ -9,6 +9,11 @@ namespace memcachekv {
 void
 Server::receive_message(const string &message, const sockaddr &src_addr)
 {
+    // User defined processing latency
+    if (this->proc_latency > 0) {
+        wait(this->proc_latency);
+    }
+
     MemcacheKVMessage request_msg;
     this->codec->decode(message, request_msg);
     switch (request_msg.type) {

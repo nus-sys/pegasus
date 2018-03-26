@@ -19,4 +19,10 @@ inline void wait(const struct timeval &start, int time) {
     }
 }
 
+inline void wait(int time) {
+    struct timeval start;
+    gettimeofday(&start, nullptr);
+    wait(start, time);
+}
+
 #endif /* __UTILS_H__ */
