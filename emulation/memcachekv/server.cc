@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "memcachekv/server.h"
+#include "utils.h"
 
 using std::string;
 
@@ -24,7 +25,6 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
         this->transport->send_message(reply_msg_str, src_addr);
 
         if (request_msg.request.migration_node_id > 0) {
-            assert(request_msg.request.op.op_type != Operation::DEL);
             migrate_key_to_node(request_msg.request.op.key,
                                 request_msg.request.migration_node_id - 1);
         }
@@ -83,7 +83,11 @@ Server::migrate_key_to_node(const std::string &key, int node_id)
     msg.type = MemcacheKVMessage::MIGRATION_REQUEST;
     msg.migration_request.op.op_type = Operation::PUT;
     msg.migration_request.op.key = key;
-    msg.migration_request.op.value = this->store.at(key);
+    if (this->store.count(key) > 0) {
+        msg.migration_request.op.value = this->store.at(key);
+    } else {
+        msg.migration_request.op.value = string("");
+    }
 
     this->codec->encode(msg_str, msg);
     this->transport->send_message_to_node(msg_str, node_id);
