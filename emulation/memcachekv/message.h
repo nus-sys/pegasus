@@ -140,7 +140,15 @@ private:
 };
 
 struct ControllerResetMessage {
+    enum LBType {
+        STATIC,
+        ILOAD,
+        PLOAD,
+        IPLOAD
+    };
+
     int num_nodes;
+    LBType lb_type;
 };
 
 struct ControllerMessage {
@@ -166,16 +174,21 @@ private:
      * IDENTIFIER (32) + type (8) + message
      *
      * Reset format:
-     * num_nodes (32)
+     * num_nodes (32) + lb_type (8)
      */
     typedef uint32_t identifier_t;
     typedef uint8_t type_t;
     typedef uint32_t num_nodes_t;
+    typedef uint8_t lb_type_t;
 
     static const identifier_t IDENTIFIER = 0xDEADDEAD;
     static const type_t TYPE_RESET = 1;
+    static const lb_type_t LB_STATIC = 0;
+    static const lb_type_t LB_ILOAD = 1;
+    static const lb_type_t LB_PLOAD = 2;
+    static const lb_type_t LB_IPLOAD = 3;
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(type_t);
-    static const size_t RESET_BASE_SIZE = PACKET_BASE_SIZE + sizeof(num_nodes_t);
+    static const size_t RESET_BASE_SIZE = PACKET_BASE_SIZE + sizeof(num_nodes_t) + sizeof(lb_type_t);
 };
 
 } // namespace memcachekv

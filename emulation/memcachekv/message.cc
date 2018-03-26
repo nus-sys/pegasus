@@ -247,6 +247,30 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         *(type_t *)ptr = TYPE_RESET;
         ptr += sizeof(type_t);
         *(num_nodes_t *)ptr = in.reset.num_nodes;
+        ptr += sizeof(num_nodes_t);
+        lb_type_t lb_type;
+        switch (in.reset.lb_type) {
+        case ControllerResetMessage::STATIC: {
+            lb_type = LB_STATIC;
+            break;
+        }
+        case ControllerResetMessage::ILOAD: {
+            lb_type = LB_ILOAD;
+            break;
+        }
+        case ControllerResetMessage::PLOAD: {
+            lb_type = LB_PLOAD;
+            break;
+        }
+        case ControllerResetMessage::IPLOAD: {
+            lb_type = LB_IPLOAD;
+            break;
+        }
+        default:
+            lb_type = LB_STATIC;
+            break;
+        }
+        *(lb_type_t *)ptr = lb_type;
         break;
     }
     }
