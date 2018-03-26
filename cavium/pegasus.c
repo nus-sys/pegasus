@@ -42,10 +42,12 @@ static size_t num_nodes = 1;
 static node_load_t node_loads[MAX_NUM_NODES];
 static float load_constant = 1.1;
 static concurrent_ht_t *key_node_map = NULL;
+static concurrent_ht_t *key_rates = NULL;
 
 /*
  * Static function declarations
  */
+static int init();
 static void convert_endian(void *dst, const void *src, size_t n);
 static packet_type_t match_pegasus_packet(uint64_t buf);
 static int decode_kv_packet(uint64_t buf, kv_packet_t *kv_packet);
@@ -54,12 +56,33 @@ static void forward_to_node(uint64_t buf, const dest_node_t *dest_node);
 static uint64_t checksum(const void *buf, size_t n);
 static int decode_controller_packet(uint64_t buf, reset_t *reset);
 static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet);
+static void process_controller_packet(uint64_t buf, const reset_t *reset);
 static int port_to_node_id(uint16_t port);
 static dest_node_t key_to_dest_node(const char *key);
 
 /*
  * Static function definitions
  */
+static int init()
+{
+    size_t i;
+    for (i = 0; i < num_nodes; i++) {
+        node_loads[i].pload = 0;
+        node_loads[i].iload = 0;
+    }
+    key_node_map = concur_hashtable_init(0);
+    if (key_node_map == NULL) {
+        printf("Failed to initialize key node map\n");
+        return -1;
+    }
+    key_rates = concur_hashtable_init(0);
+    if (key_rates == NULL) {
+        printf("Failed to initialize key rates\n");
+        return -1;
+    }
+    return 0;
+}
+
 static void convert_endian(void *dst, const void *src, size_t n)
 {
   size_t i;
@@ -179,6 +202,14 @@ static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet)
     }
 }
 
+static void process_controller_packet(uint64_t buf, const reset_t *reset)
+{
+    num_nodes = reset->num_nodes;
+    concur_hashtable_free(key_node_map);
+    concur_hashtable_free(key_rates);
+    init();
+}
+
 static int port_to_node_id(uint16_t port)
 {
     return port - PORT_ZERO;
@@ -229,12 +260,7 @@ int pegasus_init()
 #ifdef USE_NIC_MEMORY
     nic_local_shared_mm_init();
 #endif
-    key_node_map = concur_hashtable_init(0);
-    if (key_node_map == NULL) {
-        printf("Failed to initialize key node map\n");
-        return -1;
-    }
-    return 0;
+    return init();
 }
 
 void pegasus_packet_proc(uint64_t buf)
@@ -250,16 +276,7 @@ void pegasus_packet_proc(uint64_t buf)
         case CONTROLLER: {
             reset_t reset;
             if (decode_controller_packet(buf+APP_HEADER, &reset) == 0) {
-                num_nodes = reset.num_nodes;
-                size_t i;
-                for (i = 0; i < num_nodes; i++) {
-                    node_loads[i].iload = 0;
-                }
-                concur_hashtable_free(key_node_map);
-                key_node_map = concur_hashtable_init(0);
-                if (key_node_map == NULL) {
-                    printf("Failed to reset key node map\n");
-                }
+                process_controller_packet(buf, &reset);
             }
             break;
         }

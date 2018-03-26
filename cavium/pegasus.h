@@ -77,6 +77,7 @@ typedef struct {
 
 typedef struct {
     uint64_t iload;
+    uint64_t pload;
 } node_load_t;
 
 typedef struct {
