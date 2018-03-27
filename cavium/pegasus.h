@@ -82,14 +82,19 @@ typedef struct {
 } reset_t;
 
 typedef struct {
-    uint64_t iload;
-    uint64_t pload;
+    uint32_t iload;
+    uint32_t pload;
 } node_load_t;
 
 typedef struct {
     int forward_node_id;
     int migration_node_id;
 } dest_node_t;
+
+typedef struct {
+    uint32_t count;
+    uint32_t time;
+} key_rate_t;
 
 /*
  * Pegasus packet processing functions

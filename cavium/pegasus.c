@@ -44,6 +44,7 @@ static float load_constant = 1.1;
 static concurrent_ht_t *key_node_map = NULL;
 static concurrent_ht_t *key_rates = NULL;
 static lb_type_t lb_type = LB_STATIC;
+static uint64_t init_cycle = 0;
 
 /*
  * Static function declarations
@@ -60,8 +61,10 @@ static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet);
 static void process_controller_packet(uint64_t buf, const reset_t *reset);
 static int port_to_node_id(uint16_t port);
 static dest_node_t key_to_dest_node(const char *key);
-static void update_load_request(int node_id, const char *key);
+static void update_load_request(const dest_node_t *dest_node, const char *key);
 static void update_load_reply(int node_id, const char *key);
+static uint32_t calc_key_rate(const key_rate_t *key_rate);
+static uint32_t calc_time_from_cycles(uint64_t cycles);
 
 /*
  * Static function definitions
@@ -85,6 +88,7 @@ static int init()
         printf("Failed to initialize key rates\n");
         return -1;
     }
+    init_cycle = 0;
     return 0;
 }
 
@@ -199,7 +203,7 @@ static void process_kv_packet(uint64_t buf, const kv_packet_t *kv_packet)
 {
     if (kv_packet->type == TYPE_REQUEST) {
         dest_node_t dest_node = key_to_dest_node(kv_packet->key);
-        update_load_request(dest_node.forward_node_id, kv_packet->key);
+        update_load_request(&dest_node, kv_packet->key);
         forward_to_node(buf, &dest_node);
     } else if (kv_packet->type == TYPE_REPLY) {
         int node_id = port_to_node_id(*(uint16_t *)(buf+UDP_SRC));
@@ -230,11 +234,14 @@ static dest_node_t key_to_dest_node(const char *key)
         dest_node.forward_node_id = (int)(keyhash % num_nodes);
     } else {
         size_t i;
-        uint64_t total_iload = 0;
+        uint32_t total_iload = 0;
+        uint32_t total_pload = 0;
         for (i = 0; i < num_nodes; i++) {
             total_iload += node_loads[i].iload;
+            total_pload += node_loads[i].pload;
         }
-        uint64_t avg_iload = total_iload / num_nodes;
+        uint32_t avg_iload = total_iload / num_nodes;
+        uint32_t avg_pload = total_pload / num_nodes;
 
         // Get mapped node
         int curr_node_id, *node_id_val;
@@ -244,19 +251,40 @@ static dest_node_t key_to_dest_node(const char *key)
         curr_node_id = ret == HT_FOUND ? *node_id_val : (int)(keyhash % num_nodes);
         dest_node.forward_node_id = curr_node_id;
 
-        if (node_loads[curr_node_id].iload > load_constant * avg_iload) {
+        // Check if node is overloaded
+        if (node_loads[curr_node_id].iload > load_constant * avg_iload &&
+                node_loads[curr_node_id].pload > load_constant * avg_pload) {
+            int node_found = 0;
             int next_node_id = (curr_node_id + 1) % num_nodes;
-            while (node_loads[next_node_id].iload > load_constant * avg_iload) {
+            // Find a node that is under-loaded
+            for (i = 0; i < num_nodes - 1; i++) {
+                if (node_loads[next_node_id].iload <= load_constant * avg_iload &&
+                        node_loads[next_node_id].pload <= load_constant * avg_pload) {
+                    node_found = 1;
+                    break;
+                }
                 next_node_id = (next_node_id + 1) % num_nodes;
             }
-            dest_node.migration_node_id = next_node_id;
+            if (node_found) {
+                dest_node.migration_node_id = next_node_id;
 
-            if (ret == HT_FOUND) {
-                *node_id_val = next_node_id;
-            } else {
-                ret = concur_hashtable_insert(key_node_map, key, &next_node_id, sizeof(int));
-                if (ret != HT_INSERT_SUCCESS) {
-                    printf("Failed to insert into key_node_map, error %u\n", ret);
+                // Update key -> node mapping
+                if (ret == HT_FOUND) {
+                    *node_id_val = next_node_id;
+                } else {
+                    ret = concur_hashtable_insert(key_node_map, key, &next_node_id, sizeof(int));
+                    if (ret != HT_INSERT_SUCCESS) {
+                        printf("Failed to insert into key_node_map, error %u\n", ret);
+                    }
+                }
+
+                // Update pload
+                key_rate_t *key_rate;
+                size_t key_rate_len;
+                ret = concur_hashtable_find(key_rates, key, (void **)&key_rate, &key_rate_len);
+                if (ret == HT_FOUND) {
+                    node_loads[curr_node_id].pload -= calc_key_rate(key_rate);
+                    node_loads[next_node_id].pload += calc_key_rate(key_rate);
                 }
             }
         }
@@ -264,9 +292,39 @@ static dest_node_t key_to_dest_node(const char *key)
     return dest_node;
 }
 
-static void update_load_request(int node_id, const char *key)
+static void update_load_request(const dest_node_t *dest_node, const char *key)
 {
-    node_loads[node_id].iload++;
+    node_loads[dest_node->forward_node_id].iload++;
+    if (init_cycle == 0) {
+        init_cycle = cvmx_clock_get_count(CVMX_CLOCK_CORE);
+    }
+
+    ht_status ret;
+    uint32_t old_rate, new_rate;
+    key_rate_t *key_rate;
+    size_t key_rate_len;
+    ret = concur_hashtable_find(key_rates, key, (void **)&key_rate, &key_rate_len);
+    uint64_t curr_cycle = cvmx_clock_get_count(CVMX_CLOCK_CORE);
+    uint32_t time = calc_time_from_cycles(curr_cycle - init_cycle);
+    if (ret == HT_FOUND) {
+        old_rate = calc_key_rate(key_rate);
+        key_rate->count++;
+        key_rate->time = time;
+        new_rate = calc_key_rate(key_rate);
+    } else {
+        old_rate = new_rate = 0; // do not calculate rate for the first access
+        key_rate_t new_key_rate;
+        new_key_rate.count = 1;
+        new_key_rate.time = time;
+        ret = concur_hashtable_insert(key_rates, key, &new_key_rate, sizeof(key_rate_t));
+        if (ret != HT_INSERT_SUCCESS) {
+            printf("Failed to insert into key_rates, error %u\n", ret);
+        }
+    }
+
+    // Update node's pload
+    int node_id = dest_node->migration_node_id >= 0 ? dest_node->migration_node_id : dest_node->forward_node_id;
+    node_loads[node_id].pload += (new_rate - old_rate);
 }
 
 static void update_load_reply(int node_id, const char *key)
@@ -274,6 +332,19 @@ static void update_load_reply(int node_id, const char *key)
     if (node_loads[node_id].iload > 0) {
         node_loads[node_id].iload--;
     }
+}
+
+static uint32_t calc_key_rate(const key_rate_t *key_rate)
+{
+    if (key_rate->count <= 1) {
+        return 0;
+    }
+    return ((uint64_t)key_rate->count * 1000000) / key_rate->time;
+}
+
+static uint32_t calc_time_from_cycles(uint64_t cycles)
+{
+    return cycles / (cvmx_clock_get_rate(CVMX_CLOCK_CORE) / 1000000);
 }
 
 /*
