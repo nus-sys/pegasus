@@ -250,42 +250,63 @@ static dest_node_t key_to_dest_node(const char *key)
         ret = concur_hashtable_find(key_node_map, key, (void **)&node_id_val, &val_size);
         curr_node_id = ret == HT_FOUND ? *node_id_val : (int)(keyhash % num_nodes);
         dest_node.forward_node_id = curr_node_id;
+        int next_node_id = -1;
 
-        // Check if node is overloaded
-        if (node_loads[curr_node_id].iload > load_constant * avg_iload &&
-                node_loads[curr_node_id].pload > load_constant * avg_pload) {
-            int node_found = 0;
-            int next_node_id = (curr_node_id + 1) % num_nodes;
-            // Find a node that is under-loaded
-            for (i = 0; i < num_nodes - 1; i++) {
-                if (node_loads[next_node_id].iload <= load_constant * avg_iload &&
-                        node_loads[next_node_id].pload <= load_constant * avg_pload) {
-                    node_found = 1;
-                    break;
+        if (lb_type == LB_ILOAD) {
+            if (node_loads[curr_node_id].iload > load_constant * avg_iload) {
+                next_node_id = (curr_node_id + 1) % num_nodes;
+                while (node_loads[next_node_id].iload > load_constant * avg_iload) {
+                    next_node_id = (next_node_id + 1) % num_nodes;
                 }
-                next_node_id = (next_node_id + 1) % num_nodes;
             }
-            if (node_found) {
-                dest_node.migration_node_id = next_node_id;
-
-                // Update key -> node mapping
-                if (ret == HT_FOUND) {
-                    *node_id_val = next_node_id;
-                } else {
-                    ret = concur_hashtable_insert(key_node_map, key, &next_node_id, sizeof(int));
-                    if (ret != HT_INSERT_SUCCESS) {
-                        printf("Failed to insert into key_node_map, error %u\n", ret);
+        } else if (lb_type == LB_PLOAD) {
+            if (node_loads[curr_node_id].pload > load_constant * avg_pload) {
+                next_node_id = (curr_node_id + 1) % num_nodes;
+                while (node_loads[next_node_id].pload > load_constant * avg_pload) {
+                    next_node_id = (next_node_id + 1) % num_nodes;
+                }
+            }
+        } else if (lb_type == LB_IPLOAD) {
+            // Check if node is overloaded
+            if (node_loads[curr_node_id].iload > load_constant * avg_iload &&
+                    node_loads[curr_node_id].pload > load_constant * avg_pload) {
+                int node_found = 0;
+                next_node_id = (curr_node_id + 1) % num_nodes;
+                // Find a node that is under-loaded
+                for (i = 0; i < num_nodes - 1; i++) {
+                    if (node_loads[next_node_id].iload <= load_constant * avg_iload &&
+                            node_loads[next_node_id].pload <= load_constant * avg_pload) {
+                        node_found = 1;
+                        break;
                     }
+                    next_node_id = (next_node_id + 1) % num_nodes;
                 }
+                if (!node_found) {
+                    next_node_id = -1;
+                }
+            }
+        }
 
-                // Update pload
-                key_rate_t *key_rate;
-                size_t key_rate_len;
-                ret = concur_hashtable_find(key_rates, key, (void **)&key_rate, &key_rate_len);
-                if (ret == HT_FOUND) {
-                    node_loads[curr_node_id].pload -= calc_key_rate(key_rate);
-                    node_loads[next_node_id].pload += calc_key_rate(key_rate);
+        if (next_node_id >= 0) {
+            dest_node.migration_node_id = next_node_id;
+
+            // Update key -> node mapping
+            if (ret == HT_FOUND) {
+                *node_id_val = next_node_id;
+            } else {
+                ret = concur_hashtable_insert(key_node_map, key, &next_node_id, sizeof(int));
+                if (ret != HT_INSERT_SUCCESS) {
+                    printf("Failed to insert into key_node_map, error %u\n", ret);
                 }
+            }
+
+            // Update pload
+            key_rate_t *key_rate;
+            size_t key_rate_len;
+            ret = concur_hashtable_find(key_rates, key, (void **)&key_rate, &key_rate_len);
+            if (ret == HT_FOUND) {
+                node_loads[curr_node_id].pload -= calc_key_rate(key_rate);
+                node_loads[next_node_id].pload += calc_key_rate(key_rate);
             }
         }
     }
