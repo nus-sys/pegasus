@@ -1,23 +1,23 @@
 """
-bench_bloom.py: Bloom filter benchmark
+bench_approxset.py: Approximate set benchmark
 """
 
 import random
 import pyhash
 import argparse
 import math
-import pegasus.bloom as bloom
+import pegasus.utils.approxset as approxset
 
 class Simulator(object):
-    def __init__(self, bloom_filter, keys, check_keys):
-        self._bloom_filter = bloom_filter
+    def __init__(self, approxset, keys, check_keys):
+        self._approxset = approxset
         self._keys = keys
         self._check_keys = check_keys
 
     def run(self):
         # Add all keys
         for key in self._keys:
-            self._bloom_filter.add(key)
+            self._approxset.add(key)
 
         # Start trails. First check keys not in the set, and
         # then keys in the set.
@@ -25,11 +25,11 @@ class Simulator(object):
         n_false_neg = 0
 
         for key in self._check_keys:
-            if self._bloom_filter.contains(key):
+            if self._approxset.contains(key):
                 n_false_pos += 1
 
         for key in self._keys:
-            if not self._bloom_filter.contains(key):
+            if not self._approxset.contains(key):
                 n_false_neg += 1
 
         return (n_false_pos / len(self._check_keys),
@@ -42,6 +42,10 @@ if __name__ == '__main__':
     parser.add_argument('--ntrials', type=int, required=True, help="number of trials for false positives")
     parser.add_argument('--k', type=int, required=True, help="number of hash functions")
     parser.add_argument('--m', type=int, required=True, help="bloom filter size")
+    parser.add_argument('--type', required=True,
+                        choices=['bloom',
+                                 'cmsketch'],
+                        help="approximate set type")
     args = parser.parse_args()
 
     keys = []
@@ -55,13 +59,14 @@ if __name__ == '__main__':
 
     hash_fns = []
     for i in range(args.k):
-        hash_fns.append(bloom.HashFn(pyhash.fnv1_32(), i))
-    bloom_filter = bloom.BloomFilter(hash_fns, args.m)
+        hash_fns.append(approxset.HashFn(pyhash.fnv1_32(), i))
 
-    simulator = Simulator(bloom_filter, keys, check_keys)
+    if args.type == 'bloom':
+        aset = approxset.BloomFilter(hash_fns, args.m)
+
+    simulator = Simulator(aset, keys, check_keys)
     (false_pos, false_neg) = simulator.run()
-    expected_false_pos = (1-math.exp((-args.k*args.nkeys)/args.m))**args.k
 
-    print("Expected false positive rate:", "{0:.6f}".format(expected_false_pos))
+    print("Expected false positive rate:", "{0:.6f}".format(aset.expected_false_positives()))
     print("False positive rate:", "{0:.6f}".format(false_pos))
     print("False negative rate:", "{0:.6f}".format(false_neg))

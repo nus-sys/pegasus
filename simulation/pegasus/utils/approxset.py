@@ -1,6 +1,8 @@
 """
-bloom.py: Bloom filter implementation
+approxset.py: Approximate set implementations, including
+bloom filter, and count-min sketch.
 """
+import math
 
 class HashFn(object):
     def __init__(self, hasher, seed):
@@ -11,20 +13,41 @@ class HashFn(object):
         return self._hasher(key, seed=self._seed)
 
 
-class BloomFilter(object):
+class ApproxSet(object):
+    def __init__(self):
+        pass
+
+    def add(self, element):
+        raise NotImplementedError
+
+    def remove(self, element):
+        raise NotImplementedError
+
+    def contains(self, element):
+        raise NotImplementedError
+
+    def expected_false_positives(self):
+        raise NotImplementedError
+
+
+class BloomFilter(ApproxSet):
     def __init__(self, hash_fns, m):
+        super().__init__()
         self._hash_fns = hash_fns
         self._m = m
         self._array = []
+        self._n_keys = 0
         for _ in range(m):
             self._array.append(0)
 
     def add(self, element):
+        self._n_keys += 1
         for hash_fn in self._hash_fns:
             index = hash_fn.hash(element) % self._m
             self._array[index] += 1
 
     def remove(self, element):
+        self._n_keys -= 1
         for hash_fn in self._hash_fns:
             index = hash_fn.hash(element) % self._m
             if self._array[index] > 0:
@@ -36,3 +59,9 @@ class BloomFilter(object):
             if self._array[index] == 0:
                 return False
         return True
+
+    def expected_false_positives(self):
+        k = len(self._hash_fns)
+        m = self._m
+        n = self._n_keys
+        return (1-math.exp((-k*n)/m))**k
