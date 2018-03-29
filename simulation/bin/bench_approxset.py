@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--nkeys', type=int, required=True, help="number of keys to add")
     parser.add_argument('--ntrials', type=int, required=True, help="number of trials for false positives")
     parser.add_argument('--k', type=int, required=True, help="number of hash functions")
-    parser.add_argument('--m', type=int, required=True, help="bloom filter size")
+    parser.add_argument('--m', type=int, required=True, help="approximate set size")
     parser.add_argument('--type', required=True,
                         choices=['bloom',
                                  'cmsketch'],
@@ -63,6 +63,8 @@ if __name__ == '__main__':
 
     if args.type == 'bloom':
         aset = approxset.BloomFilter(hash_fns, args.m)
+    elif args.type == 'cmsketch':
+        aset = approxset.CMSketch(hash_fns, args.m)
 
     simulator = Simulator(aset, keys, check_keys)
     (false_pos, false_neg) = simulator.run()
