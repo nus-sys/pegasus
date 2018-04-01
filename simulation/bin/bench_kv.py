@@ -146,7 +146,8 @@ if __name__ == "__main__":
                                  'boundedload',
                                  'ipload',
                                  'avgload',
-                                 'routing'],
+                                 'routing',
+                                 'dch'],
                         help="configuration type for memcachekv")
     parser.add_argument('--loadbound', type=float, default=1.0, help="Bounded load configuration load constant")
     parser.add_argument('--writemode', default='update', choices=['anynode', 'update', 'invalidate'],
@@ -234,6 +235,12 @@ if __name__ == "__main__":
                                               None,
                                               write_mode,
                                               args.loadbound)
+        elif args.configtype == 'dch':
+            assert args.loadbound >= 1.0
+            config = memcachekv.DynamicCHConfig(cache_nodes,
+                                                None,
+                                                write_mode,
+                                                args.loadbound)
 
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         if args.configtype == 'routing':
