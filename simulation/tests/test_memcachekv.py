@@ -293,6 +293,72 @@ class MultiServerTest(unittest.TestCase):
         self.assertFalse('k1' in self.server_apps[0]._store)
 
 
+class MigrationTest(unittest.TestCase):
+    class TestConfig(memcachekv.MemcacheKVConfiguration):
+        def __init__(self, cache_nodes, db_node, write_mode):
+            super().__init__(cache_nodes, db_node, write_mode)
+            self.migration_requests = None
+            self.key_node_map = {}
+
+        def key_to_nodes(self, key, op_type):
+            return memcachekv.MappedNodes([self.cache_nodes[self.key_node_map[key]]],
+                                          self.migration_requests)
+
+    def setUp(self):
+        rack = pegasus.node.Rack()
+        self.servers = []
+        self.server_apps = []
+        for i in range(4):
+            self.servers.append(pegasus.node.Node(rack, i))
+        self.client = pegasus.node.Node(rack, 4)
+        self.stats = kv.KVStats()
+        self.config = self.TestConfig(self.servers, None, memcachekv.WriteMode.UPDATE)
+        self.client_app = memcachekv.MemcacheKVClient(None,
+                                                      self.stats)
+        self.client_app.register_config(self.config)
+        self.client.register_app(self.client_app)
+        for server in self.servers:
+            app = memcachekv.MemcacheKVServer(None,
+                                              self.stats)
+            app.register_config(self.config)
+            self.server_apps.append(app)
+            server.register_app(app)
+
+    def run_servers(self, end_time):
+        for server in self.servers:
+            server.run(end_time)
+
+    def test_basic(self):
+        self.server_apps[0]._store['k1'] = 'v1'
+        self.server_apps[0]._store['k2'] = 'v2'
+        self.server_apps[0]._store['k3'] = 'v3'
+        self.server_apps[0]._store['k4'] = 'v4'
+        self.config.key_node_map['k1'] = 0
+        self.config.migration_requests = [memcachekv.MemcacheKVRequest.MigrationRequest(['k1', 'k2'],
+                                                                                        self.servers[1]),
+                                          memcachekv.MemcacheKVRequest.MigrationRequest(['k3'],
+                                                                                        self.servers[2]),
+                                          memcachekv.MemcacheKVRequest.MigrationRequest(['k4'],
+                                                                                        self.servers[3])]
+        self.assertFalse('k1' in self.server_apps[1]._store)
+        self.assertFalse('k2' in self.server_apps[1]._store)
+        self.assertFalse('k3' in self.server_apps[2]._store)
+        self.assertFalse('k4' in self.server_apps[3]._store)
+
+        timer = 0
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k1'), timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET],
+                         1)
+        self.assertEqual(self.server_apps[1]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[1]._store['k2'], 'v2')
+        self.assertEqual(self.server_apps[2]._store['k3'], 'v3')
+        self.assertEqual(self.server_apps[3]._store['k4'], 'v4')
+
+
 class SimulatorTest(unittest.TestCase):
     class StaticConfig(memcachekv.MemcacheKVConfiguration):
         def __init__(self, cache_nodes, db_node, write_type):
@@ -418,8 +484,8 @@ class LoadBalanceTest(unittest.TestCase):
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
             nodes = self.config.key_to_nodes(key, None)
-            self.assertEqual(len(nodes.dest_nodes), 1)
-            keys = node_to_keys.setdefault(nodes.dest_nodes[0].id, [])
+            self.assertEqual(len(nodes.dst_nodes), 1)
+            keys = node_to_keys.setdefault(nodes.dst_nodes[0].id, [])
             keys.append(key)
         for _, keys in node_to_keys.items():
             if 'k1' in keys:
@@ -444,12 +510,12 @@ class LoadBalanceTest(unittest.TestCase):
         for key in ['k1', 'k2', 'k3', 'k4']:
             nodes = self.config.key_to_nodes(key, None)
             if key == 'k1':
-                self.assertEqual(len(nodes.dest_nodes), 3)
+                self.assertEqual(len(nodes.dst_nodes), 3)
             elif key == 'k2':
-                self.assertEqual(len(nodes.dest_nodes), 4)
+                self.assertEqual(len(nodes.dst_nodes), 4)
             else:
-                self.assertEqual(len(nodes.dest_nodes), 1)
-            for node in nodes.dest_nodes:
+                self.assertEqual(len(nodes.dst_nodes), 1)
+            for node in nodes.dst_nodes:
                 keys = node_to_keys.setdefault(node.id, [])
                 keys.append(key)
 
@@ -474,8 +540,8 @@ class LoadBalanceTest(unittest.TestCase):
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
             nodes = self.config.key_to_nodes(key, None)
-            self.assertEqual(len(nodes.dest_nodes), 1)
-            keys = node_to_keys.setdefault(nodes.dest_nodes[0].id, [])
+            self.assertEqual(len(nodes.dst_nodes), 1)
+            keys = node_to_keys.setdefault(nodes.dst_nodes[0].id, [])
             keys.append(key)
         for _, keys in node_to_keys.items():
             if 'k1' in keys:
@@ -504,8 +570,8 @@ class LoadBalanceTest(unittest.TestCase):
         node_to_keys = {}
         for key in ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']:
             nodes = self.config.key_to_nodes(key, None)
-            self.assertEqual(len(nodes.dest_nodes), 1)
-            keys = node_to_keys.setdefault(nodes.dest_nodes[0].id, [])
+            self.assertEqual(len(nodes.dst_nodes), 1)
+            keys = node_to_keys.setdefault(nodes.dst_nodes[0].id, [])
             keys.append(key)
         for _, keys in node_to_keys.items():
             if 'k1' in keys:
@@ -535,12 +601,12 @@ class LoadBalanceTest(unittest.TestCase):
         for key in ['k1', 'k2', 'k3', 'k4']:
             nodes = self.config.key_to_nodes(key, None)
             if key == 'k1':
-                self.assertEqual(len(nodes.dest_nodes), 3)
+                self.assertEqual(len(nodes.dst_nodes), 3)
             elif key == 'k2':
-                self.assertEqual(len(nodes.dest_nodes), 4)
+                self.assertEqual(len(nodes.dst_nodes), 4)
             else:
-                self.assertEqual(len(nodes.dest_nodes), 1)
-            for node in nodes.dest_nodes:
+                self.assertEqual(len(nodes.dst_nodes), 1)
+            for node in nodes.dst_nodes:
                 keys = node_to_keys.setdefault(node.id, [])
                 keys.append(key)
 
