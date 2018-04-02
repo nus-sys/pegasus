@@ -491,7 +491,7 @@ class DynamicCHConfig(MemcacheKVConfiguration):
 
             prev_hash = (key_hash - 1) % self.hash_space
             if prev_hash in self.node_hash_ring:
-                # Never collide new nodes on the hash ring!
+                # Never collide two nodes on the hash ring!
                 assert self.node_hash_ring[prev_hash] != node_id
                 new_node_hash = key_hash
                 break
@@ -524,6 +524,13 @@ class DynamicCHConfig(MemcacheKVConfiguration):
             # Search beyond hash 0
             (agg_pload, new_node_hash) = self.search_migration_keys(node_id, self.hash_space - 1, agg_pload, target_pload, migration_keys)
             assert new_node_hash is not None
+
+        if new_node_hash == node_hash:
+            # We cannot find a new hash. This is due to
+            # the next hash on the ring already occupied
+            # by another node.
+            assert len(migration_keys) == 0
+            return None
 
         # Update node hash
         self.node_hashes[node_id] = new_node_hash
@@ -682,13 +689,14 @@ class MemcacheKVServer(kv.KV):
 
             if message.migration_requests is not None:
                 for request in message.migration_requests:
-                    ops = []
-                    for key in request.keys:
-                        ops.append(kv.Operation(op_type = kv.Operation.Type.PUT,
-                                                key = key,
-                                                value = self._store.get(key, "")))
-                    msg = MemcacheMigrationRequest(ops)
-                    self._node.send_message(msg, request.dst, time)
+                    if len(request.keys) > 0:
+                        ops = []
+                        for key in request.keys:
+                            ops.append(kv.Operation(op_type = kv.Operation.Type.PUT,
+                                                    key = key,
+                                                    value = self._store.get(key, "")))
+                        msg = MemcacheMigrationRequest(ops)
+                        self._node.send_message(msg, request.dst, time)
         elif isinstance(message, MemcacheMigrationRequest):
             for op in message.ops:
                 self._execute_op(op)
