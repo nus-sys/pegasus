@@ -488,10 +488,18 @@ class DynamicCHConfig(MemcacheKVConfiguration):
         for key_hash in mapped_key_hashes:
             if key_hash in self.node_hash_ring:
                 assert self.node_hash_ring[key_hash] == node_id
+
+            prev_hash = (key_hash - 1) % self.hash_space
+            if prev_hash in self.node_hash_ring:
+                # Never collide new nodes on the hash ring!
+                assert self.node_hash_ring[prev_hash] != node_id
+                new_node_hash = key_hash
+                break
+
             for key in self.key_hash_ring[key_hash]:
                 agg_pload += self.key_rates[key].rate()
                 if agg_pload >= target_pload:
-                    new_node_hash = (key_hash - 1) % self.hash_space
+                    new_node_hash = prev_hash
                 migration_keys.append(key)
             if new_node_hash is not None:
                 break
@@ -507,6 +515,7 @@ class DynamicCHConfig(MemcacheKVConfiguration):
                 break
         if migration_dst is None:
             migration_dst = self.node_hash_ring.peekitem(0)[1]
+        assert migration_dst != node_id
 
         # Find set of keys to migrate, and the new node hash
         migration_keys = []
