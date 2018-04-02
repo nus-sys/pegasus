@@ -154,6 +154,7 @@ if __name__ == "__main__":
                         help="write mode for memcachekv")
     parser.add_argument('--iploadmode', default='ipload', choices=['iload', 'pload', 'ipload'],
                         help="mode for ipload configuration")
+    parser.add_argument('--hashspace', type=int, default=1024*1024, help="Hash space for consistent hashing")
     args = parser.parse_args()
 
     # Construct keys
@@ -240,7 +241,8 @@ if __name__ == "__main__":
             config = memcachekv.DynamicCHConfig(cache_nodes,
                                                 None,
                                                 write_mode,
-                                                args.loadbound)
+                                                args.loadbound,
+                                                args.hashspace)
 
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         if args.configtype == 'routing':

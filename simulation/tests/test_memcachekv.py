@@ -862,3 +862,169 @@ class MigrationServerTest(unittest.TestCase):
         self.assertEqual(self.server_apps[2]._store['k1'], 'v2')
         self.assertEqual(self.server_apps[3]._store['k1'], 'v2')
         self.assertEqual(self.config.key_node_map['k1'], 3)
+
+
+class DynamicCHTest(unittest.TestCase):
+    class TestConfig(memcachekv.DynamicCHConfig):
+        def __init__(self, cache_nodes, db_node, write_mode, c, hash_space):
+            super().__init__(cache_nodes, db_node, write_mode, c, hash_space)
+
+        def key_hash_fn(self, key):
+            return sum(map(lambda x : ord(x), key))
+
+    def setUp(self):
+        rack = pegasus.node.Rack(0)
+        self.cache_nodes = []
+        self.server_apps = []
+        for i in range(4):
+            self.cache_nodes.append(pegasus.node.Node(rack, i))
+        self.config = self.TestConfig(self.cache_nodes, None, memcachekv.WriteMode.UPDATE, 1.5, 16)
+        for node in self.cache_nodes:
+            app = memcachekv.MemcacheKVServer(None, None)
+            app.register_config(self.config)
+            node.register_app(app)
+            self.server_apps.append(app)
+        self.client_node = pegasus.node.Node(rack, 4)
+        self.stats = kv.KVStats()
+        self.client_app = memcachekv.MemcacheKVClient(None, self.stats)
+        self.client_app.register_config(self.config)
+        self.client_node.register_app(self.client_app)
+
+    def run_servers(self, end_time):
+        for node in self.cache_nodes:
+            node.run(end_time)
+
+    def test_basic(self):
+        self.config.c = 100 # prevent migration
+        timer = 0
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'v1'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k2', 'v2'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k6', 'v6'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'kk', 'vk'),
+                                 timer)
+        timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+        self.client_node.run(timer)
+        self.run_servers(timer)
+        timer += param.MAX_PROPG_DELAY + 4 * param.MAX_PKT_PROC_LTC
+        self.client_node.run(timer)
+        self.run_servers(timer)
+        self.assertEqual(self.server_apps[3]._store['k1'], 'v1')
+        self.assertEqual(self.server_apps[0]._store['k2'], 'v2')
+        self.assertEqual(self.server_apps[1]._store['k6'], 'v6')
+        self.assertEqual(self.server_apps[2]._store['kk'], 'vk')
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT], 4)
+
+    def test_basic_migration(self):
+        timer = 5
+        self.server_apps[1]._store['k6'] = 'v6'
+        self.server_apps[1]._store['k7'] = 'v7'
+        self.server_apps[1]._store['k8'] = 'v8'
+        self.server_apps[2]._store['kk'] = 'vk'
+        self.config.install_key('k6')
+        self.config.key_rates['k6'] = memcachekv.KeyRate(4, 1000000)
+        self.config.install_key('k7')
+        self.config.key_rates['k7'] = memcachekv.KeyRate(2, 1000000)
+        self.config.install_key('k8')
+        self.config.key_rates['k8'] = memcachekv.KeyRate(2, 1000000)
+        self.config.install_key('kk')
+        self.config.key_rates['kk'] = memcachekv.KeyRate(4, 1000000)
+
+        self.config.ploads[1] = 8
+        self.config.iloads[1] = 3
+        self.config.ploads[2] = 4
+        self.config.iloads[2] = 1
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k6'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+
+        self.assertEqual(self.server_apps[2]._store['k7'], 'v7')
+        self.assertEqual(self.server_apps[2]._store['k8'], 'v8')
+        self.assertFalse('k6' in self.server_apps[2]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET], 1)
+
+        self.config.c = 100 # prevent migration
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k6', 'V6'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k7', 'V7'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k8', 'V8'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'kk', 'Vk'),
+                                 timer)
+
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + 3*param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[1]._store['k6'], 'V6')
+        self.assertEqual(self.server_apps[1]._store['k7'], 'v7')
+        self.assertEqual(self.server_apps[1]._store['k8'], 'v8')
+        self.assertEqual(self.server_apps[2]._store['k7'], 'V7')
+        self.assertEqual(self.server_apps[2]._store['k8'], 'V8')
+        self.assertEqual(self.server_apps[2]._store['kk'], 'Vk')
+        self.assertFalse('k6' in self.server_apps[2]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET], 1)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT], 4)
+
+    def test_rounding_migration(self):
+        timer = 5
+        self.server_apps[0]._store['k5'] = 'v5'
+        self.server_apps[0]._store['k4'] = 'v4'
+        self.server_apps[0]._store['k2'] = 'v2'
+        self.server_apps[3]._store['k1'] = 'v1'
+        self.config.install_key('k5')
+        self.config.key_rates['k5'] = memcachekv.KeyRate(2, 1000000)
+        self.config.install_key('k4')
+        self.config.key_rates['k4'] = memcachekv.KeyRate(2, 1000000)
+        self.config.install_key('k2')
+        self.config.key_rates['k2'] = memcachekv.KeyRate(4, 1000000)
+        self.config.install_key('k1')
+        self.config.key_rates['k1'] = memcachekv.KeyRate(4, 1000000)
+
+        self.config.ploads[0] = 8
+        self.config.iloads[0] = 3
+        self.config.ploads[3] = 4
+        self.config.iloads[3] = 1
+
+        self.client_app._execute(kv.Operation(kv.Operation.Type.GET, 'k5'),
+                                 timer)
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+
+        self.assertEqual(self.server_apps[1]._store['k5'], 'v5')
+        self.assertEqual(self.server_apps[1]._store['k4'], 'v4')
+        self.assertFalse('k2' in self.server_apps[1]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET], 1)
+
+        self.config.c = 100 # prevent migration
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k5', 'V5'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k4', 'V4'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k2', 'V2'),
+                                 timer)
+        self.client_app._execute(kv.Operation(kv.Operation.Type.PUT, 'k1', 'V1'),
+                                 timer)
+
+        for _ in range(2):
+            timer += param.MAX_PROPG_DELAY + 3*param.MAX_PKT_PROC_LTC
+            self.client_node.run(timer)
+            self.run_servers(timer)
+        self.assertEqual(self.server_apps[0]._store['k2'], 'V2')
+        self.assertEqual(self.server_apps[0]._store['k5'], 'v5')
+        self.assertEqual(self.server_apps[0]._store['k4'], 'v4')
+        self.assertEqual(self.server_apps[1]._store['k5'], 'V5')
+        self.assertEqual(self.server_apps[1]._store['k4'], 'V4')
+        self.assertEqual(self.server_apps[3]._store['k1'], 'V1')
+        self.assertFalse('k2' in self.server_apps[1]._store)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.GET], 1)
+        self.assertEqual(self.stats.received_replies[kv.Operation.Type.PUT], 4)

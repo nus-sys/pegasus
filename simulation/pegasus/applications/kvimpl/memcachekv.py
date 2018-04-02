@@ -5,6 +5,7 @@ memcachekv.py: Memcache style distributed key-value store.
 import random
 import enum
 from sortedcontainers import SortedList
+from sortedcontainers import SortedDict
 
 import pegasus.message
 import pegasus.config
@@ -444,35 +445,99 @@ class RoutingConfig(MemcacheKVConfiguration):
 
 
 class DynamicCHConfig(MemcacheKVConfiguration):
-    def __init__(self, cache_nodes, db_node, write_mode, c):
+    def __init__(self, cache_nodes, db_node, write_mode, c, hash_space):
         super().__init__(cache_nodes, db_node, write_mode)
         self.c = c
-        self.key_node_map = {}
+        self.hash_space = hash_space
+        self.key_hash_ring = SortedDict()
+        self.node_hash_ring = SortedDict()
+        self.node_hashes = {}
         self.key_rates = {}
         self.iloads = {}
         self.ploads = {}
         for node in self.cache_nodes:
             self.iloads[node.id] = 0
             self.ploads[node.id] = 0
-            self.key_rates[node.id] = {}
+            node_hash = node.id * (hash_space // len(cache_nodes))
+            self.node_hashes[node.id] = node_hash
+            self.node_hash_ring[node_hash] = node.id
 
-    def key_hash(self, key):
+    def key_hash_fn(self, key):
         return hash(key)
 
-    def migrate_key(self, key, src, dst):
-        key_rate = self.key_rates[src].get(key, KeyRate())
-        self.key_rates[src].pop(key, None)
-        self.key_rates[dst][key] = key_rate
-        self.ploads[src] -= key_rate.rate()
-        self.ploads[dst] += key_rate.rate()
-        self.key_node_map[key] = dst
+    def lookup_node(self, key):
+        key_hash = self.key_hash_fn(key) % self.hash_space
+        for (node_hash, node_id) in self.node_hash_ring.items():
+            if node_hash >= key_hash:
+                return node_id
+        return self.node_hash_ring.peekitem(0)[1]
+
+    def install_key(self, key):
+        key_hash = self.key_hash_fn(key) % self.hash_space
+        keys = self.key_hash_ring.setdefault(key_hash, set())
+        keys.add(key)
+
+    def remove_key(self, key):
+        key_hash = self.key_hash_fn(key) % self.hash_space
+        keys = self.key_hash_ring.get(key_hash, set())
+        keys.discard(key)
+
+    def search_migration_keys(self, node_id, starting_hash, agg_pload, target_pload, migration_keys):
+        mapped_key_hashes = list(self.key_hash_ring.irange(minimum=0, maximum=starting_hash, reverse=True))
+        new_node_hash = None
+        for key_hash in mapped_key_hashes:
+            if key_hash in self.node_hash_ring:
+                assert self.node_hash_ring[key_hash] == node_id
+            for key in self.key_hash_ring[key_hash]:
+                agg_pload += self.key_rates[key].rate()
+                if agg_pload >= target_pload:
+                    new_node_hash = (key_hash - 1) % self.hash_space
+                migration_keys.append(key)
+            if new_node_hash is not None:
+                break
+        return (agg_pload, new_node_hash)
+
+    def rehash_node(self, node_id, target_pload):
+        node_hash = self.node_hashes[node_id]
+        migration_dst = None
+        # Find next node in the hash ring to migrate to
+        for (next_node_hash, next_node_id) in self.node_hash_ring.items():
+            if next_node_hash > node_hash:
+                migration_dst = next_node_id
+                break
+        if migration_dst is None:
+            migration_dst = self.node_hash_ring.peekitem(0)[1]
+
+        # Find set of keys to migrate, and the new node hash
+        migration_keys = []
+        (agg_pload, new_node_hash) = self.search_migration_keys(node_id, node_hash, 0, target_pload, migration_keys)
+        if new_node_hash is None:
+            # Search beyond hash 0
+            (agg_pload, new_node_hash) = self.search_migration_keys(node_id, self.hash_space - 1, agg_pload, target_pload, migration_keys)
+            assert new_node_hash is not None
+
+        # Update node hash
+        self.node_hashes[node_id] = new_node_hash
+        self.node_hash_ring.pop(node_hash)
+        self.node_hash_ring[new_node_hash] = node_id
+
+        # Update pload
+        self.ploads[node_id] -= agg_pload
+        self.ploads[migration_dst] += agg_pload
+
+        return [MemcacheKVRequest.MigrationRequest(keys = migration_keys,
+                                                   dst = self.cache_nodes[migration_dst])]
 
     def key_to_nodes(self, key, op_type):
-        if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
-            node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
+        if op_type == kv.Operation.Type.PUT or op_type == kv.Operation.Type.DEL:
+            if op_type == kv.Operation.Type.PUT:
+                self.install_key(key)
+            elif op_type == kv.Operation.Type.DEL:
+                self.remove_key(key)
+            node_id = self.lookup_node(key)
             return MappedNodes([self.cache_nodes[node_id]], None)
         else:
-            node_id = self.key_node_map.get(key, self.key_hash(key) % len(self.cache_nodes))
+            node_id = self.lookup_node(key)
             total_iload = sum(self.iloads.values())
             expected_iload = (self.c * total_iload) / len(self.cache_nodes)
             total_pload = sum(self.ploads.values())
@@ -481,32 +546,14 @@ class DynamicCHConfig(MemcacheKVConfiguration):
             if self.iloads[node_id] <= expected_iload or self.ploads[node_id] <= expected_pload:
                 return MappedNodes([self.cache_nodes[node_id]], None)
 
-            # Currently mapped node is overloaded. Find a key (in order of descending rate)
-            # to migrate, which won't overload the least loaded server
-            target_node_id = min(self.ploads, key=self.ploads.get)
-            sorted_key_rates = sorted(self.key_rates[node_id],
-                                      key=self.key_rates[node_id].get,
-                                      reverse=True)
-            migration_key = None
-            for k in sorted_key_rates:
-                if self.key_rates[node_id][k].rate() == 0:
-                    break
-                if self.ploads[target_node_id] + self.key_rates[node_id][k].rate() <= expected_pload:
-                    migration_key = k
-                    break
-
-            if migration_key is not None:
-                self.migrate_key(migration_key, node_id, target_node_id)
-                return MappedNodes([self.cache_nodes[node_id]],
-                                   [MemcacheKVRequest.MigrationRequest([migration_key],
-                                                                       self.cache_nodes[target_node_id])])
-            else:
-                return MappedNodes([self.cache_nodes[node_id]], None)
+            pload_diff = self.ploads[node_id] - expected_pload
+            migration_requests = self.rehash_node(node_id, pload_diff)
+            return MappedNodes([self.cache_nodes[node_id]], migration_requests)
 
     def report_op_send(self, node, op, time):
         self.iloads[node.id] += 1
-        node_id = self.key_node_map.get(op.key, self.key_hash(op.key) % len(self.cache_nodes))
-        key_rate = self.key_rates[node_id].setdefault(op.key, KeyRate())
+        node_id = self.lookup_node(op.key)
+        key_rate = self.key_rates.setdefault(op.key, KeyRate())
         old_rate = key_rate.rate()
         key_rate.count += 1
         key_rate.time = time
