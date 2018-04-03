@@ -46,6 +46,7 @@ if __name__ == '__main__':
                         choices=['bloom',
                                  'cmsketch'],
                         help="approximate set type")
+    parser.add_argument('--outputfile', default="", help="output file")
     args = parser.parse_args()
 
     keys = []
@@ -64,7 +65,7 @@ if __name__ == '__main__':
     if args.type == 'bloom':
         aset = approxset.BloomFilter(hash_fns, args.m)
     elif args.type == 'cmsketch':
-        aset = approxset.CMSketch(hash_fns, args.m)
+        aset = approxset.CMSketch(hash_fns, args.m // args.k)
 
     simulator = Simulator(aset, keys, check_keys)
     (false_pos, false_neg) = simulator.run()
@@ -72,3 +73,7 @@ if __name__ == '__main__':
     print("Expected false positive rate:", "{0:.6f}".format(aset.expected_false_positives()))
     print("False positive rate:", "{0:.6f}".format(false_pos))
     print("False negative rate:", "{0:.6f}".format(false_neg))
+
+    if len(args.outputfile) > 0:
+        with open(args.outputfile, 'a') as f:
+            f.write(str(args.m) + '\t' + str(args.k) + '\t' + str(args.nkeys) + '\t' + str(false_pos) + '\t' + str(false_neg) + '\t' + str(aset.expected_false_positives()) + '\n')
