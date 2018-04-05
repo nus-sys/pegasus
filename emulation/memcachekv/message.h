@@ -1,6 +1,7 @@
 #ifndef __MEMCACHEKV_MESSAGE_H__
 #define __MEMCACHEKV_MESSAGE_H__
 
+#include <vector>
 #include <string>
 #include "memcachekv/memcachekv.pb.h"
 
@@ -59,7 +60,7 @@ struct MemcacheKVReply {
 };
 
 struct MigrationRequest {
-    Operation op;
+    std::vector<Operation> ops;
 };
 
 struct MemcacheKVMessage {
@@ -114,7 +115,7 @@ private:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value
      *
      * Migration request format:
-     * key_len (16) + key + value_len(16) + value
+     * nops (16) + nops * (key_len (16) + key + value_len(16) + value)
      */
     typedef uint32_t identifier_t;
     typedef uint8_t type_t;
@@ -125,6 +126,7 @@ private:
     typedef uint16_t key_len_t;
     typedef uint8_t result_t;
     typedef uint16_t value_len_t;
+    typedef uint16_t nops_t;
 
     static const identifier_t IDENTIFIER = 0xDEADBEEF;
     static const type_t TYPE_REQUEST = 1;
@@ -136,7 +138,7 @@ private:
         sizeof(node_id_t) + sizeof(op_type_t) + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) +
         sizeof(result_t) + sizeof(value_len_t);
-    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
+    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nops_t);
 };
 
 struct ControllerResetMessage {

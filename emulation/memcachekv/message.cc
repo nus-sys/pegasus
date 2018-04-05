@@ -113,15 +113,24 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     case TYPE_MIGRATION_REQUEST: {
         assert(buf_size > MIGRATION_REQUEST_BASE_SIZE);
         out.type = MemcacheKVMessage::MIGRATION_REQUEST;
-        out.migration_request.op.op_type = Operation::PUT;
-        key_len_t key_len = *(key_len_t *)ptr;
-        ptr += sizeof(key_len_t);
-        out.migration_request.op.key = string(ptr, key_len);
-        ptr += key_len + 1;
-        value_len_t value_len = *(value_len_t *)ptr;
-        ptr += sizeof(value_len_t);
-        assert(buf_size >= MIGRATION_REQUEST_BASE_SIZE + key_len + 1 + value_len + 1);
-        out.migration_request.op.value = string(ptr, value_len);
+        nops_t nops = *(nops_t *)ptr;
+        ptr += sizeof(nops_t);
+        if (out.migration_request.ops.capacity() < nops) {
+            out.migration_request.ops.reserve(nops);
+        }
+        for (nops_t i = 0; i < nops; i++) {
+            out.migration_request.ops.push_back(Operation());
+            Operation &op = out.migration_request.ops.back();
+            op.op_type = Operation::PUT;
+            key_len_t key_len = *(key_len_t *)ptr;
+            ptr += sizeof(key_len_t);
+            op.key = string(ptr, key_len);
+            ptr += key_len + 1;
+            value_len_t value_len = *(value_len_t *)ptr;
+            ptr += sizeof(value_len_t);
+            op.value = string(ptr, value_len);
+            ptr += value_len + 1;
+        }
         break;
     }
     default:
@@ -148,7 +157,10 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::MIGRATION_REQUEST: {
-        buf_size = MIGRATION_REQUEST_BASE_SIZE + in.migration_request.op.key.size() + 1 + in.migration_request.op.value.size() + 1;
+        buf_size = MIGRATION_REQUEST_BASE_SIZE;
+        for (const auto &op : in.migration_request.ops) {
+            buf_size += sizeof(key_len_t) + op.key.size() + 1 + sizeof(value_len_t) + op.value.size() + 1;
+        }
         break;
     }
     default:
@@ -204,16 +216,20 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     case MemcacheKVMessage::MIGRATION_REQUEST: {
         *(type_t *)ptr = TYPE_MIGRATION_REQUEST;
         ptr += sizeof(type_t);
-        *(key_len_t *)ptr = (key_len_t)in.migration_request.op.key.size();
-        ptr += sizeof(key_len_t);
-        memcpy(ptr, in.migration_request.op.key.data(), in.migration_request.op.key.size());
-        ptr += in.migration_request.op.key.size();
-        *(ptr++) = '\0';
-        *(value_len_t *)ptr = (value_len_t)in.migration_request.op.value.size();
-        ptr += sizeof(value_len_t);
-        memcpy(ptr, in.migration_request.op.value.data(), in.migration_request.op.value.size());
-        ptr += in.migration_request.op.value.size();
-        *(ptr++) = '\0';
+        *(nops_t *)ptr = (nops_t)in.migration_request.ops.size();
+        ptr += sizeof(nops_t);
+        for (const auto &op : in.migration_request.ops) {
+            *(key_len_t *)ptr = (key_len_t)op.key.size();
+            ptr += sizeof(key_len_t);
+            memcpy(ptr, op.key.data(), op.key.size());
+            ptr += op.key.size();
+            *(ptr++) = '\0';
+            *(value_len_t *)ptr = (value_len_t)op.value.size();
+            ptr += sizeof(value_len_t);
+            memcpy(ptr, op.value.data(), op.value.size());
+            ptr += op.value.size();
+            *(ptr++) = '\0';
+        }
         break;
     }
     default:

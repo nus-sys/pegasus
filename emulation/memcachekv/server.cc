@@ -36,7 +36,9 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
         break;
     }
     case MemcacheKVMessage::MIGRATION_REQUEST: {
-        this->store[request_msg.migration_request.op.key] = request_msg.migration_request.op.value;
+        for (const auto &op : request_msg.migration_request.ops) {
+            this->store[op.key] = op.value;
+        }
         break;
     }
     default:
@@ -86,12 +88,14 @@ Server::migrate_key_to_node(const std::string &key, int node_id)
     MemcacheKVMessage msg;
     std::string msg_str;
     msg.type = MemcacheKVMessage::MIGRATION_REQUEST;
-    msg.migration_request.op.op_type = Operation::PUT;
-    msg.migration_request.op.key = key;
+    msg.migration_request.ops.push_back(Operation());
+    Operation &op = msg.migration_request.ops.back();
+    op.op_type = Operation::PUT;
+    op.key = key;
     if (this->store.count(key) > 0) {
-        msg.migration_request.op.value = this->store.at(key);
+        op.value = this->store.at(key);
     } else {
-        msg.migration_request.op.value = string("");
+        op.value = string("");
     }
 
     this->codec->encode(msg_str, msg);
