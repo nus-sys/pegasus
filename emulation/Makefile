@@ -5,7 +5,8 @@ SRC_DIR := .
 BIN_DIR := ./bin
 TEST_DIR := ./tests
 BUILD_DIR := ./build
-BIN := ./bin/emulator
+EMULATOR := ./bin/emulator
+MIGRATOR := ./bin/migrator
 TEST_BIN := $(TEST_DIR)/memcachekv-test
 
 SRCS := $(shell find $(SRC_DIR) -path $(BUILD_DIR) -prune -o -name "*.cc" -print)
@@ -13,7 +14,12 @@ OBJS := $(SRCS:%.cc=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:.o=.d)
 
 BIN_SRCS := $(filter-out $(wildcard $(TEST_DIR)/*.cc), $(SRCS))
-BIN_OBJS := $(BIN_SRCS:%.cc=$(BUILD_DIR)/%.o)
+EMULATOR_SRC := ./bin/emulator.cc
+MIGRATOR_SRC := ./bin/migrator.cc
+EMULATOR_SRCS := $(filter-out $(MIGRATOR_SRC), $(BIN_SRCS))
+EMULATOR_OBJS := $(EMULATOR_SRCS:%.cc=$(BUILD_DIR)/%.o)
+MIGRATOR_SRCS := $(filter-out $(EMULATOR_SRC), $(BIN_SRCS))
+MIGRATOR_OBJS := $(MIGRATOR_SRCS:%.cc=$(BUILD_DIR)/%.o)
 TEST_SRCS := $(filter-out $(wildcard $(BIN_DIR)/*.cc), $(SRCS))
 TEST_OBJS := $(TEST_SRCS:%.cc=$(BUILD_DIR)/%.o)
 
@@ -69,8 +75,11 @@ $(GTEST_MAIN): $(BUILD_DIR)/gtest/gtest-all.o $(BUILD_DIR)/gtest/gtest_main.o
 	$(AR) $(ARFLAGS) $@ $^
 
 # Linking
-$(BIN): $(BIN_OBJS) $(PROTOOBJS)
-	$(CXX) $(BIN_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
+$(EMULATOR): $(EMULATOR_OBJS) $(PROTOOBJS)
+	$(CXX) $(EMULATOR_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
+
+$(MIGRATOR): $(MIGRATOR_OBJS) $(PROTOOBJS)
+	$(CXX) $(MIGRATOR_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
 
 $(TEST_BIN): $(TEST_OBJS) $(PROTOOBJS) $(GTEST_MAIN)
 	$(CXX) $(TEST_OBJS) $(PROTOOBJS) $(GTEST_MAIN) -o $@ $(LDFLAGS)
@@ -83,10 +92,10 @@ MKDIR_P := mkdir -p
 .PHONY: clean
 clean:
 	$(RM) -r $(BUILD_DIR)
-	$(RM) $(BIN) $(TEST_BIN)
+	$(RM) $(EMULATOR) $(MIGRATOR) $(TEST_BIN)
 
 .PHONY: all
-all: $(BIN)
+all: $(EMULATOR) $(MIGRATOR)
 
 $(TEST_BIN:%=run-%): run-%: %
 	$<
