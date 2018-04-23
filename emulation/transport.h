@@ -19,9 +19,6 @@ public:
     Transport(int dscp=-1);
     ~Transport();
 
-    void register_address(TransportReceiver *receiver,
-                          Configuration *config,
-                          const NodeAddress &node_addr);
     void register_node(TransportReceiver *receiver,
                        Configuration *config,
                        int node_id);
@@ -34,6 +31,10 @@ public:
     void send_message_to_node(const std::string &msg, int dst_node_id);
 
 private:
+    void register_address(TransportReceiver *receiver,
+                          Configuration *config,
+                          const NodeAddress &node_addr);
+    void listen_on_router(const NodeAddress &node_addr);
     static void socket_callback(evutil_socket_t fd, short what, void *arg);
     static void signal_callback(evutil_socket_t fd, short what, void *arg);
     void on_readable(int fd);

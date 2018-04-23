@@ -28,6 +28,62 @@ Transport::~Transport()
 }
 
 void
+Transport::register_node(TransportReceiver *receiver,
+                         Configuration *config,
+                         int node_id)
+{
+    if (node_id < 0) {
+        // Client node
+        register_address(receiver, config, NodeAddress());
+    } else {
+        assert(node_id < config->num_nodes);
+        register_address(receiver, config, config->addresses.at(node_id));
+        listen_on_router(config->addresses.at(node_id));
+    }
+}
+
+void
+Transport::register_router(TransportReceiver *receiver,
+                           Configuration *config)
+{
+    assert(config->router_address.address.size() > 0);
+    register_address(receiver, config, config->router_address);
+}
+
+void
+Transport::run()
+{
+    event_base_dispatch(this->event_base);
+}
+
+void
+Transport::stop()
+{
+    event_base_loopbreak(this->event_base);
+}
+
+void
+Transport::send_message(const std::string &msg, const sockaddr &addr)
+{
+    if (sendto(this->socket_fd, msg.c_str(), msg.size()+1, 0, &addr, sizeof(addr)) == -1) {
+        printf("Failed to send message\n");
+    }
+}
+
+void
+Transport::send_message_to_addr(const std::string &msg, const NodeAddress &addr)
+{
+    send_message(msg, *(struct sockaddr *)&addr.sin);
+}
+
+void
+Transport::send_message_to_node(const std::string &msg, int dst_node_id)
+{
+    assert(dst_node_id < this->config->num_nodes);
+    send_message_to_addr(msg, this->config->addresses.at(dst_node_id));
+}
+
+void
 Transport::register_address(TransportReceiver *receiver,
                             Configuration *config,
                             const NodeAddress &node_addr)
@@ -60,6 +116,12 @@ Transport::register_address(TransportReceiver *receiver,
         if (setsockopt(this->socket_fd, IPPROTO_IP, IP_TOS, (char *)&n, sizeof(n)) < 0) {
             panic("Failed to set IP_TOS");
         }
+    }
+
+    // Disable UDP checksum
+    n = 1;
+    if (setsockopt(this->socket_fd, SOL_SOCKET, SO_NO_CHECK, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_NO_CHECK");
     }
 
     // Increase buffer size
@@ -121,58 +183,58 @@ Transport::register_address(TransportReceiver *receiver,
 }
 
 void
-Transport::register_node(TransportReceiver *receiver,
-                         Configuration *config,
-                         int node_id)
+Transport::listen_on_router(const NodeAddress &node_addr)
 {
-    if (node_id < 0) {
-        // Client node
-        register_address(receiver, config, NodeAddress());
-    } else {
-        assert(node_id < config->num_nodes);
-        register_address(receiver, config, config->addresses.at(node_id));
+    assert(this->config != nullptr);
+    if (this->config->router_address.address.size() == 0) {
+        return;
     }
-}
-
-void
-Transport::register_router(TransportReceiver *receiver,
-                           Configuration *config)
-{
-    assert(config->router_address.address.size() > 0);
-    register_address(receiver, config, config->router_address);
-}
-
-void
-Transport::run()
-{
-    event_base_dispatch(this->event_base);
-}
-
-void
-Transport::stop()
-{
-    event_base_loopbreak(this->event_base);
-}
-
-void
-Transport::send_message(const std::string &msg, const sockaddr &addr)
-{
-    if (sendto(this->socket_fd, msg.c_str(), msg.size()+1, 0, &addr, sizeof(addr)) == -1) {
-        printf("Failed to send message\n");
+    // Setup socket
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        panic("Failed to create socket");
     }
-}
 
-void
-Transport::send_message_to_addr(const std::string &msg, const NodeAddress &addr)
-{
-    send_message(msg, *(struct sockaddr *)&addr.sin);
-}
+    // Non-blocking mode
+    if (fcntl(fd, F_SETFL, O_NONBLOCK, 1) == -1) {
+        panic("Failed to set O_NONBLOCK");
+    }
 
-void
-Transport::send_message_to_node(const std::string &msg, int dst_node_id)
-{
-    assert(dst_node_id < this->config->num_nodes);
-    send_message_to_addr(msg, this->config->addresses.at(dst_node_id));
+    // Reuse address
+    int n = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_REUSEADDR");
+    }
+
+    // Increase buffer size
+    n = this->SOCKET_BUF_SIZE;
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_RCVBUF");
+    }
+    if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_SNDBUF");
+    }
+
+    // Bind to address
+    struct sockaddr_in sin = this->config->router_address.sin;
+    sin.sin_port = node_addr.sin.sin_port;
+
+    if (bind(fd, (sockaddr *)&sin, sizeof(sin)) != 0) {
+        panic("Failed to bind port");
+    }
+
+    // Add socket event
+    struct event *sock_ev = event_new(this->event_base,
+                                      fd,
+                                      EV_READ | EV_PERSIST,
+                                      socket_callback,
+                                      (void *)this);
+    if (sock_ev == nullptr) {
+        panic("Failed to create new event");
+    }
+
+    event_add(sock_ev, NULL);
+    this->events.push_back(sock_ev);
 }
 
 void
