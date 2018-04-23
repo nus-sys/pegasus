@@ -29,6 +29,7 @@ public:
     int num_nodes;
     std::vector<NodeAddress> addresses;
     NodeAddress router_address;
+    NodeAddress controller_address;
 };
 
 #endif /* __CONFIGURATION_H__ */

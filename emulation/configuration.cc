@@ -85,6 +85,19 @@ Configuration::Configuration(const char *file_path)
                 panic("Configuration line format: 'router host:port'");
             }
             this->router_address = NodeAddress(string(host), string(port));
+        } else if (strcasecmp(cmd, "controller") == 0) {
+            char *arg = strtok(nullptr, " \t");
+            if (arg == nullptr) {
+                panic("'controller' configuration line requires an argument");
+            }
+
+            char *host = strtok(arg, ":");
+            char *port = strtok(nullptr, "");
+
+            if (host == nullptr || port == nullptr) {
+                panic("Configuration line format: 'controller host:port'");
+            }
+            this->controller_address = NodeAddress(string(host), string(port));
         } else {
             panic("Unknown configuration directive");
         }
