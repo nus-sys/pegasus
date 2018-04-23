@@ -1,6 +1,8 @@
 #ifndef __MEMCACHEKV_CONTROLLER_H__
 #define __MEMCACHEKV_CONTROLLER_H__
 
+#include <mutex>
+#include <condition_variable>
 #include "application.h"
 #include "configuration.h"
 #include "memcachekv/message.h"
@@ -23,6 +25,9 @@ private:
     Configuration *config;
     ControllerCodec codec;
     ControllerMessage msg;
+    std::mutex mtx;
+    std::condition_variable cv;
+    bool replied;
 };
 
 } // namespace memcachekv

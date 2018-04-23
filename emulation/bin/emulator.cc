@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
         app_core = -1, transport_core = -1, dscp = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
-    memcachekv::ControllerResetMessage::LBType lb_type = memcachekv::ControllerResetMessage::STATIC;
+    memcachekv::ControllerResetMessage::LBType lb_type = memcachekv::ControllerResetMessage::LBType::STATIC;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
@@ -74,13 +74,13 @@ int main(int argc, char *argv[])
         }
         case 'k': {
             if (strcmp(optarg, "static") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::STATIC;
+                lb_type = memcachekv::ControllerResetMessage::LBType::STATIC;
             } else if (strcmp(optarg, "iload") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::ILOAD;
+                lb_type = memcachekv::ControllerResetMessage::LBType::ILOAD;
             } else if (strcmp(optarg, "pload") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::PLOAD;
+                lb_type = memcachekv::ControllerResetMessage::LBType::PLOAD;
             } else if (strcmp(optarg, "ipload") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::IPLOAD;
+                lb_type = memcachekv::ControllerResetMessage::LBType::IPLOAD;
             }
             break;
         }

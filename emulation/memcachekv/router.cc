@@ -9,7 +9,7 @@ Router::receive_message(const std::string &message, const sockaddr &src_addr)
     this->codec->decode(message, msg);
 
     switch (msg.type) {
-    case MemcacheKVMessage::REQUEST: {
+    case MemcacheKVMessage::Type::REQUEST: {
         // request from client
         if (this->client_addresses.count(msg.request.client_id) == 0) {
             // Install client address
@@ -20,7 +20,7 @@ Router::receive_message(const std::string &message, const sockaddr &src_addr)
         this->transport->send_message_to_addr(message, addr);
         break;
     }
-    case MemcacheKVMessage::REPLY: {
+    case MemcacheKVMessage::Type::REPLY: {
         // reply from server
         // Forward to client
         this->transport->send_message(message, this->client_addresses.at(msg.reply.client_id));

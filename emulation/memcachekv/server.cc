@@ -17,10 +17,10 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
     MemcacheKVMessage request_msg;
     this->codec->decode(message, request_msg);
     switch (request_msg.type) {
-    case MemcacheKVMessage::REQUEST: {
+    case MemcacheKVMessage::Type::REQUEST: {
         MemcacheKVMessage reply_msg;
         string reply_msg_str;
-        reply_msg.type = MemcacheKVMessage::REPLY;
+        reply_msg.type = MemcacheKVMessage::Type::REPLY;
         reply_msg.reply.client_id = request_msg.request.client_id;
         reply_msg.reply.req_id = request_msg.request.req_id;
 
@@ -28,14 +28,9 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
 
         this->codec->encode(reply_msg_str, reply_msg);
         this->transport->send_message(reply_msg_str, src_addr);
-
-        if (request_msg.request.migration_node_id > 0) {
-            migrate_key_to_node(request_msg.request.op.key,
-                                request_msg.request.migration_node_id - 1);
-        }
         break;
     }
-    case MemcacheKVMessage::MIGRATION_REQUEST: {
+    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
         for (const auto &op : request_msg.migration_request.ops) {
             this->store[op.key] = op.value;
         }
@@ -87,10 +82,10 @@ Server::migrate_key_to_node(const std::string &key, int node_id)
 {
     MemcacheKVMessage msg;
     std::string msg_str;
-    msg.type = MemcacheKVMessage::MIGRATION_REQUEST;
+    msg.type = MemcacheKVMessage::Type::MIGRATION_REQUEST;
     msg.migration_request.ops.push_back(Operation());
     Operation &op = msg.migration_request.ops.back();
-    op.op_type = Operation::PUT;
+    op.op_type = Operation::Type::PUT;
     op.key = key;
     if (this->store.count(key) > 0) {
         op.value = this->store.at(key);

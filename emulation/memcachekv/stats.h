@@ -1,7 +1,7 @@
 #ifndef __MEMCACHEKV_STATS_H__
 #define __MEMCACHEKV_STATS_H__
 
-#include <unordered_map>
+#include <map>
 #include "appstats.h"
 #include "memcachekv/message.h"
 
@@ -21,7 +21,7 @@ public:
 private:
     uint64_t cache_hits;
     uint64_t cache_misses;
-    std::unordered_map<int, uint64_t> received_replies;
+    std::map<Operation::Type, uint64_t> received_replies;
 };
 
 } // namespace memcachekv

@@ -1,5 +1,6 @@
 #include "logger.h"
 #include "memcachekv/message.h"
+#include "memcachekv/config.h"
 
 using std::string;
 
@@ -12,10 +13,10 @@ ProtobufCodec::decode(const string &in, MemcacheKVMessage &out)
     msg.ParseFromString(in);
 
     if (msg.has_request()) {
-        out.type = MemcacheKVMessage::REQUEST;
+        out.type = MemcacheKVMessage::Type::REQUEST;
         out.request = MemcacheKVRequest(msg.request());
     } else if (msg.has_reply()) {
-        out.type = MemcacheKVMessage::REPLY;
+        out.type = MemcacheKVMessage::Type::REPLY;
         out.reply = MemcacheKVReply(msg.reply());
     } else {
         panic("protobuf MemcacheKVMessage wrong format");
@@ -28,7 +29,7 @@ ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
     proto::MemcacheKVMessage msg;
 
     switch (in.type) {
-    case MemcacheKVMessage::REQUEST: {
+    case MemcacheKVMessage::Type::REQUEST: {
         msg.mutable_request()->set_client_id(in.request.client_id);
         msg.mutable_request()->set_req_id(in.request.req_id);
         proto::Operation op;
@@ -38,7 +39,7 @@ ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
         *(msg.mutable_request()->mutable_op()) = op;
         break;
     }
-    case MemcacheKVMessage::REPLY: {
+    case MemcacheKVMessage::Type::REPLY: {
         msg.mutable_reply()->set_client_id(in.reply.client_id);
         msg.mutable_reply()->set_req_id(in.reply.req_id);
         msg.mutable_reply()->set_result(static_cast<proto::Result>(in.reply.result));
@@ -59,26 +60,18 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     const char *ptr = buf;
     size_t buf_size = in.size();
 
-    // IDENTIFIER
     assert(buf_size > PACKET_BASE_SIZE);
-    identifier_t identifier = *(identifier_t *)ptr;
-    if (identifier != IDENTIFIER) {
-        panic("Wrong packet identifier");
-    }
-    ptr += sizeof(identifier_t);
     type_t type = *(type_t *)ptr;
-    ptr += sizeof(type_t);
+    ptr += PACKET_BASE_SIZE;
 
     switch (type) {
     case TYPE_REQUEST: {
         assert(buf_size > REQUEST_BASE_SIZE);
-        out.type = MemcacheKVMessage::REQUEST;
+        out.type = MemcacheKVMessage::Type::REQUEST;
         out.request.client_id = (int)*(client_id_t *)ptr;
         ptr += sizeof(client_id_t);
         out.request.req_id = (uint32_t)*(req_id_t *)ptr;
         ptr += sizeof(req_id_t);
-        out.request.migration_node_id = (int)*(node_id_t *)ptr;
-        ptr += sizeof(node_id_t);
         out.request.op.op_type = static_cast<Operation::Type>(*(op_type_t *)ptr);
         ptr += sizeof(op_type_t);
         key_len_t key_len = *(key_len_t *)ptr;
@@ -97,7 +90,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     }
     case TYPE_REPLY: {
         assert(buf_size > REPLY_BASE_SIZE);
-        out.type = MemcacheKVMessage::REPLY;
+        out.type = MemcacheKVMessage::Type::REPLY;
         out.reply.client_id = (int)*(client_id_t *)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = (uint32_t)*(req_id_t *)ptr;
@@ -112,7 +105,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     }
     case TYPE_MIGRATION_REQUEST: {
         assert(buf_size > MIGRATION_REQUEST_BASE_SIZE);
-        out.type = MemcacheKVMessage::MIGRATION_REQUEST;
+        out.type = MemcacheKVMessage::Type::MIGRATION_REQUEST;
         nops_t nops = *(nops_t *)ptr;
         ptr += sizeof(nops_t);
         if (out.migration_request.ops.capacity() < nops) {
@@ -121,7 +114,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         for (nops_t i = 0; i < nops; i++) {
             out.migration_request.ops.push_back(Operation());
             Operation &op = out.migration_request.ops.back();
-            op.op_type = Operation::PUT;
+            op.op_type = Operation::Type::PUT;
             key_len_t key_len = *(key_len_t *)ptr;
             ptr += sizeof(key_len_t);
             op.key = string(ptr, key_len);
@@ -144,7 +137,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     // First determine buffer size
     size_t buf_size;
     switch (in.type) {
-    case MemcacheKVMessage::REQUEST: {
+    case MemcacheKVMessage::Type::REQUEST: {
         // +1 for the terminating null
         buf_size = REQUEST_BASE_SIZE + in.request.op.key.size() + 1;
         if (in.request.op.op_type == Operation::Type::PUT) {
@@ -152,11 +145,11 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         }
         break;
     }
-    case MemcacheKVMessage::REPLY: {
+    case MemcacheKVMessage::Type::REPLY: {
         buf_size = REPLY_BASE_SIZE + in.reply.value.size() + 1;
         break;
     }
-    case MemcacheKVMessage::MIGRATION_REQUEST: {
+    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
         buf_size = MIGRATION_REQUEST_BASE_SIZE;
         for (const auto &op : in.migration_request.ops) {
             buf_size += sizeof(key_len_t) + op.key.size() + 1 + sizeof(value_len_t) + op.value.size() + 1;
@@ -169,18 +162,47 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
 
     char *buf = new char[buf_size];
     char *ptr = buf;
-    *(identifier_t *)ptr = IDENTIFIER;
-    ptr += sizeof(identifier_t);
+    // App header
     switch (in.type) {
-    case MemcacheKVMessage::REQUEST: {
+    case MemcacheKVMessage::Type::REQUEST: {
         *(type_t *)ptr = TYPE_REQUEST;
         ptr += sizeof(type_t);
+        *(rsvd_t *)ptr = 0;
+        ptr += sizeof(rsvd_t);
+        *(port_t *)ptr = 0;
+        ptr += sizeof(port_t);
+        uint64_t hash = key_hash(in.request.op.key);
+        const uint8_t *hash_ptr = (uint8_t *)&hash;
+        // Big Endian
+        for (size_t i = 0; i < sizeof(keyhash_t); i++) {
+            *(uint8_t *)(ptr + sizeof(keyhash_t) - i - 1) = *hash_ptr++;
+        }
+        ptr += sizeof(keyhash_t);
+        break;
+    }
+    case MemcacheKVMessage::Type::REPLY: {
+        *(type_t *)ptr = TYPE_REPLY;
+        // No keyhash required
+        ptr += PACKET_BASE_SIZE;
+        break;
+    }
+    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
+        *(type_t *)ptr = TYPE_MIGRATION_REQUEST;
+        // No keyhash required
+        ptr += PACKET_BASE_SIZE;
+        break;
+    }
+    default:
+        panic("Input message wrong format");
+    }
+
+    // Payload
+    switch (in.type) {
+    case MemcacheKVMessage::Type::REQUEST: {
         *(client_id_t *)ptr = (client_id_t)in.request.client_id;
         ptr += sizeof(client_id_t);
         *(req_id_t *)ptr = (req_id_t)in.request.req_id;
         ptr += sizeof(req_id_t);
-        *(node_id_t *)ptr = 0;
-        ptr += sizeof(node_id_t);
         *(op_type_t *)ptr = (op_type_t)in.request.op.op_type;
         ptr += sizeof(op_type_t);
         *(key_len_t *)ptr = (key_len_t)in.request.op.key.size();
@@ -197,9 +219,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         }
         break;
     }
-    case MemcacheKVMessage::REPLY: {
-        *(type_t *)ptr = TYPE_REPLY;
-        ptr += sizeof(type_t);
+    case MemcacheKVMessage::Type::REPLY: {
         *(client_id_t *)ptr = (client_id_t)in.reply.client_id;
         ptr += sizeof(client_id_t);
         *(req_id_t *)ptr = (req_id_t)in.reply.req_id;
@@ -213,9 +233,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         *(ptr++) = '\0';
         break;
     }
-    case MemcacheKVMessage::MIGRATION_REQUEST: {
-        *(type_t *)ptr = TYPE_MIGRATION_REQUEST;
-        ptr += sizeof(type_t);
+    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
         *(nops_t *)ptr = (nops_t)in.migration_request.ops.size();
         ptr += sizeof(nops_t);
         for (const auto &op : in.migration_request.ops) {
@@ -240,13 +258,17 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     delete[] buf;
 }
 
-void
+bool
 ControllerCodec::encode(std::string &out, const ControllerMessage &in)
 {
     size_t buf_size;
     switch (in.type) {
-    case ControllerMessage::RESET: {
-        buf_size = RESET_BASE_SIZE;
+    case ControllerMessage::Type::RESET: {
+        buf_size = RESET_SIZE;
+        break;
+    }
+    case ControllerMessage::Type::REPLY: {
+        buf_size = REPLY_SIZE;
         break;
     }
     default:
@@ -255,43 +277,68 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
 
     char *buf = new char[buf_size];
     char *ptr = buf;
-    *(identifier_t *)ptr = IDENTIFIER;
+    *(identifier_t*)ptr = IDENTIFIER;
     ptr += sizeof(identifier_t);
 
     switch (in.type) {
-    case ControllerMessage::RESET: {
-        *(type_t *)ptr = TYPE_RESET;
+    case ControllerMessage::Type::RESET: {
+        *(type_t*)ptr = TYPE_RESET;
         ptr += sizeof(type_t);
-        *(num_nodes_t *)ptr = in.reset.num_nodes;
+        *(num_nodes_t*)ptr = in.reset.num_nodes;
         ptr += sizeof(num_nodes_t);
-        lb_type_t lb_type;
-        switch (in.reset.lb_type) {
-        case ControllerResetMessage::STATIC: {
-            lb_type = LB_STATIC;
-            break;
-        }
-        case ControllerResetMessage::ILOAD: {
-            lb_type = LB_ILOAD;
-            break;
-        }
-        case ControllerResetMessage::PLOAD: {
-            lb_type = LB_PLOAD;
-            break;
-        }
-        case ControllerResetMessage::IPLOAD: {
-            lb_type = LB_IPLOAD;
-            break;
-        }
-        default:
-            lb_type = LB_STATIC;
-            break;
-        }
-        *(lb_type_t *)ptr = lb_type;
+        *(lb_type_t*)ptr = static_cast<lb_type_t>(in.reset.lb_type);
         break;
+    }
+    case ControllerMessage::Type::REPLY: {
+        *(type_t*)ptr = TYPE_REPLY;
+        ptr += sizeof(type_t);
+        *(ack_t*)ptr = static_cast<ack_t>(in.reply.ack);
     }
     }
     out = string(buf, buf_size);
     delete[] buf;
+    return true;
+}
+
+bool
+ControllerCodec::decode(const std::string &in, ControllerMessage &out)
+{
+    const char *buf = in.data();
+    const char *ptr = buf;
+    size_t buf_size = in.size();
+
+    if (buf_size < PACKET_BASE_SIZE) {
+        return false;
+    }
+    if (*(identifier_t *)ptr != IDENTIFIER) {
+        return false;
+    }
+    ptr += sizeof(identifier_t);
+    type_t type = *(type_t *)ptr;
+    ptr += sizeof(type_t);
+
+    switch(type) {
+    case TYPE_RESET: {
+        if (buf_size < RESET_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::RESET;
+        out.reset.num_nodes = *(num_nodes_t*)ptr;
+        ptr += sizeof(num_nodes_t);
+        out.reset.lb_type = static_cast<ControllerResetMessage::LBType>(*(lb_type_t*)ptr);
+        return true;
+    }
+    case TYPE_REPLY: {
+        if (buf_size < REPLY_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::REPLY;
+        out.reply.ack = static_cast<Ack>(*(ack_t*)ptr);
+        return true;
+    }
+    default:
+        return false;
+    }
 }
 
 } // namespace memcachekv
