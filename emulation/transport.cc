@@ -7,7 +7,7 @@
 #include "logger.h"
 
 Transport::Transport(int dscp)
-    : dscp(dscp), event_base(nullptr), socket_fd(-1)
+    : dscp(dscp), event_base(nullptr), socket_fd(-1), controller_fd(-1)
 {
     evthread_use_pthreads();
 };
@@ -16,6 +16,10 @@ Transport::~Transport()
 {
     if (this->socket_fd > 0) {
         close(socket_fd);
+    }
+
+    if (this->controller_fd > 0) {
+        close(controller_fd);
     }
 
     for (auto event : this->events) {
@@ -39,6 +43,7 @@ Transport::register_node(TransportReceiver *receiver,
         assert(node_id < config->num_nodes);
         register_address(receiver, config, config->addresses.at(node_id));
         listen_on_router(config->addresses.at(node_id));
+        listen_on_controller();
     }
 }
 
@@ -81,6 +86,19 @@ Transport::send_message_to_node(const std::string &msg, int dst_node_id)
 {
     assert(dst_node_id < this->config->num_nodes);
     send_message_to_addr(msg, this->config->addresses.at(dst_node_id));
+}
+
+void
+Transport::send_message_to_controller(const std::string &msg)
+{
+    if (sendto(this->controller_fd,
+               msg.c_str(),
+               msg.size()+1,
+               0,
+               (struct sockaddr *)&this->config->controller_address.sin,
+               sizeof(this->config->controller_address.sin)) == -1) {
+        printf("Failed to send message to controller\n");
+    }
 }
 
 void
@@ -237,6 +255,53 @@ Transport::listen_on_router(const NodeAddress &node_addr)
     this->events.push_back(sock_ev);
 }
 
+void
+Transport::listen_on_controller()
+{
+    assert(this->config != nullptr);
+    if (this->config->controller_address.address.size() == 0) {
+        return;
+    }
+    // Setup socket
+    this->controller_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (this->controller_fd == -1) {
+        panic("Failed to create socket");
+    }
+
+    // Non-blocking mode
+    if (fcntl(this->controller_fd, F_SETFL, O_NONBLOCK, 1) == -1) {
+        panic("Failed to set O_NONBLOCK");
+    }
+
+    // Reuse address
+    int n = 1;
+    if (setsockopt(this->controller_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
+        panic("Failed to set SO_REUSEADDR");
+    }
+
+    // Bind to any address
+    struct sockaddr_in sin;
+    memset(&sin, 0, sizeof(sin));
+    sin.sin_family = AF_INET;
+    sin.sin_port = 0;
+
+    if (bind(this->controller_fd, (sockaddr *)&sin, sizeof(sin)) != 0) {
+        panic("Failed to bind port");
+    }
+
+    // Add socket event
+    struct event *sock_ev = event_new(this->event_base,
+                                      this->controller_fd,
+                                      EV_READ | EV_PERSIST,
+                                      socket_callback,
+                                      (void *)this);
+    if (sock_ev == nullptr) {
+        panic("Failed to create new event");
+    }
+
+    event_add(sock_ev, NULL);
+    this->events.push_back(sock_ev);
+}
 void
 Transport::socket_callback(evutil_socket_t fd, short what, void *arg)
 {

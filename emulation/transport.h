@@ -29,12 +29,14 @@ public:
     void send_message(const std::string &msg, const sockaddr &addr);
     void send_message_to_addr(const std::string &msg, const NodeAddress &addr);
     void send_message_to_node(const std::string &msg, int dst_node_id);
+    void send_message_to_controller(const std::string &msg);
 
 private:
     void register_address(TransportReceiver *receiver,
                           Configuration *config,
                           const NodeAddress &node_addr);
     void listen_on_router(const NodeAddress &node_addr);
+    void listen_on_controller();
     static void socket_callback(evutil_socket_t fd, short what, void *arg);
     static void signal_callback(evutil_socket_t fd, short what, void *arg);
     void on_readable(int fd);
@@ -47,6 +49,7 @@ private:
     struct event_base *event_base;
     std::list<struct event*> events;
     int socket_fd;
+    int controller_fd;
 };
 
 #endif /* __TRANSPORT_H__ */
