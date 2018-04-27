@@ -160,14 +160,27 @@ struct ControllerReplyMessage {
     Ack ack;
 };
 
+struct KeyRange {
+    typedef uint32_t keyhash_t;
+    keyhash_t start;
+    keyhash_t end;
+};
+
+struct ControllerMigrationMessage {
+    KeyRange key_range;
+    int dst_node_id;
+};
+
 struct ControllerMessage {
     enum class Type {
         RESET,
-        REPLY
+        REPLY,
+        MIGRATION
     };
     Type type;
     ControllerResetMessage reset;
     ControllerReplyMessage reply;
+    ControllerMigrationMessage migration;
 };
 
 class ControllerCodec {
@@ -190,16 +203,22 @@ private:
      *
      * Reply format:
      * ack (8)
+     *
+     * Migration format:
+     * range_start (32) + range_end (32) + dst_node_id (32)
      */
     typedef uint32_t identifier_t;
     typedef uint8_t type_t;
     typedef uint32_t num_nodes_t;
     typedef uint8_t lb_type_t;
     typedef uint8_t ack_t;
+    typedef uint32_t keyhash_t;
+    typedef uint32_t node_id_t;
 
     static const identifier_t IDENTIFIER = 0xDEADDEAD;
     static const type_t TYPE_RESET = 0;
     static const type_t TYPE_REPLY = 1;
+    static const type_t TYPE_MIGRATION = 2;
     static const lb_type_t LB_STATIC = 0;
     static const lb_type_t LB_ILOAD = 1;
     static const lb_type_t LB_PLOAD = 2;
@@ -209,6 +228,7 @@ private:
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(type_t);
     static const size_t RESET_SIZE = PACKET_BASE_SIZE + sizeof(num_nodes_t) + sizeof(lb_type_t);
     static const size_t REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
+    static const size_t MIGRATION_SIZE = PACKET_BASE_SIZE + 2 * sizeof(keyhash_t) + sizeof(node_id_t);
 };
 
 } // namespace memcachekv

@@ -9,42 +9,70 @@ namespace memcachekv {
 void
 Server::receive_message(const string &message, const sockaddr &src_addr)
 {
-    // User defined processing latency
-    if (this->proc_latency > 0) {
-        wait(this->proc_latency);
+    // Check for controller message
+    ControllerMessage ctrl_msg;
+    if (this->ctrl_codec->decode(message, ctrl_msg)) {
+        process_ctrl_message(ctrl_msg, src_addr);
+        return;
     }
 
-    MemcacheKVMessage request_msg;
-    this->codec->decode(message, request_msg);
-    switch (request_msg.type) {
-    case MemcacheKVMessage::Type::REQUEST: {
-        MemcacheKVMessage reply_msg;
-        string reply_msg_str;
-        reply_msg.type = MemcacheKVMessage::Type::REPLY;
-        reply_msg.reply.client_id = request_msg.request.client_id;
-        reply_msg.reply.req_id = request_msg.request.req_id;
-
-        process_op(request_msg.request.op, reply_msg.reply);
-
-        this->codec->encode(reply_msg_str, reply_msg);
-        this->transport->send_message(reply_msg_str, src_addr);
-        break;
-    }
-    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
-        for (const auto &op : request_msg.migration_request.ops) {
-            this->store[op.key] = op.value;
-        }
-        break;
-    }
-    default:
-        panic("Server received unexpected message");
-    }
+    // KV message
+    MemcacheKVMessage kv_msg;
+    this->codec->decode(message, kv_msg);
+    process_kv_message(kv_msg, src_addr);
 }
 
 void
 Server::run(int duration)
 {
     // Do nothing...
+}
+
+void
+Server::process_kv_message(const MemcacheKVMessage &msg,
+                           const sockaddr &addr)
+{
+    // User defined processing latency
+    if (this->proc_latency > 0) {
+        wait(this->proc_latency);
+    }
+
+    switch (msg.type) {
+    case MemcacheKVMessage::Type::REQUEST: {
+        MemcacheKVMessage reply_msg;
+        string reply_msg_str;
+        reply_msg.type = MemcacheKVMessage::Type::REPLY;
+        reply_msg.reply.client_id = msg.request.client_id;
+        reply_msg.reply.req_id = msg.request.req_id;
+
+        process_op(msg.request.op, reply_msg.reply);
+
+        this->codec->encode(reply_msg_str, reply_msg);
+        this->transport->send_message(reply_msg_str, addr);
+        break;
+    }
+    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
+        for (const auto &op : msg.migration_request.ops) {
+            this->store[op.key] = op.value;
+        }
+        break;
+    }
+    default:
+        panic("Server received unexpected kv message");
+    }
+}
+
+void
+Server::process_ctrl_message(const ControllerMessage &msg,
+                             const sockaddr &addr)
+{
+    switch (msg.type) {
+    case ControllerMessage::Type::MIGRATION: {
+        break;
+    }
+    default:
+        panic("Server received unexpected controller message");
+    }
 }
 
 void

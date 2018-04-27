@@ -203,6 +203,7 @@ int main(int argc, char *argv[])
     memcachekv::MemcacheKVStats *stats = nullptr;
     memcachekv::KVWorkloadGenerator *gen = nullptr;
     memcachekv::MessageCodec *codec = nullptr;
+    memcachekv::ControllerCodec *ctrl_codec = new memcachekv::ControllerCodec();
 
     switch (codec_mode) {
     case PROTOBUF: {
@@ -257,7 +258,7 @@ int main(int argc, char *argv[])
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
-        app = new memcachekv::Server(&transport, &node_config, codec, proc_latency);
+        app = new memcachekv::Server(&transport, &node_config, codec, ctrl_codec, proc_latency);
         transport.register_node(app, &node_config, node_id);
         node = new Node(node_id, &transport, app, false, app_core, transport_core);
         break;

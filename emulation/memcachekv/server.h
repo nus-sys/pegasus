@@ -13,10 +13,12 @@ public:
     Server(Transport *transport,
            Configuration *config,
            MessageCodec *codec,
+           ControllerCodec *ctrl_codec,
            int proc_latency = 0)
         : transport(transport),
         config(config),
         codec(codec),
+        ctrl_codec(ctrl_codec),
         proc_latency(proc_latency) {};
     ~Server() {};
 
@@ -25,6 +27,10 @@ public:
     void run(int duration) override;
 
 private:
+    void process_kv_message(const MemcacheKVMessage &msg,
+                            const sockaddr &addr);
+    void process_ctrl_message(const ControllerMessage &msg,
+                              const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
     void migrate_key_to_node(const std::string &key,
@@ -33,6 +39,7 @@ private:
     Transport *transport;
     Configuration *config;
     MessageCodec *codec;
+    ControllerCodec *ctrl_codec;
     std::unordered_map<std::string, std::string> store;
     int proc_latency;
 };

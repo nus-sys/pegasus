@@ -271,8 +271,12 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         buf_size = REPLY_SIZE;
         break;
     }
+    case ControllerMessage::Type::MIGRATION: {
+        buf_size = MIGRATION_SIZE;
+        break;
+    }
     default:
-        panic("Input message wrong format");
+        panic("Unexpected controller message type");
     }
 
     char *buf = new char[buf_size];
@@ -293,6 +297,15 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         *(type_t*)ptr = TYPE_REPLY;
         ptr += sizeof(type_t);
         *(ack_t*)ptr = static_cast<ack_t>(in.reply.ack);
+    }
+    case ControllerMessage::Type::MIGRATION: {
+        *(type_t*)ptr = TYPE_MIGRATION;
+        ptr += sizeof(type_t);
+        *(keyhash_t*)ptr = in.migration.key_range.start;
+        ptr += sizeof(keyhash_t);
+        *(keyhash_t*)ptr = in.migration.key_range.end;
+        ptr += sizeof(keyhash_t);
+        *(node_id_t*)ptr = in.migration.dst_node_id;
     }
     }
     out = string(buf, buf_size);
@@ -334,6 +347,18 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
         }
         out.type = ControllerMessage::Type::REPLY;
         out.reply.ack = static_cast<Ack>(*(ack_t*)ptr);
+        return true;
+    }
+    case TYPE_MIGRATION: {
+        if (buf_size < MIGRATION_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::MIGRATION;
+        out.migration.key_range.start = *(keyhash_t*)ptr;
+        ptr += sizeof(keyhash_t);
+        out.migration.key_range.end = *(keyhash_t*)ptr;
+        ptr += sizeof(keyhash_t);
+        out.migration.dst_node_id = *(node_id_t*)ptr;
         return true;
     }
     default:
