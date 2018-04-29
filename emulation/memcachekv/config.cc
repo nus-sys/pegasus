@@ -3,7 +3,7 @@
 
 namespace memcachekv{
 
-uint64_t key_hash(const std::string &key)
+uint64_t compute_keyhash(const std::string &key)
 {
     uint64_t hash = 5381;
     for (auto c : key) {
@@ -32,7 +32,7 @@ MemcacheKVConfig::key_to_address(const std::string &key)
 {
     switch (this->mode) {
     case STATIC: {
-        uint64_t hash = key_hash(key);
+        uint64_t hash = compute_keyhash(key);
         return this->addresses[hash % this->num_nodes];
     }
     case ROUTER: {
@@ -63,7 +63,7 @@ RouterConfig::key_to_address(const std::string &key)
 {
     switch (this->mode) {
     case STATIC: {
-        uint64_t hash = key_hash(key);
+        uint64_t hash = compute_keyhash(key);
         return this->addresses[hash % this->num_nodes];
     }
     default:

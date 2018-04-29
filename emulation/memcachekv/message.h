@@ -7,6 +7,8 @@
 
 namespace memcachekv {
 
+typedef uint32_t keyhash_t;
+
 struct Operation {
     enum class Type {
         GET,
@@ -14,13 +16,14 @@ struct Operation {
         DEL
     };
     Operation()
-        : op_type(Type::GET), key(""), value("") {};
+        : op_type(Type::GET), key(""), keyhash(0), value("") {};
     Operation(const proto::Operation &op)
         : op_type(static_cast<Operation::Type>(op.op_type())),
         key(op.key()), value(op.value()) {};
 
     Type op_type;
     std::string key;
+    keyhash_t keyhash;
     std::string value;
 };
 
@@ -139,7 +142,26 @@ private:
     static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nops_t);
 };
 
-struct ControllerResetMessage {
+enum class Ack {
+    OK,
+    FAILED
+};
+
+typedef uint32_t keyhash_t;
+
+struct KeyRange {
+    keyhash_t start;
+    keyhash_t end;
+};
+// Comparator for KeyRange
+struct KeyRangeComparator {
+    bool operator() (const KeyRange& lhs, const KeyRange& rhs) const
+    {
+        return lhs.start < rhs.start;
+    }
+};
+
+struct ControllerResetRequest {
     enum class LBType {
         STATIC,
         ILOAD,
@@ -151,36 +173,43 @@ struct ControllerResetMessage {
     LBType lb_type;
 };
 
-enum class Ack {
-    OK,
-    FAILED
-};
-
-struct ControllerReplyMessage {
+struct ControllerResetReply {
     Ack ack;
 };
 
-struct KeyRange {
-    typedef uint32_t keyhash_t;
-    keyhash_t start;
-    keyhash_t end;
-};
-
-struct ControllerMigrationMessage {
+struct ControllerMigrationRequest {
     KeyRange key_range;
     int dst_node_id;
 };
 
+struct ControllerMigrationReply {
+    Ack ack;
+};
+
+struct ControllerRegisterRequest {
+    int node_id;
+};
+
+struct ControllerRegisterReply {
+    KeyRange key_range;
+};
+
 struct ControllerMessage {
     enum class Type {
-        RESET,
-        REPLY,
-        MIGRATION
+        RESET_REQ,
+        RESET_REPLY,
+        MIGRATION_REQ,
+        MIGRATION_REPLY,
+        REGISTER_REQ,
+        REGISTER_REPLY
     };
     Type type;
-    ControllerResetMessage reset;
-    ControllerReplyMessage reply;
-    ControllerMigrationMessage migration;
+    ControllerResetRequest reset_req;
+    ControllerResetReply reset_reply;
+    ControllerMigrationRequest migration_req;
+    ControllerMigrationReply migration_reply;
+    ControllerRegisterRequest reg_req;
+    ControllerRegisterReply reg_reply;
 };
 
 class ControllerCodec {
@@ -201,11 +230,20 @@ private:
      * Reset format:
      * num_nodes (32) + lb_type (8)
      *
-     * Reply format:
+     * Reset Reply format:
      * ack (8)
      *
-     * Migration format:
+     * Migration request format:
      * range_start (32) + range_end (32) + dst_node_id (32)
+     *
+     * Migration reply format:
+     * ack (8)
+     *
+     * Register request format:
+     * node_id (32)
+     *
+     * Register reply format:
+     * range_start (32) + range_end (32)
      */
     typedef uint32_t identifier_t;
     typedef uint8_t type_t;
@@ -216,19 +254,29 @@ private:
     typedef uint32_t node_id_t;
 
     static const identifier_t IDENTIFIER = 0xDEADDEAD;
-    static const type_t TYPE_RESET = 0;
-    static const type_t TYPE_REPLY = 1;
-    static const type_t TYPE_MIGRATION = 2;
-    static const lb_type_t LB_STATIC = 0;
-    static const lb_type_t LB_ILOAD = 1;
-    static const lb_type_t LB_PLOAD = 2;
-    static const lb_type_t LB_IPLOAD = 3;
-    static const ack_t ACK_OK = 0;
-    static const ack_t ACK_FAILED = 1;
+
+    static const type_t TYPE_RESET_REQ          = 0;
+    static const type_t TYPE_RESET_REPLY        = 1;
+    static const type_t TYPE_MIGRATION_REQ      = 2;
+    static const type_t TYPE_MIGRATION_REPLY    = 3;
+    static const type_t TYPE_REGISTER_REQ       = 4;
+    static const type_t TYPE_REGISTER_REPLY     = 5;
+
+    static const lb_type_t LB_STATIC    = 0;
+    static const lb_type_t LB_ILOAD     = 1;
+    static const lb_type_t LB_PLOAD     = 2;
+    static const lb_type_t LB_IPLOAD    = 3;
+
+    static const ack_t ACK_OK       = 0;
+    static const ack_t ACK_FAILED   = 1;
+
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(type_t);
-    static const size_t RESET_SIZE = PACKET_BASE_SIZE + sizeof(num_nodes_t) + sizeof(lb_type_t);
-    static const size_t REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
-    static const size_t MIGRATION_SIZE = PACKET_BASE_SIZE + 2 * sizeof(keyhash_t) + sizeof(node_id_t);
+    static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(num_nodes_t) + sizeof(lb_type_t);
+    static const size_t RESET_REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
+    static const size_t MIGRATION_REQ_SIZE = PACKET_BASE_SIZE + 2 * sizeof(keyhash_t) + sizeof(node_id_t);
+    static const size_t MIGRATION_REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
+    static const size_t REGISTER_REQ_SIZE = PACKET_BASE_SIZE + sizeof(node_id_t);
+    static const size_t REGISTER_REPLY_SIZE = PACKET_BASE_SIZE + 2 * sizeof(keyhash_t);
 };
 
 } // namespace memcachekv

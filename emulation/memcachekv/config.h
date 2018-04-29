@@ -6,7 +6,7 @@
 
 namespace memcachekv {
 
-uint64_t key_hash(const std::string &key);
+uint64_t compute_keyhash(const std::string &key);
 
 class MemcacheKVConfig : public Configuration {
 public:

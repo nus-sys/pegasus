@@ -62,7 +62,14 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
 
     assert(buf_size > PACKET_BASE_SIZE);
     type_t type = *(type_t *)ptr;
-    ptr += PACKET_BASE_SIZE;
+    ptr += sizeof(type_t) + sizeof(rsvd_t) + sizeof(port_t);
+    keyhash_t keyhash;
+    uint8_t *hash_ptr = (uint8_t*)&keyhash;
+    // Big Endian
+    for (size_t i = 0; i < sizeof(keyhash_t); i++) {
+        *hash_ptr++ = *(uint8_t*)(ptr + sizeof(keyhash_t) - i -1);
+    }
+    ptr += sizeof(keyhash_t);
 
     switch (type) {
     case TYPE_REQUEST: {
@@ -79,6 +86,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         assert(buf_size >= REQUEST_BASE_SIZE + key_len + 1);
         out.request.op.key = string(ptr, key_len);
         ptr += key_len + 1;
+        out.request.op.keyhash = keyhash;
         if (out.request.op.op_type == Operation::Type::PUT) {
             assert(buf_size > REQUEST_BASE_SIZE + key_len + 1 + sizeof(value_len_t));
             value_len_t value_len = *(value_len_t *)ptr;
@@ -171,7 +179,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(rsvd_t);
         *(port_t *)ptr = 0;
         ptr += sizeof(port_t);
-        uint64_t hash = key_hash(in.request.op.key);
+        uint64_t hash = compute_keyhash(in.request.op.key);
         const uint8_t *hash_ptr = (uint8_t *)&hash;
         // Big Endian
         for (size_t i = 0; i < sizeof(keyhash_t); i++) {
@@ -263,16 +271,28 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
 {
     size_t buf_size;
     switch (in.type) {
-    case ControllerMessage::Type::RESET: {
-        buf_size = RESET_SIZE;
+    case ControllerMessage::Type::RESET_REQ: {
+        buf_size = RESET_REQ_SIZE;
         break;
     }
-    case ControllerMessage::Type::REPLY: {
-        buf_size = REPLY_SIZE;
+    case ControllerMessage::Type::RESET_REPLY: {
+        buf_size = RESET_REPLY_SIZE;
         break;
     }
-    case ControllerMessage::Type::MIGRATION: {
-        buf_size = MIGRATION_SIZE;
+    case ControllerMessage::Type::MIGRATION_REQ: {
+        buf_size = MIGRATION_REQ_SIZE;
+        break;
+    }
+    case ControllerMessage::Type::MIGRATION_REPLY: {
+        buf_size = MIGRATION_REPLY_SIZE;
+        break;
+    }
+    case ControllerMessage::Type::REGISTER_REQ: {
+        buf_size = REGISTER_REQ_SIZE;
+        break;
+    }
+    case ControllerMessage::Type::REGISTER_REPLY: {
+        buf_size = REGISTER_REPLY_SIZE;
         break;
     }
     default:
@@ -283,31 +303,45 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
     char *ptr = buf;
     *(identifier_t*)ptr = IDENTIFIER;
     ptr += sizeof(identifier_t);
+    *(type_t*)ptr = static_cast<type_t>(in.type);
+    ptr += sizeof(type_t);
 
     switch (in.type) {
-    case ControllerMessage::Type::RESET: {
-        *(type_t*)ptr = TYPE_RESET;
-        ptr += sizeof(type_t);
-        *(num_nodes_t*)ptr = in.reset.num_nodes;
+    case ControllerMessage::Type::RESET_REQ: {
+        *(num_nodes_t*)ptr = in.reset_req.num_nodes;
         ptr += sizeof(num_nodes_t);
-        *(lb_type_t*)ptr = static_cast<lb_type_t>(in.reset.lb_type);
+        *(lb_type_t*)ptr = static_cast<lb_type_t>(in.reset_req.lb_type);
         break;
     }
-    case ControllerMessage::Type::REPLY: {
-        *(type_t*)ptr = TYPE_REPLY;
-        ptr += sizeof(type_t);
-        *(ack_t*)ptr = static_cast<ack_t>(in.reply.ack);
+    case ControllerMessage::Type::RESET_REPLY: {
+        *(ack_t*)ptr = static_cast<ack_t>(in.reset_reply.ack);
+        break;
     }
-    case ControllerMessage::Type::MIGRATION: {
-        *(type_t*)ptr = TYPE_MIGRATION;
-        ptr += sizeof(type_t);
-        *(keyhash_t*)ptr = in.migration.key_range.start;
+    case ControllerMessage::Type::MIGRATION_REQ: {
+        *(keyhash_t*)ptr = in.migration_req.key_range.start;
         ptr += sizeof(keyhash_t);
-        *(keyhash_t*)ptr = in.migration.key_range.end;
+        *(keyhash_t*)ptr = in.migration_req.key_range.end;
         ptr += sizeof(keyhash_t);
-        *(node_id_t*)ptr = in.migration.dst_node_id;
+        *(node_id_t*)ptr = in.migration_req.dst_node_id;
+        break;
+    }
+    case ControllerMessage::Type::MIGRATION_REPLY: {
+        *(ack_t*)ptr = static_cast<ack_t>(in.migration_reply.ack);
+        break;
+    }
+    case ControllerMessage::Type::REGISTER_REQ: {
+        *(node_id_t*)ptr = in.reg_req.node_id;
+        break;
+    }
+    case ControllerMessage::Type::REGISTER_REPLY: {
+        *(keyhash_t*)ptr = in.reg_reply.key_range.start;
+        ptr += sizeof(keyhash_t);
+        *(keyhash_t*)ptr = in.reg_reply.key_range.end;
+        ptr += sizeof(keyhash_t);
+        break;
     }
     }
+
     out = string(buf, buf_size);
     delete[] buf;
     return true;
@@ -331,39 +365,67 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
     ptr += sizeof(type_t);
 
     switch(type) {
-    case TYPE_RESET: {
-        if (buf_size < RESET_SIZE) {
+    case TYPE_RESET_REQ: {
+        if (buf_size < RESET_REQ_SIZE) {
             return false;
         }
-        out.type = ControllerMessage::Type::RESET;
-        out.reset.num_nodes = *(num_nodes_t*)ptr;
+        out.type = ControllerMessage::Type::RESET_REQ;
+        out.reset_req.num_nodes = *(num_nodes_t*)ptr;
         ptr += sizeof(num_nodes_t);
-        out.reset.lb_type = static_cast<ControllerResetMessage::LBType>(*(lb_type_t*)ptr);
-        return true;
+        out.reset_req.lb_type = static_cast<ControllerResetRequest::LBType>(*(lb_type_t*)ptr);
+        break;
     }
-    case TYPE_REPLY: {
-        if (buf_size < REPLY_SIZE) {
+    case TYPE_RESET_REPLY: {
+        if (buf_size < RESET_REPLY_SIZE) {
             return false;
         }
-        out.type = ControllerMessage::Type::REPLY;
-        out.reply.ack = static_cast<Ack>(*(ack_t*)ptr);
-        return true;
+        out.type = ControllerMessage::Type::RESET_REPLY;
+        out.reset_reply.ack = static_cast<Ack>(*(ack_t*)ptr);
+        break;
     }
-    case TYPE_MIGRATION: {
-        if (buf_size < MIGRATION_SIZE) {
+    case TYPE_MIGRATION_REQ: {
+        if (buf_size < MIGRATION_REQ_SIZE) {
             return false;
         }
-        out.type = ControllerMessage::Type::MIGRATION;
-        out.migration.key_range.start = *(keyhash_t*)ptr;
+        out.type = ControllerMessage::Type::MIGRATION_REQ;
+        out.migration_req.key_range.start = *(keyhash_t*)ptr;
         ptr += sizeof(keyhash_t);
-        out.migration.key_range.end = *(keyhash_t*)ptr;
+        out.migration_req.key_range.end = *(keyhash_t*)ptr;
         ptr += sizeof(keyhash_t);
-        out.migration.dst_node_id = *(node_id_t*)ptr;
-        return true;
+        out.migration_req.dst_node_id = *(node_id_t*)ptr;
+        break;
+    }
+    case TYPE_MIGRATION_REPLY: {
+        if (buf_size < MIGRATION_REPLY_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::MIGRATION_REPLY;
+        out.migration_reply.ack = static_cast<Ack>(*(ack_t*)ptr);
+        break;
+    }
+    case TYPE_REGISTER_REQ: {
+        if (buf_size < REGISTER_REQ_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::REGISTER_REQ;
+        out.reg_req.node_id = *(node_id_t*)ptr;
+        break;
+    }
+    case TYPE_REGISTER_REPLY: {
+        if (buf_size < REGISTER_REPLY_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::REGISTER_REPLY;
+        out.reg_reply.key_range.start = *(keyhash_t*)ptr;
+        ptr += sizeof(keyhash_t);
+        out.reg_reply.key_range.end = *(keyhash_t*)ptr;
+        ptr += sizeof(keyhash_t);
+        break;
     }
     default:
         return false;
     }
+    return true;
 }
 
 } // namespace memcachekv

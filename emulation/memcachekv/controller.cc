@@ -15,10 +15,10 @@ Controller::receive_message(const std::string &message, const sockaddr &src_addr
     if (!this->codec.decode(message, msg)) {
         return;
     }
-    if (msg.type != ControllerMessage::Type::REPLY) {
+    if (msg.type != ControllerMessage::Type::RESET_REPLY) {
         return;
     }
-    if (msg.reply.ack == Ack::OK) {
+    if (msg.reset_reply.ack == Ack::OK) {
         std::unique_lock<std::mutex> lck(mtx);
         this->replied = true;
         this->cv.notify_all();

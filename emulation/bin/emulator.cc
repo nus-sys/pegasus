@@ -31,7 +31,7 @@ int main(int argc, char *argv[])
         app_core = -1, transport_core = -1, dscp = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
-    memcachekv::ControllerResetMessage::LBType lb_type = memcachekv::ControllerResetMessage::LBType::STATIC;
+    memcachekv::ControllerResetRequest::LBType lb_type = memcachekv::ControllerResetRequest::LBType::STATIC;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
@@ -74,13 +74,13 @@ int main(int argc, char *argv[])
         }
         case 'k': {
             if (strcmp(optarg, "static") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::LBType::STATIC;
+                lb_type = memcachekv::ControllerResetRequest::LBType::STATIC;
             } else if (strcmp(optarg, "iload") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::LBType::ILOAD;
+                lb_type = memcachekv::ControllerResetRequest::LBType::ILOAD;
             } else if (strcmp(optarg, "pload") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::LBType::PLOAD;
+                lb_type = memcachekv::ControllerResetRequest::LBType::PLOAD;
             } else if (strcmp(optarg, "ipload") == 0) {
-                lb_type = memcachekv::ControllerResetMessage::LBType::IPLOAD;
+                lb_type = memcachekv::ControllerResetRequest::LBType::IPLOAD;
             }
             break;
         }
@@ -258,7 +258,7 @@ int main(int argc, char *argv[])
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
-        app = new memcachekv::Server(&transport, &node_config, codec, ctrl_codec, proc_latency);
+        app = new memcachekv::Server(&transport, &node_config, codec, ctrl_codec, node_id, proc_latency);
         transport.register_node(app, &node_config, node_id);
         node = new Node(node_id, &transport, app, false, app_core, transport_core);
         break;
@@ -271,9 +271,9 @@ int main(int argc, char *argv[])
     }
     case CONTROLLER: {
         memcachekv::ControllerMessage msg;
-        msg.type = memcachekv::ControllerMessage::Type::RESET;
-        msg.reset.num_nodes = num_nodes;
-        msg.reset.lb_type = lb_type;
+        msg.type = memcachekv::ControllerMessage::Type::RESET_REQ;
+        msg.reset_req.num_nodes = num_nodes;
+        msg.reset_req.lb_type = lb_type;
         app = new memcachekv::Controller(&transport, &node_config, msg);
         transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);

@@ -2,7 +2,9 @@
 #define __MEMCACHEKV_SERVER_H__
 
 #include <string>
+#include <map>
 #include <unordered_map>
+#include <set>
 #include "application.h"
 #include "memcachekv/message.h"
 
@@ -14,11 +16,13 @@ public:
            Configuration *config,
            MessageCodec *codec,
            ControllerCodec *ctrl_codec,
+           int node_id,
            int proc_latency = 0)
         : transport(transport),
         config(config),
         codec(codec),
         ctrl_codec(ctrl_codec),
+        node_id(node_id),
         proc_latency(proc_latency) {};
     ~Server() {};
 
@@ -33,14 +37,20 @@ private:
                               const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
-    void migrate_key_to_node(const std::string &key,
-                             int node_id);
+    void process_ctrl_migration(const ControllerMigrationRequest &msg);
+    void process_ctrl_register(const ControllerRegisterReply &msg);
+    bool keyhash_in_range(keyhash_t keyhash);
+    void insert_kv(const std::string &key, keyhash_t keyhash, const std::string &value);
+    void remove_kv(const std::string &key, keyhash_t keyhash);
 
     Transport *transport;
     Configuration *config;
     MessageCodec *codec;
     ControllerCodec *ctrl_codec;
+    std::set<KeyRange, KeyRangeComparator> key_ranges;
+    std::map<keyhash_t, std::set<std::string> > key_hashes;
     std::unordered_map<std::string, std::string> store;
+    int node_id;
     int proc_latency;
 };
 
