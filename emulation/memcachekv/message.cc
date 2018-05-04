@@ -114,6 +114,10 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     case TYPE_MIGRATION_REQUEST: {
         assert(buf_size > MIGRATION_REQUEST_BASE_SIZE);
         out.type = MemcacheKVMessage::Type::MIGRATION_REQUEST;
+        out.migration_request.keyrange.start = *(keyhash_t*)ptr;
+        ptr += sizeof(keyhash_t);
+        out.migration_request.keyrange.end = *(keyhash_t*)ptr;
+        ptr += sizeof(keyhash_t);
         nops_t nops = *(nops_t *)ptr;
         ptr += sizeof(nops_t);
         if (out.migration_request.ops.capacity() < nops) {
@@ -242,6 +246,10 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
+        *(keyhash_t *)ptr = (keyhash_t)in.migration_request.keyrange.start;
+        ptr += sizeof(keyhash_t);
+        *(keyhash_t *)ptr = (keyhash_t)in.migration_request.keyrange.end;
+        ptr += sizeof(keyhash_t);
         *(nops_t *)ptr = (nops_t)in.migration_request.ops.size();
         ptr += sizeof(nops_t);
         for (const auto &op : in.migration_request.ops) {
@@ -318,9 +326,9 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         break;
     }
     case ControllerMessage::Type::MIGRATION_REQ: {
-        *(keyhash_t*)ptr = in.migration_req.key_range.start;
+        *(keyhash_t*)ptr = in.migration_req.keyrange.start;
         ptr += sizeof(keyhash_t);
-        *(keyhash_t*)ptr = in.migration_req.key_range.end;
+        *(keyhash_t*)ptr = in.migration_req.keyrange.end;
         ptr += sizeof(keyhash_t);
         *(node_id_t*)ptr = in.migration_req.dst_node_id;
         break;
@@ -334,9 +342,9 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         break;
     }
     case ControllerMessage::Type::REGISTER_REPLY: {
-        *(keyhash_t*)ptr = in.reg_reply.key_range.start;
+        *(keyhash_t*)ptr = in.reg_reply.keyrange.start;
         ptr += sizeof(keyhash_t);
-        *(keyhash_t*)ptr = in.reg_reply.key_range.end;
+        *(keyhash_t*)ptr = in.reg_reply.keyrange.end;
         ptr += sizeof(keyhash_t);
         break;
     }
@@ -388,9 +396,9 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
             return false;
         }
         out.type = ControllerMessage::Type::MIGRATION_REQ;
-        out.migration_req.key_range.start = *(keyhash_t*)ptr;
+        out.migration_req.keyrange.start = *(keyhash_t*)ptr;
         ptr += sizeof(keyhash_t);
-        out.migration_req.key_range.end = *(keyhash_t*)ptr;
+        out.migration_req.keyrange.end = *(keyhash_t*)ptr;
         ptr += sizeof(keyhash_t);
         out.migration_req.dst_node_id = *(node_id_t*)ptr;
         break;
@@ -416,9 +424,9 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
             return false;
         }
         out.type = ControllerMessage::Type::REGISTER_REPLY;
-        out.reg_reply.key_range.start = *(keyhash_t*)ptr;
+        out.reg_reply.keyrange.start = *(keyhash_t*)ptr;
         ptr += sizeof(keyhash_t);
-        out.reg_reply.key_range.end = *(keyhash_t*)ptr;
+        out.reg_reply.keyrange.end = *(keyhash_t*)ptr;
         ptr += sizeof(keyhash_t);
         break;
     }

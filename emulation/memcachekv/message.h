@@ -9,6 +9,18 @@ namespace memcachekv {
 
 typedef uint32_t keyhash_t;
 
+struct KeyRange {
+    keyhash_t start;
+    keyhash_t end;
+};
+// Comparator for KeyRange
+struct KeyRangeComparator {
+    bool operator() (const KeyRange& lhs, const KeyRange& rhs) const
+    {
+        return lhs.start < rhs.start;
+    }
+};
+
 struct Operation {
     enum class Type {
         GET,
@@ -61,6 +73,7 @@ struct MemcacheKVReply {
 };
 
 struct MigrationRequest {
+    KeyRange keyrange;
     std::vector<Operation> ops;
 };
 
@@ -116,7 +129,7 @@ private:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value
      *
      * Migration request format:
-     * nops (16) + nops * (key_len (16) + key + value_len(16) + value)
+     * range_start (32) + range_end (32) + nops (16) + nops * (key_len (16) + key + value_len(16) + value)
      */
     typedef uint8_t type_t;
     typedef uint8_t rsvd_t;
@@ -139,26 +152,12 @@ private:
         sizeof(op_type_t) + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) +
         sizeof(result_t) + sizeof(value_len_t);
-    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nops_t);
+    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + 2 * sizeof(keyhash_t) + sizeof(nops_t);
 };
 
 enum class Ack {
     OK,
     FAILED
-};
-
-typedef uint32_t keyhash_t;
-
-struct KeyRange {
-    keyhash_t start;
-    keyhash_t end;
-};
-// Comparator for KeyRange
-struct KeyRangeComparator {
-    bool operator() (const KeyRange& lhs, const KeyRange& rhs) const
-    {
-        return lhs.start < rhs.start;
-    }
 };
 
 struct ControllerResetRequest {
@@ -178,7 +177,7 @@ struct ControllerResetReply {
 };
 
 struct ControllerMigrationRequest {
-    KeyRange key_range;
+    KeyRange keyrange;
     int dst_node_id;
 };
 
@@ -191,7 +190,7 @@ struct ControllerRegisterRequest {
 };
 
 struct ControllerRegisterReply {
-    KeyRange key_range;
+    KeyRange keyrange;
 };
 
 struct ControllerMessage {
