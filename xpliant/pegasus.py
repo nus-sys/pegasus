@@ -3,6 +3,7 @@ import threading
 import socket
 import struct
 import math
+import time
 from buildTarget import *
 
 ADDR = ('10.1.1.201', 6780)
@@ -37,14 +38,14 @@ ACK_FAILED = 0x1
 
 
 def encode_hash_range(start, end):
-  entries = []
+  prefixs = []
   marker = 1 << (HASH_SIZE - 1)
   s_marker = 0
   while marker > 0:
     a = start & marker
     b = end & marker
     if a != b:
-      s_maker = marker
+      s_marker = marker
       break
     marker = marker >> 1
   if s_marker == 0:
@@ -117,13 +118,17 @@ class ControllerMessage(object):
 
 
 class PegasusController(threading.Thread):
-  class NodeHash(object):
-    def __init__(self, start=None, end=None, prefix=None, mask=None, prefix_idx=None):
-      self.start = start
-      self.end = end
+  class LPMEntry(object):
+    def __init__(self, prefix=None, mask=None, prefix_idx=None):
       self.prefix = prefix
       self.mask = mask
       self.prefix_idx = prefix_idx
+
+  class NodeHash(object):
+    def __init__(self, start=None, end=None, lpm_entries=[]):
+      self.start = start
+      self.end = end
+      self.lpm_entries = lpm_entries
 
   class Node(object):
     def __init__(self, addr=None):
@@ -158,24 +163,40 @@ class PegasusController(threading.Thread):
 
   def process_reset_req(self, msg, addr):
     # Remove existing routes
-    for node in self.nodes:
+    for node in self.nodes.values():
       for node_hash in node.node_hashes:
-        self.remove_route_lpm(node_hash.prefix, node_hash.mask, node_hash.prefix_idx)
+        for lpm_entry in node_hash.lpm_entries:
+          self.remove_route_lpm(lpm_entry.prefix, 
+              lpm_entry.mask,
+              lpm_entry.prefix_idx)
     self.nodes = {}
 
     # Add new routes
-    nbits = int(math.log(msg.num_nodes, 2))
-    mask = 8 * 12 + nbits
+    t1 = time.time()
+    hashes_per_node = (2 ** HASH_SIZE) / msg.num_nodes
+    start = 0
+    end = start + hashes_per_node - 1
     for i in range(msg.num_nodes):
-      prefix = [0] * 12
-      prefix.append(i << (8 - nbits))
-      prefix.extend([0] * 3)
-      prefix_idx = self.add_route_lpm(prefix, mask, i)
-      start = i << (32 - nbits)
-      end = ((i + 1) << (32 - nbits)) - 1
       node = self.Node()
-      node.node_hashes.append(self.NodeHash(start=start, end=end, prefix=prefix, mask=mask, prefix_idx=prefix_idx))
+
+      lpm_entries = []
+      prefixs = encode_hash_range(start, end)
+      for (prefix, mask) in prefixs:
+        entry_mask = mask + 12 * 8
+        entry_prefix = [0] * 12
+        for j in range(4):
+          entry_prefix.append((prefix & (0xFF << ((3 - j) * 8))) >> ((3 - j) * 8))
+        prefix_idx = self.add_route_lpm(entry_prefix, entry_mask, i)
+        lpm_entries.append(self.LPMEntry(prefix=entry_prefix,
+          mask=entry_mask, prefix_idx=prefix_idx))
+
+      node.node_hashes.append(self.NodeHash(start=start, end=end,
+        lpm_entries=lpm_entries))
       self.nodes[i] = node
+
+      start = end + 1
+      end = start + hashes_per_node - 1
+    t2 = time.time()
 
     # Reply to server
     ctrl_msg = ControllerMessage()
