@@ -591,20 +591,50 @@ class CoTConfig(MemcacheKVConfiguration):
             self.node_loads[node.id] = 0
 
     def key_hash_fn_a(self, key):
-        return self.hash_fn(key, self.hash_seed_a)
+        return self.hash_fn(key, seed=self.hash_seed_a)
 
     def key_hash_fn_b(self, key):
-        return self.hash_fn(key, self.hash_seed_b)
+        return self.hash_fn(key, seed=self.hash_seed_b)
 
     def key_to_nodes(self, key, op_type):
+        dst_node_ids = set([self.key_hash_fn_a(key) % len(self.cache_nodes),
+                            self.key_hash_fn_b(key) % len(self.cache_nodes)])
+
         if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
-            dst_nodes = [self.cache_nodes[self.key_hash_fn_a(key) % len(self.cache_nodes)],
-                         self.cache_nodes[self.key_hash_fn_b(key) % len(self.cache_nodes)]]
+            dst_nodes = [self.cache_nodes[node_id] for node_id in dst_node_ids]
             return MappedNodes(dst_nodes, None)
         else:
             # For GET requests, pick one of the two nodes which has the least load
-            dst_node_ids = [self.key_hash_fn_a(key) % len(self.cache_nodes),
-                            self.key_hash_fn_b(key) % len(self.cache_nodes)]
+            dst_node = [self.cache_nodes[min(dst_node_ids, key=self.node_loads.get)]]
+            return MappedNodes(dst_node, None)
+
+    def report_op_send(self, node, op, time):
+        self.node_loads[node.id] += 1
+
+    def report_op_receive(self, node):
+        self.node_loads[node.id] -= 1
+
+
+class CoNConfig(MemcacheKVConfiguration):
+    def __init__(self, cache_nodes, db_node, write_mode, n):
+        super().__init__(cache_nodes, db_node, write_mode)
+        self.node_loads = {}
+        self.n = n
+        for node in self.cache_nodes:
+            self.node_loads[node.id] = 0
+
+    def key_hash_fn(self, key):
+        return hash(key)
+
+    def key_to_nodes(self, key, op_type):
+        key_hash = self.key_hash_fn(key)
+        dst_node_ids = set(map(lambda x: x % len(self.cache_nodes),
+                               range(key_hash, key_hash + self.n)))
+        if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
+            dst_nodes = [self.cache_nodes[node_id] for node_id in dst_node_ids]
+            return MappedNodes(dst_nodes, None)
+        else:
+            # For GET requests, pick one of the two nodes which has the least load
             dst_node = [self.cache_nodes[min(dst_node_ids, key=self.node_loads.get)]]
             return MappedNodes(dst_node, None)
 
