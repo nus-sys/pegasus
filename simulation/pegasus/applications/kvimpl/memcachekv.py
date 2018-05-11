@@ -6,6 +6,7 @@ import random
 import enum
 from sortedcontainers import SortedList
 from sortedcontainers import SortedDict
+from sortedcontainers import SortedSet
 import pyhash
 
 import pegasus.message
@@ -634,12 +635,63 @@ class CoNConfig(MemcacheKVConfiguration):
             dst_nodes = [self.cache_nodes[node_id] for node_id in dst_node_ids]
             return MappedNodes(dst_nodes, None)
         else:
-            # For GET requests, pick one of the two nodes which has the least load
+            # For GET requests, pick the node which has the least load
             dst_node = [self.cache_nodes[min(dst_node_ids, key=self.node_loads.get)]]
             return MappedNodes(dst_node, None)
 
     def report_op_send(self, node, op, time):
         self.node_loads[node.id] += 1
+
+    def report_op_receive(self, node):
+        self.node_loads[node.id] -= 1
+
+
+class TopKeysReplicatedConfig(MemcacheKVConfiguration):
+    def __init__(self, cache_nodes, db_node, write_mode, nrkeys, nreplicas):
+        super().__init__(cache_nodes, db_node, write_mode)
+        self.nrkeys = nrkeys
+        self.nreplicas = nreplicas
+        self.node_loads = {}
+        self.key_rates = {}
+        self.replicated_keys = SortedSet(key=lambda x: self.key_rates[x].rate())
+        for node in self.cache_nodes:
+            self.node_loads[node.id] = 0
+
+    def key_hash_fn(self, key):
+        return hash(key)
+
+    def key_to_nodes(self, key, op_type):
+        key_hash = self.key_hash_fn(key)
+        if key in self.replicated_keys:
+            dst_node_ids = set(map(lambda x: x % len(self.cache_nodes),
+                                   range(key_hash, key_hash + self.nreplicas)))
+        else:
+            dst_node_ids = [key_hash % len(self.cache_nodes)]
+
+        if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
+            dst_nodes = [self.cache_nodes[node_id] for node_id in dst_node_ids]
+        else:
+            # For GET requests, pick the node which has the least load
+            dst_nodes = [self.cache_nodes[min(dst_node_ids, key=self.node_loads.get)]]
+
+        return MappedNodes(dst_nodes, None)
+
+    def update_replicated_keys(self, key, rate):
+        if self.nrkeys <= 0:
+            return
+        if len(self.replicated_keys) < self.nrkeys:
+            self.replicated_keys.add(key)
+        else:
+            if rate > self.key_rates[self.replicated_keys[0]].rate():
+                del self.replicated_keys[0]
+                self.replicated_keys.add(key)
+
+    def report_op_send(self, node, op, time):
+        self.node_loads[node.id] += 1
+        key_rate = self.key_rates.setdefault(op.key, KeyRate())
+        key_rate.count += 1
+        key_rate.time = time
+        self.update_replicated_keys(op.key, key_rate.rate())
 
     def report_op_receive(self, node):
         self.node_loads[node.id] -= 1
