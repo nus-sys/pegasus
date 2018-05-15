@@ -679,12 +679,89 @@ class TopKeysReplicatedConfig(MemcacheKVConfiguration):
     def update_replicated_keys(self, key, rate):
         if self.nrkeys <= 0:
             return
+        if key in self.replicated_keys:
+            # already replicated
+            return
         if len(self.replicated_keys) < self.nrkeys:
             self.replicated_keys.add(key)
         else:
             if rate > self.key_rates[self.replicated_keys[0]].rate():
                 del self.replicated_keys[0]
                 self.replicated_keys.add(key)
+
+    def report_op_send(self, node, op, time):
+        self.node_loads[node.id] += 1
+        key_rate = self.key_rates.setdefault(op.key, KeyRate())
+        key_rate.count += 1
+        key_rate.time = time
+        self.update_replicated_keys(op.key, key_rate.rate())
+
+    def report_op_receive(self, node):
+        self.node_loads[node.id] -= 1
+
+
+class DynamicTKRConfig(MemcacheKVConfiguration):
+    def __init__(self, cache_nodes, db_node, write_mode, nrkeys, c):
+        super().__init__(cache_nodes, db_node, write_mode)
+        self.nrkeys = nrkeys
+        self.c = c
+        self.node_loads = {}
+        self.key_rates = {}
+        self.replicated_keys = SortedSet(key=lambda x: self.key_rates[x].rate())
+        self.key_node_map = {}
+        self.hash_fn = pyhash.fnv1_32()
+        for node in self.cache_nodes:
+            self.node_loads[node.id] = 0
+
+    def key_hash_fn(self, key):
+        return self.hash_fn(key)
+
+    def key_to_nodes(self, key, op_type):
+        key_hash = self.key_hash_fn(key)
+        migration_requests = None
+        if key in self.replicated_keys:
+            if op_type == kv.Operation.Type.DEL or op_type == kv.Operation.Type.PUT:
+                # For PUT and DEL requests, forward to ANY node that
+                # has the least load, and update the key mapping
+                dst_node_id = min(self.node_loads, key=self.node_loads.get)
+                self.key_node_map[key] = set([dst_node_id])
+            else:
+                # For GET requests, among all updated nodes, pick the one with the least
+                # load. If min load exceeds the bound, replicate on one more node (if not
+                # already replicated on all nodes)
+                dst_node_id = min(self.key_node_map[key], key=self.node_loads.get)
+                if len(self.key_node_map[key]) < len(self.cache_nodes):
+                    bounded_load = self.c * (sum(self.node_loads.values()) / len(self.cache_nodes))
+                    if self.node_loads[dst_node_id] > bounded_load:
+                        min_node_id = min(self.node_loads, key=self.node_loads.get)
+                        assert min_node_id != dst_node_id
+                        self.key_node_map[key].add(min_node_id)
+                        migration_requests = [MemcacheKVRequest.MigrationRequest([key],
+                                                                                 self.cache_nodes[min_node_id])]
+        else:
+            # Non-replicated keys, forward to consistent hashing mapped node
+            dst_node_id = key_hash % len(self.cache_nodes)
+
+        return MappedNodes([self.cache_nodes[dst_node_id]], migration_requests)
+
+    def add_replicated_key(self, key):
+        self.replicated_keys.add(key)
+        self.key_node_map[key] = set([self.key_hash_fn(key) % len(self.cache_nodes)])
+
+    def update_replicated_keys(self, key, rate):
+        if self.nrkeys <= 0:
+            return
+        if key in self.replicated_keys:
+            # already replicated
+            return
+        assert key not in self.key_node_map
+        if len(self.replicated_keys) < self.nrkeys:
+            self.add_replicated_key(key)
+        else:
+            if rate > self.key_rates[self.replicated_keys[0]].rate():
+                del self.key_node_map[self.replicated_keys[0]]
+                del self.replicated_keys[0]
+                self.add_replicated_key(key)
 
     def report_op_send(self, node, op, time):
         self.node_loads[node.id] += 1

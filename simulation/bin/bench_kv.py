@@ -150,7 +150,8 @@ if __name__ == "__main__":
                                  'dch',
                                  'cot',
                                  'con',
-                                 'tkr'],
+                                 'tkr',
+                                 'dtkr'],
                         help="configuration type for memcachekv")
     parser.add_argument('--loadbound', type=float, default=1.0, help="Bounded load configuration load constant")
     parser.add_argument('--writemode', default='update', choices=['anynode', 'update', 'invalidate'],
@@ -159,7 +160,7 @@ if __name__ == "__main__":
                         help="mode for ipload configuration")
     parser.add_argument('--hashspace', type=int, default=1024*1024, help="Hash space for consistent hashing")
     parser.add_argument('--ncon', type=int, default=1, help="Number of choices for CoN/TKR configuration")
-    parser.add_argument('--nrkeys', type=int, default=1, help="Number of replicated keys for TKR configuration")
+    parser.add_argument('--nrkeys', type=int, default=0, help="Number of replicated keys for TKR configuration")
     args = parser.parse_args()
 
     # Construct keys
@@ -263,6 +264,13 @@ if __name__ == "__main__":
                                                         write_mode,
                                                         args.nrkeys,
                                                         args.ncon)
+        elif args.configtype == 'dtkr':
+            assert args.loadbound >= 1.0
+            config = memcachekv.DynamicTKRConfig(cache_nodes,
+                                                 None,
+                                                 write_mode,
+                                                 args.nrkeys,
+                                                 args.loadbound)
 
         client_app = memcachekv.MemcacheKVClient(generator, stats)
         if args.configtype == 'routing':
