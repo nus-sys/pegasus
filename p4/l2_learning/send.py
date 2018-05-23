@@ -9,6 +9,10 @@ from scapy.all import sendp, send, get_if_list, get_if_hwaddr
 from scapy.all import Packet
 from scapy.all import Ether, IP, UDP, TCP
 
+mac_addrs = {"10.0.0.1" : "00:00:00:00:00:01",
+             "10.0.0.2" : "00:00:00:00:00:02",
+             "10.0.0.3" : "00:00:00:00:00:03"}
+
 def get_if():
     ifs=get_if_list()
     iface=None # "h1-eth0"
@@ -31,7 +35,7 @@ def main():
     iface = get_if()
 
     print "sending on interface %s to %s" % (iface, str(addr))
-    pkt =  Ether(src=get_if_hwaddr(iface), dst='ff:ff:ff:ff:ff:ff')
+    pkt =  Ether(src=get_if_hwaddr(iface), dst=mac_addrs[str(addr)])
     pkt = pkt /IP(dst=addr) / TCP(dport=1234, sport=random.randint(49152,65535)) / sys.argv[2]
     pkt.show2()
     sendp(pkt, iface=iface, verbose=False)

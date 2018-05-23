@@ -1,4 +1,6 @@
 *.json
+!*p4app.json
+!topology.json
 *.pcap
 build/
 logs/
