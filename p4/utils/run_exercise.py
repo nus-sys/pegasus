@@ -93,8 +93,8 @@ class ExerciseTopo(Topo):
             host_sw   = link['node2']
             host_num = int(host_name[1:])
             sw_num   = int(host_sw[1:])
-            host_ip = "10.0.%d.%d" % (sw_num, host_num)
-            host_mac = '00:00:00:00:%02x:%02x' % (sw_num, host_num)
+            host_ip = "10.0.0.%d" % (host_num)
+            host_mac = '00:00:00:00:00:%02x' % (host_num)
             # Each host IP should be /24, so all exercise traffic will use the
             # default gateway (the switch) without sending ARP requests.
             self.addHost(host_name, ip=host_ip+'/24', mac=host_mac)
