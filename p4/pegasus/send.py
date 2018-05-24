@@ -8,10 +8,18 @@ import struct
 from scapy.all import sendp, send, get_if_list, get_if_hwaddr
 from scapy.all import Packet
 from scapy.all import Ether, IP, UDP, TCP
+from scapy.all import ByteField, IntField
 
 mac_addrs = {"10.0.0.1" : "00:00:00:00:00:01",
              "10.0.0.2" : "00:00:00:00:00:02",
              "10.0.0.3" : "00:00:00:00:00:03"}
+
+PEGASUS_PORT = 0xBEDA
+
+class Pegasus(Packet):
+    name = "PEGASUS"
+    fields_desc = [ByteField("op", None),
+                   IntField("keyhash", None)]
 
 def get_if():
     ifs=get_if_list()
@@ -27,16 +35,18 @@ def get_if():
 
 def main():
 
-    if len(sys.argv)<3:
-        print 'pass 2 arguments: <destination> "<message>"'
+    if len(sys.argv)<5:
+        print 'pass 4 arguments: <destination> <op> <keyhash> "<message>"'
         exit(1)
 
     addr = socket.gethostbyname(sys.argv[1])
+    op = int(sys.argv[2])
+    keyhash = int(sys.argv[3])
     iface = get_if()
 
     print "sending on interface %s to %s" % (iface, str(addr))
     pkt =  Ether(src=get_if_hwaddr(iface), dst=mac_addrs[str(addr)])
-    pkt = pkt /IP(dst=addr) / TCP(dport=1234, sport=random.randint(49152,65535)) / sys.argv[2]
+    pkt = pkt /IP(dst=addr) / UDP(dport=PEGASUS_PORT, sport=random.randint(49152,65535)) / Pegasus(op=op, keyhash=keyhash) / sys.argv[3]
     pkt.show2()
     sendp(pkt, iface=iface, verbose=False)
 

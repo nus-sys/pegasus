@@ -10,6 +10,10 @@ mac_table = {"00:00:00:00:00:01" : 1,
              "00:00:00:00:00:02" : 2,
              "00:00:00:00:00:03" : 3}
 
+rkey_table = {0 : 1,
+              1 : 2,
+              2 : 3}
+
 def writeL2ForwardingRules(p4info_helper, sw):
     for (addr, port) in mac_table.items():
         table_entry = p4info_helper.buildTableEntry(
@@ -23,6 +27,21 @@ def writeL2ForwardingRules(p4info_helper, sw):
             })
         sw.WriteTableEntry(table_entry)
     print "Installed l2 forwarding rules on %s" % sw.name
+
+
+def writeRKeyForwardingRules(p4info_helper, sw):
+    for (op, port) in rkey_table.items():
+        table_entry = p4info_helper.buildTableEntry(
+            table_name="MyIngress.replicated_keys",
+            match_fields={
+                "hdr.pegasus.op": op
+            },
+            action_name="MyIngress.rkey_forward",
+            action_params={
+                "port": port,
+            })
+        sw.WriteTableEntry(table_entry)
+    print "Installed RKey forwarding rules on %s" % sw.name
 
 
 def readTableRules(p4info_helper, sw):
@@ -58,6 +77,7 @@ def main(p4info_file_path, bmv2_file_path):
 
     # Write hard-coded L2 forwarding rules
     writeL2ForwardingRules(p4info_helper, s1)
+    writeRKeyForwardingRules(p4info_helper, s1)
 
     # Read table entries
     readTableRules(p4info_helper, s1)
