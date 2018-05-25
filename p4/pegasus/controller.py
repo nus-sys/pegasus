@@ -10,9 +10,8 @@ mac_table = {"00:00:00:00:00:01" : 1,
              "00:00:00:00:00:02" : 2,
              "00:00:00:00:00:03" : 3}
 
-rkey_table = {0 : 1,
-              1 : 2,
-              2 : 3}
+rkey_table = {16 : ("00:00:00:00:00:01", "10.0.0.1", 1),
+              32 : ("00:00:00:00:00:02", "10.0.0.2", 2)}
 
 def writeL2ForwardingRules(p4info_helper, sw):
     for (addr, port) in mac_table.items():
@@ -30,14 +29,16 @@ def writeL2ForwardingRules(p4info_helper, sw):
 
 
 def writeRKeyForwardingRules(p4info_helper, sw):
-    for (op, port) in rkey_table.items():
+    for (keyhash, (mac_addr, ip_addr, port)) in rkey_table.items():
         table_entry = p4info_helper.buildTableEntry(
             table_name="MyIngress.replicated_keys",
             match_fields={
-                "hdr.pegasus.op": op
+                "hdr.pegasus.keyhash": keyhash
             },
             action_name="MyIngress.rkey_forward",
             action_params={
+                "macAddr": mac_addr,
+                "ip4Addr": ip_addr,
                 "port": port,
             })
         sw.WriteTableEntry(table_entry)

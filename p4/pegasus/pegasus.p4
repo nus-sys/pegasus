@@ -140,13 +140,15 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
-    action rkey_forward(egressSpec_t port) {
+    action rkey_forward(macAddr_t macAddr, ip4Addr_t ip4Addr, egressSpec_t port) {
+        hdr.ethernet.dstAddr = macAddr;
+        hdr.ipv4.dstAddr = ip4Addr;
         standard_metadata.egress_spec = port;
     }
 
     table replicated_keys {
         key = {
-            hdr.pegasus.op: exact;
+            hdr.pegasus.keyhash: exact;
         }
         actions = {
             rkey_forward;
@@ -185,7 +187,21 @@ control MyEgress(inout headers hdr,
 
 control MyComputeChecksum(inout headers hdr, inout metadata meta) {
      apply {
-         /* empty */
+	update_checksum(
+	    hdr.ipv4.isValid(),
+            { hdr.ipv4.version,
+	      hdr.ipv4.ihl,
+              hdr.ipv4.diffserv,
+              hdr.ipv4.totalLen,
+              hdr.ipv4.identification,
+              hdr.ipv4.flags,
+              hdr.ipv4.fragOffset,
+              hdr.ipv4.ttl,
+              hdr.ipv4.protocol,
+              hdr.ipv4.srcAddr,
+              hdr.ipv4.dstAddr },
+            hdr.ipv4.hdrChecksum,
+            HashAlgorithm.csum16);
     }
 }
 
