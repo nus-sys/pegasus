@@ -12,6 +12,7 @@ typedef bit<32> ip4Addr_t;
 typedef bit<16> udpPort_t;
 typedef bit<8>  op_t;
 typedef bit<32> keyhash_t;
+typedef bit<16> load_t;
 
 const bit<16> TYPE_IPV4 = 0x800;
 const bit<8> PROTO_UDP = 0x11;
@@ -51,10 +52,11 @@ header udp_t {
 header pegasus_t {
     op_t        op;
     keyhash_t   keyhash;
+    load_t      load;
 }
 
 struct metadata {
-    /* empty */
+    egressSpec_t dstPort;
 }
 
 struct headers {
@@ -63,6 +65,11 @@ struct headers {
     udp_t        udp;
     pegasus_t    pegasus;
 }
+
+/*************************************************************************
+*********************** STATEFUL MEMORY  *******************************
+*************************************************************************/
+register<load_t>(32) node_load;
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
@@ -128,7 +135,7 @@ control MyIngress(inout headers hdr,
         standard_metadata.egress_spec = port;
     }
 
-    table mac {
+    table tab_mac {
         key = {
             hdr.ethernet.dstAddr: exact;
         }
@@ -146,12 +153,45 @@ control MyIngress(inout headers hdr,
         standard_metadata.egress_spec = port;
     }
 
-    table replicated_keys {
+    table tab_rkey_forward {
+        key = {
+            meta.dstPort: exact;
+        }
+        actions = {
+            rkey_forward;
+            drop;
+        }
+        size = 32;
+        default_action = drop();
+    }
+
+    action lookup_min_load() {
+        // Currently only 2 nodes
+        load_t min_load;
+        load_t load;
+        node_load.read(min_load, 1);
+        node_load.read(load, 2);
+        meta.dstPort = 1;
+        if (load < min_load) {
+            min_load = load;
+            meta.dstPort = 2;
+        }
+        min_load = min_load + 1;
+        node_load.write((bit<32>)meta.dstPort, min_load);
+    }
+
+    table tab_min_load {
+        actions = {
+            lookup_min_load;
+        }
+        default_action = lookup_min_load();
+    }
+
+    table tab_replicated_keys {
         key = {
             hdr.pegasus.keyhash: exact;
         }
         actions = {
-            rkey_forward;
             NoAction;
         }
         size = 8;
@@ -160,13 +200,18 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (hdr.pegasus.isValid()) {
-            if (!replicated_keys.apply().hit) {
+            if (tab_replicated_keys.apply().hit) {
+                // If key is replicated, find the node
+                // with the minimum load to forward to
+                tab_min_load.apply();
+                tab_rkey_forward.apply();
+            } else {
                 // If key not replicated, forward using L2
-                mac.apply();
+                tab_mac.apply();
             }
         } else if (hdr.ethernet.isValid()) {
             // All other packets use L2 forwarding
-            mac.apply();
+            tab_mac.apply();
         }
     }
 }

@@ -8,7 +8,7 @@ import struct
 from scapy.all import sendp, send, get_if_list, get_if_hwaddr
 from scapy.all import Packet
 from scapy.all import Ether, IP, UDP, TCP
-from scapy.all import ByteField, IntField
+from scapy.all import ByteField, ShortField, IntField
 
 mac_addrs = {"10.0.0.1" : "00:00:00:00:00:01",
              "10.0.0.2" : "00:00:00:00:00:02",
@@ -19,7 +19,8 @@ PEGASUS_PORT = 0xBEDA
 class Pegasus(Packet):
     name = "PEGASUS"
     fields_desc = [ByteField("op", None),
-                   IntField("keyhash", None)]
+                   IntField("keyhash", None),
+                   ShortField("load", 0)]
 
 def get_if():
     ifs=get_if_list()
