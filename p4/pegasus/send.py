@@ -14,11 +14,10 @@ mac_addrs = {"10.0.0.1" : "00:00:00:00:00:01",
              "10.0.0.2" : "00:00:00:00:00:02",
              "10.0.0.3" : "00:00:00:00:00:03"}
 
-PEGASUS_PORT = 0xBEDA
-
 class Pegasus(Packet):
     name = "PEGASUS"
-    fields_desc = [ByteField("op", None),
+    fields_desc = [ShortField("id", 0x5047),
+                   ByteField("op", None),
                    IntField("keyhash", None),
                    ShortField("load", 0)]
 
@@ -47,7 +46,7 @@ def main():
 
     print "sending on interface %s to %s" % (iface, str(addr))
     pkt =  Ether(src=get_if_hwaddr(iface), dst=mac_addrs[str(addr)])
-    pkt = pkt /IP(dst=addr) / UDP(dport=PEGASUS_PORT, sport=random.randint(49152,65535)) / Pegasus(op=op, keyhash=keyhash) / sys.argv[3]
+    pkt = pkt /IP(dst=addr) / UDP(dport=12345, sport=random.randint(49152,65535)) / Pegasus(op=op, keyhash=keyhash) / sys.argv[3]
     pkt.show2()
     sendp(pkt, iface=iface, verbose=False)
 

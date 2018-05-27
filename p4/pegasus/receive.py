@@ -9,8 +9,6 @@ from scapy.all import ShortField, IntField, LongField, BitField, FieldListField,
 from scapy.all import IP, TCP, UDP, Raw
 from scapy.layers.inet import _IPOption_HDR
 
-PEGASUS_PORT= 0xBEDA
-
 def get_if():
     ifs=get_if_list()
     iface=None
@@ -36,7 +34,7 @@ class IPOption_MRI(IPOption):
                                    IntField("", 0),
                                    length_from=lambda pkt:pkt.count*4) ]
 def handle_pkt(pkt):
-    if UDP in pkt and pkt[UDP].dport == PEGASUS_PORT:
+    if UDP in pkt and pkt[UDP].dport == 12345:
         print "got a packet"
         pkt.show2()
     #    hexdump(pkt)

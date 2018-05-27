@@ -19,7 +19,8 @@ const bit<8> PROTO_UDP = 0x11;
 const op_t OP_GET = 0x0;
 const op_t OP_PUT = 0x1;
 const op_t OP_DEL = 0x2;
-const udpPort_t PEGASUS_PORT = 0xBEDA;
+const op_t OP_REP = 0x3;
+const bit<16> PEGASUS_ID = 0x5047; //PG
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -50,6 +51,7 @@ header udp_t {
 }
 
 header pegasus_t {
+    bit<16>     id;
     op_t        op;
     keyhash_t   keyhash;
     load_t      load;
@@ -98,8 +100,8 @@ parser MyParser(packet_in packet,
 
     state parse_udp {
         packet.extract(hdr.udp);
-        transition select (hdr.udp.dstPort) {
-            PEGASUS_PORT: parse_pegasus;
+        transition select(packet.lookahead<pegasus_t>().id) {
+            PEGASUS_ID : parse_pegasus;
             default: accept;
         }
     }
