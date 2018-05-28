@@ -13,6 +13,7 @@ typedef bit<16> udpPort_t;
 typedef bit<8>  op_t;
 typedef bit<32> keyhash_t;
 typedef bit<16> load_t;
+typedef bit<4>  node_t;
 
 const bit<16> TYPE_IPV4 = 0x800;
 const bit<8> PROTO_UDP = 0x11;
@@ -21,6 +22,7 @@ const op_t OP_PUT = 0x1;
 const op_t OP_DEL = 0x2;
 const op_t OP_REP = 0x3;
 const bit<16> PEGASUS_ID = 0x5047; //PG
+const bit<32> HASH_MASK = 0x3; // Max 4 nodes
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -58,7 +60,15 @@ header pegasus_t {
 }
 
 struct metadata {
-    egressSpec_t dstPort;
+    bit<32> rkey_index;
+    bit<1> update_rkey;
+    node_t dstNode;
+    load_t minLoad;
+    bit<3> nReplicas;
+    node_t node_1;
+    node_t node_2;
+    node_t node_3;
+    node_t node_4;
 }
 
 struct headers {
@@ -72,6 +82,7 @@ struct headers {
 *********************** STATEFUL MEMORY  *******************************
 *************************************************************************/
 register<load_t>(32) node_load;
+register<bit<64>>(32) replicated_keys; // Format: keyhash + nreplicas(3) + node1(4) + node2(4) + ... (max 4 replicas)
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
@@ -157,7 +168,7 @@ control MyIngress(inout headers hdr,
 
     table tab_rkey_forward {
         key = {
-            meta.dstPort: exact;
+            meta.dstNode: exact;
         }
         actions = {
             rkey_forward;
@@ -167,26 +178,112 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
-    action lookup_min_load() {
-        // Currently only 2 nodes
-        load_t min_load;
+    action update_load() {
         load_t load;
-        node_load.read(min_load, 1);
-        node_load.read(load, 2);
-        meta.dstPort = 1;
-        if (load < min_load) {
-            min_load = load;
-            meta.dstPort = 2;
-        }
-        min_load = min_load + 1;
-        node_load.write((bit<32>)meta.dstPort, min_load);
+        node_load.read(load, (bit<32>)meta.dstNode);
+        load = load + 1;
+        node_load.write((bit<32>)meta.dstNode, load);
     }
 
-    table tab_min_load {
+    table tab_update_load {
         actions = {
-            lookup_min_load;
+            update_load;
         }
-        default_action = lookup_min_load();
+        default_action = update_load();
+    }
+
+    action lookup_min_load4() {
+        load_t load;
+        node_load.read(load, (bit<32>)meta.node_4);
+        if (load < meta.minLoad) {
+            meta.dstNode = meta.node_4;
+            meta.minLoad = load;
+        }
+    }
+
+    table tab_min_load4 {
+        actions = {
+            lookup_min_load4;
+        }
+        default_action = lookup_min_load4();
+    }
+
+    action lookup_min_load3() {
+        load_t load;
+        node_load.read(load, (bit<32>)meta.node_3);
+        if (load < meta.minLoad) {
+            meta.dstNode = meta.node_3;
+            meta.minLoad = load;
+        }
+    }
+
+    table tab_min_load3 {
+        actions = {
+            lookup_min_load3;
+        }
+        default_action = lookup_min_load3();
+    }
+
+    action lookup_min_load2() {
+        load_t load;
+        node_load.read(load, (bit<32>)meta.node_2);
+        if (load < meta.minLoad) {
+            meta.dstNode = meta.node_2;
+            meta.minLoad = load;
+        }
+    }
+
+    table tab_min_load2 {
+        actions = {
+            lookup_min_load2;
+        }
+        default_action = lookup_min_load2();
+    }
+
+    action lookup_min_load1() {
+        node_load.read(meta.minLoad, (bit<32>)meta.node_1);
+        meta.dstNode = meta.node_1;
+    }
+
+    table tab_min_load1 {
+        actions = {
+            lookup_min_load1;
+        }
+        default_action = lookup_min_load1();
+    }
+
+    action init_rkey() {
+        bit<64> rkey = 0;
+        rkey[31:0] = hdr.pegasus.keyhash;
+        rkey[34:32] = 1;
+        rkey[38:35] = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
+        meta.dstNode = rkey[38:35];
+        replicated_keys.write(meta.rkey_index, rkey);
+    }
+
+    table tab_init_rkey {
+        actions = {
+            init_rkey;
+        }
+        default_action = init_rkey();
+    }
+
+    action lookup_replicated_key(bit<32> index) {
+        bit<64> rkey;
+        replicated_keys.read(rkey, index);
+        meta.rkey_index = index;
+        if (rkey[31:0] != hdr.pegasus.keyhash) {
+            // Replicated key has changed
+            // or is uninitialized
+            meta.update_rkey = 1;
+        } else {
+            meta.update_rkey = 0;
+            meta.nReplicas = rkey[34:32];
+            meta.node_1 = rkey[38:35];
+            meta.node_2 = rkey[42:39];
+            meta.node_3 = rkey[45:42];
+            meta.node_4 = rkey[48:45];
+        }
     }
 
     table tab_replicated_keys {
@@ -194,9 +291,10 @@ control MyIngress(inout headers hdr,
             hdr.pegasus.keyhash: exact;
         }
         actions = {
+            lookup_replicated_key;
             NoAction;
         }
-        size = 8;
+        size = 32;
         default_action = NoAction();
     }
 
@@ -205,7 +303,25 @@ control MyIngress(inout headers hdr,
             if (tab_replicated_keys.apply().hit) {
                 // If key is replicated, find the node
                 // with the minimum load to forward to
-                tab_min_load.apply();
+                if (meta.update_rkey == 1) {
+                    // Key is either changed or uninitialized
+                    tab_init_rkey.apply();
+                } else {
+                    tab_min_load1.apply();
+                    meta.nReplicas = meta.nReplicas - 1;
+                    if (meta.nReplicas > 0) {
+                        tab_min_load2.apply();
+                        meta.nReplicas = meta.nReplicas - 1;
+                        if (meta.nReplicas > 0) {
+                            tab_min_load3.apply();
+                            meta.nReplicas = meta.nReplicas - 1;
+                            if (meta.nReplicas > 0) {
+                                tab_min_load4.apply();
+                            }
+                        }
+                    }
+                }
+                tab_update_load.apply();
                 tab_rkey_forward.apply();
             } else {
                 // If key not replicated, forward using L2

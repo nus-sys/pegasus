@@ -12,7 +12,10 @@ from scapy.all import ByteField, ShortField, IntField
 
 mac_addrs = {"10.0.0.1" : "00:00:00:00:00:01",
              "10.0.0.2" : "00:00:00:00:00:02",
-             "10.0.0.3" : "00:00:00:00:00:03"}
+             "10.0.0.3" : "00:00:00:00:00:03",
+             "10.0.0.4" : "00:00:00:00:00:04",
+             "10.0.0.5" : "00:00:00:00:00:05"
+             }
 
 class Pegasus(Packet):
     name = "PEGASUS"
@@ -46,7 +49,7 @@ def main():
 
     print "sending on interface %s to %s" % (iface, str(addr))
     pkt =  Ether(src=get_if_hwaddr(iface), dst=mac_addrs[str(addr)])
-    pkt = pkt /IP(dst=addr) / UDP(dport=12345, sport=random.randint(49152,65535)) / Pegasus(op=op, keyhash=keyhash) / sys.argv[3]
+    pkt = pkt /IP(dst=addr) / UDP(dport=12345, sport=random.randint(49152,65535)) / Pegasus(op=op, keyhash=keyhash) / sys.argv[4]
     pkt.show2()
     sendp(pkt, iface=iface, verbose=False)
 

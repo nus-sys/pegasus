@@ -8,11 +8,17 @@ import p4runtime_lib.helper
 
 mac_table = {"00:00:00:00:00:01" : 1,
              "00:00:00:00:00:02" : 2,
-             "00:00:00:00:00:03" : 3}
+             "00:00:00:00:00:03" : 3,
+             "00:00:00:00:00:04" : 4,
+             "00:00:00:00:00:05" : 5,
+             }
 
-rkeys = [16, 32]
-rkey_forward_table = {1 : ("00:00:00:00:00:01", "10.0.0.1", 1),
-                      2 : ("00:00:00:00:00:02", "10.0.0.2", 2)}
+rkeys_table = {16 : 0,
+               32 : 1}
+rkey_forward_table = {0 : ("00:00:00:00:00:01", "10.0.0.1", 1),
+                      1 : ("00:00:00:00:00:02", "10.0.0.2", 2),
+                      2 : ("00:00:00:00:00:03", "10.0.0.3", 3),
+                      3 : ("00:00:00:00:00:04", "10.0.0.4", 4)}
 
 def writeL2ForwardingRules(p4info_helper, sw):
     for (addr, port) in mac_table.items():
@@ -30,20 +36,22 @@ def writeL2ForwardingRules(p4info_helper, sw):
 
 
 def writeRKeyForwardingRules(p4info_helper, sw):
-    for keyhash in rkeys:
+    for (keyhash, index) in rkeys_table.items():
         table_entry = p4info_helper.buildTableEntry(
             table_name="MyIngress.tab_replicated_keys",
             match_fields={
                 "hdr.pegasus.keyhash": keyhash
             },
-            action_name="NoAction",
-            action_params={ })
+            action_name="MyIngress.lookup_replicated_key",
+            action_params={
+                "index": index
+            })
         sw.WriteTableEntry(table_entry)
-    for (keyhash, (macAddr, ipAddr, port)) in rkey_forward_table.items():
+    for (node, (macAddr, ipAddr, port)) in rkey_forward_table.items():
         table_entry = p4info_helper.buildTableEntry(
             table_name="MyIngress.tab_rkey_forward",
             match_fields={
-                "meta.dstPort": keyhash
+                "meta.dstNode": node
             },
             action_name="MyIngress.rkey_forward",
             action_params={
