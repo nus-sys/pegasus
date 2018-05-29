@@ -6,6 +6,7 @@ from time import sleep
 import p4runtime_lib.bmv2
 import p4runtime_lib.helper
 
+# macAddr -> port
 mac_table = {"00:00:00:00:00:01" : 1,
              "00:00:00:00:00:02" : 2,
              "00:00:00:00:00:03" : 3,
@@ -13,9 +14,11 @@ mac_table = {"00:00:00:00:00:01" : 1,
              "00:00:00:00:00:05" : 5,
              }
 
+# keyhash -> tab_rkey index
 rkeys_table = {16 : 0,
                32 : 1}
-rkey_forward_table = {0 : ("00:00:00:00:00:01", "10.0.0.1", 1),
+# node_id -> (macAddr, ipAddr, port)
+node_forward_table = {0 : ("00:00:00:00:00:01", "10.0.0.1", 1),
                       1 : ("00:00:00:00:00:02", "10.0.0.2", 2),
                       2 : ("00:00:00:00:00:03", "10.0.0.3", 3),
                       3 : ("00:00:00:00:00:04", "10.0.0.4", 4)}
@@ -47,13 +50,13 @@ def writeRKeyForwardingRules(p4info_helper, sw):
                 "index": index
             })
         sw.WriteTableEntry(table_entry)
-    for (node, (macAddr, ipAddr, port)) in rkey_forward_table.items():
+    for (node, (macAddr, ipAddr, port)) in node_forward_table.items():
         table_entry = p4info_helper.buildTableEntry(
-            table_name="MyIngress.tab_rkey_forward",
+            table_name="MyIngress.tab_node_forward",
             match_fields={
                 "meta.dstNode": node
             },
-            action_name="MyIngress.rkey_forward",
+            action_name="MyIngress.node_forward",
             action_params={
                 "macAddr": macAddr,
                 "ip4Addr": ipAddr,

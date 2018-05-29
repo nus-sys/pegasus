@@ -160,36 +160,36 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
-    action rkey_forward(macAddr_t macAddr, ip4Addr_t ip4Addr, egressSpec_t port) {
+    action node_forward(macAddr_t macAddr, ip4Addr_t ip4Addr, egressSpec_t port) {
         hdr.ethernet.dstAddr = macAddr;
         hdr.ipv4.dstAddr = ip4Addr;
         standard_metadata.egress_spec = port;
     }
 
-    table tab_rkey_forward {
+    table tab_node_forward {
         key = {
             meta.dstNode: exact;
         }
         actions = {
-            rkey_forward;
+            node_forward;
             drop;
         }
         size = 32;
         default_action = drop();
     }
 
-    action update_load() {
+    action update_node_load() {
         load_t load;
         node_load.read(load, (bit<32>)meta.dstNode);
         load = load + 1;
         node_load.write((bit<32>)meta.dstNode, load);
     }
 
-    table tab_update_load {
+    table tab_update_node_load {
         actions = {
-            update_load;
+            update_node_load;
         }
-        default_action = update_load();
+        default_action = update_node_load();
     }
 
     action lookup_min_load4() {
@@ -321,12 +321,13 @@ control MyIngress(inout headers hdr,
                         }
                     }
                 }
-                tab_update_load.apply();
-                tab_rkey_forward.apply();
             } else {
-                // If key not replicated, forward using L2
-                tab_mac.apply();
+                // If key not replicated, forward using
+                // keyhash
+                meta.dstNode = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
             }
+            tab_update_node_load.apply();
+            tab_node_forward.apply();
         } else if (hdr.ethernet.isValid()) {
             // All other packets use L2 forwarding
             tab_mac.apply();
