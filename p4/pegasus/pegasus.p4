@@ -56,6 +56,8 @@ header pegasus_t {
     bit<16>     id;
     op_t        op;
     keyhash_t   keyhash;
+    node_t      node;
+    bit<4>      pad;
     load_t      load;
 }
 
@@ -178,18 +180,37 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
-    action update_node_load() {
+    action dec_node_load() {
         load_t load;
         node_load.read(load, (bit<32>)meta.dstNode);
-        load = load + 1;
+        if (load > 0) {
+            load = load - 1;
+        }
         node_load.write((bit<32>)meta.dstNode, load);
     }
 
-    table tab_update_node_load {
+    table tab_dec_node_load {
         actions = {
-            update_node_load;
+            dec_node_load;
         }
-        default_action = update_node_load();
+        default_action = dec_node_load();
+    }
+
+    action inc_node_load() {
+        load_t load;
+        node_load.read(load, (bit<32>)meta.dstNode);
+        if (load + 1 > load) {
+            // Prevent overflow
+            load = load + 1;
+        }
+        node_load.write((bit<32>)meta.dstNode, load);
+    }
+
+    table tab_inc_node_load {
+        actions = {
+            inc_node_load;
+        }
+        default_action = inc_node_load();
     }
 
     action lookup_min_load4() {
@@ -300,34 +321,41 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (hdr.pegasus.isValid()) {
-            if (tab_replicated_keys.apply().hit) {
-                // If key is replicated, find the node
-                // with the minimum load to forward to
-                if (meta.update_rkey == 1) {
-                    // Key is either changed or uninitialized
-                    tab_init_rkey.apply();
-                } else {
-                    tab_min_load1.apply();
-                    meta.nReplicas = meta.nReplicas - 1;
-                    if (meta.nReplicas > 0) {
-                        tab_min_load2.apply();
+            if (hdr.pegasus.op == OP_REP) {
+                meta.dstNode = hdr.pegasus.node;
+                tab_dec_node_load.apply();
+                // Reply messages use L2 forwarding
+                tab_mac.apply();
+            } else {
+                if (tab_replicated_keys.apply().hit) {
+                    // If key is replicated, find the node
+                    // with the minimum load to forward to
+                    if (meta.update_rkey == 1) {
+                        // Key is either changed or uninitialized
+                        tab_init_rkey.apply();
+                    } else {
+                        tab_min_load1.apply();
                         meta.nReplicas = meta.nReplicas - 1;
                         if (meta.nReplicas > 0) {
-                            tab_min_load3.apply();
+                            tab_min_load2.apply();
                             meta.nReplicas = meta.nReplicas - 1;
                             if (meta.nReplicas > 0) {
-                                tab_min_load4.apply();
+                                tab_min_load3.apply();
+                                meta.nReplicas = meta.nReplicas - 1;
+                                if (meta.nReplicas > 0) {
+                                    tab_min_load4.apply();
+                                }
                             }
                         }
                     }
+                } else {
+                    // If key not replicated, forward using
+                    // keyhash
+                    meta.dstNode = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
                 }
-            } else {
-                // If key not replicated, forward using
-                // keyhash
-                meta.dstNode = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
+                tab_inc_node_load.apply();
+                tab_node_forward.apply();
             }
-            tab_update_node_load.apply();
-            tab_node_forward.apply();
         } else if (hdr.ethernet.isValid()) {
             // All other packets use L2 forwarding
             tab_mac.apply();
