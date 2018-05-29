@@ -281,8 +281,8 @@ control MyIngress(inout headers hdr,
             meta.nReplicas = rkey[34:32];
             meta.node_1 = rkey[38:35];
             meta.node_2 = rkey[42:39];
-            meta.node_3 = rkey[45:42];
-            meta.node_4 = rkey[48:45];
+            meta.node_3 = rkey[46:43];
+            meta.node_4 = rkey[50:47];
         }
     }
 
