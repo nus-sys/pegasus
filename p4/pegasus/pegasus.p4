@@ -23,6 +23,7 @@ const op_t OP_DEL = 0x2;
 const op_t OP_REP = 0x3;
 const bit<16> PEGASUS_ID = 0x5047; //PG
 const bit<32> HASH_MASK = 0x3; // Max 4 nodes
+const load_t MIN_NLOAD_INIT_VALUE = 0xFFFF;
 
 header ethernet_t {
     macAddr_t dstAddr;
@@ -62,11 +63,16 @@ header pegasus_t {
 }
 
 struct metadata {
+    node_t dst_node;
+    load_t nload;
+    load_t total_nload;
+    load_t min_nload;
+    node_t min_nload_node;
+    // replicated keys
     bit<32> rkey_index;
     bit<1> update_rkey;
-    node_t dstNode;
-    load_t minLoad;
-    bit<3> nReplicas;
+    load_t min_rload;
+    bit<3> n_replicas;
     node_t node_1;
     node_t node_2;
     node_t node_3;
@@ -83,6 +89,10 @@ struct headers {
 /*************************************************************************
 *********************** STATEFUL MEMORY  *******************************
 *************************************************************************/
+register<load_t>(1) total_nload;
+register<bit<1>>(1) min_nload_initialized;
+register<load_t>(1) min_nload;
+register<node_t>(1) min_nload_node;
 register<load_t>(32) node_load;
 register<bit<64>>(32) replicated_keys; // Format: keyhash + nreplicas(3) + node1(4) + node2(4) + ... (max 4 replicas)
 
@@ -170,7 +180,7 @@ control MyIngress(inout headers hdr,
 
     table tab_node_forward {
         key = {
-            meta.dstNode: exact;
+            meta.dst_node: exact;
         }
         actions = {
             node_forward;
@@ -180,97 +190,86 @@ control MyIngress(inout headers hdr,
         default_action = drop();
     }
 
+    action update_min_nload(load_t load, node_t node) {
+        min_nload.write(0, load);
+        min_nload_node.write(0, node);
+    }
+
+    action read_nload_stats() {
+        bit<1> init;
+        min_nload_initialized.read(init, 0);
+        min_nload_initialized.write(0, 1);
+        min_nload.read(meta.min_nload, 0);
+        min_nload_node.read(meta.min_nload_node, 0);
+        total_nload.read(meta.total_nload, 0);
+        if (init == 0) {
+            meta.min_nload = MIN_NLOAD_INIT_VALUE;
+        }
+    }
+
     action dec_node_load() {
         load_t load;
-        node_load.read(load, (bit<32>)meta.dstNode);
+        node_load.read(load, (bit<32>)meta.dst_node);
         if (load > 0) {
             load = load - 1;
         }
-        node_load.write((bit<32>)meta.dstNode, load);
-    }
+        node_load.write((bit<32>)meta.dst_node, load);
+        meta.nload = load;
 
-    table tab_dec_node_load {
-        actions = {
-            dec_node_load;
+        total_nload.read(load, 0);
+        if (load > 0) {
+            load = load - 1;
         }
-        default_action = dec_node_load();
+        total_nload.write(0, load);
     }
 
     action inc_node_load() {
         load_t load;
-        node_load.read(load, (bit<32>)meta.dstNode);
+        node_load.read(load, (bit<32>)meta.dst_node);
         if (load + 1 > load) {
             // Prevent overflow
             load = load + 1;
         }
-        node_load.write((bit<32>)meta.dstNode, load);
-    }
+        node_load.write((bit<32>)meta.dst_node, load);
+        meta.nload = load;
 
-    table tab_inc_node_load {
-        actions = {
-            inc_node_load;
+        total_nload.read(load, 0);
+        if (load + 1 > load) {
+            load = load + 1;
         }
-        default_action = inc_node_load();
+        total_nload.write(0, load);
     }
 
-    action lookup_min_load4() {
+    action lookup_min_rload4() {
         load_t load;
         node_load.read(load, (bit<32>)meta.node_4);
-        if (load < meta.minLoad) {
-            meta.dstNode = meta.node_4;
-            meta.minLoad = load;
+        if (load < meta.min_rload) {
+            meta.dst_node = meta.node_4;
+            meta.min_rload = load;
         }
     }
 
-    table tab_min_load4 {
-        actions = {
-            lookup_min_load4;
-        }
-        default_action = lookup_min_load4();
-    }
-
-    action lookup_min_load3() {
+    action lookup_min_rload3() {
         load_t load;
         node_load.read(load, (bit<32>)meta.node_3);
-        if (load < meta.minLoad) {
-            meta.dstNode = meta.node_3;
-            meta.minLoad = load;
+        if (load < meta.min_rload) {
+            meta.dst_node = meta.node_3;
+            meta.min_rload = load;
         }
     }
 
-    table tab_min_load3 {
-        actions = {
-            lookup_min_load3;
-        }
-        default_action = lookup_min_load3();
-    }
-
-    action lookup_min_load2() {
+    action lookup_min_rload2() {
         load_t load;
         node_load.read(load, (bit<32>)meta.node_2);
-        if (load < meta.minLoad) {
-            meta.dstNode = meta.node_2;
-            meta.minLoad = load;
+        if (load < meta.min_rload) {
+            meta.dst_node = meta.node_2;
+            meta.min_rload = load;
         }
     }
 
-    table tab_min_load2 {
-        actions = {
-            lookup_min_load2;
-        }
-        default_action = lookup_min_load2();
-    }
-
-    action lookup_min_load1() {
-        node_load.read(meta.minLoad, (bit<32>)meta.node_1);
-        meta.dstNode = meta.node_1;
-    }
-
-    table tab_min_load1 {
-        actions = {
-            lookup_min_load1;
-        }
-        default_action = lookup_min_load1();
+    action lookup_min_rload1() {
+        node_load.read(meta.min_rload, (bit<32>)meta.node_1);
+        meta.dst_node = meta.node_1;
     }
 
     action init_rkey() {
@@ -278,15 +277,9 @@ control MyIngress(inout headers hdr,
         rkey[31:0] = hdr.pegasus.keyhash;
         rkey[34:32] = 1;
         rkey[38:35] = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
-        meta.dstNode = rkey[38:35];
+        meta.dst_node = rkey[38:35];
+        node_load.read(meta.min_rload, (bit<32>)meta.dst_node);
         replicated_keys.write(meta.rkey_index, rkey);
-    }
-
-    table tab_init_rkey {
-        actions = {
-            init_rkey;
-        }
-        default_action = init_rkey();
     }
 
     action lookup_replicated_key(bit<32> index) {
@@ -299,7 +292,7 @@ control MyIngress(inout headers hdr,
             meta.update_rkey = 1;
         } else {
             meta.update_rkey = 0;
-            meta.nReplicas = rkey[34:32];
+            meta.n_replicas = rkey[34:32];
             meta.node_1 = rkey[38:35];
             meta.node_2 = rkey[42:39];
             meta.node_3 = rkey[46:43];
@@ -321,29 +314,32 @@ control MyIngress(inout headers hdr,
 
     apply {
         if (hdr.pegasus.isValid()) {
+            // Read current total and min nload
+            read_nload_stats();
+
+            // Find target cache node based on
+            // type of operation
             if (hdr.pegasus.op == OP_REP) {
-                meta.dstNode = hdr.pegasus.node;
-                tab_dec_node_load.apply();
-                // Reply messages use L2 forwarding
-                tab_mac.apply();
+                meta.dst_node = hdr.pegasus.node;
+                dec_node_load();
             } else {
                 if (tab_replicated_keys.apply().hit) {
                     // If key is replicated, find the node
                     // with the minimum load to forward to
                     if (meta.update_rkey == 1) {
                         // Key is either changed or uninitialized
-                        tab_init_rkey.apply();
+                        init_rkey();
                     } else {
-                        tab_min_load1.apply();
-                        meta.nReplicas = meta.nReplicas - 1;
-                        if (meta.nReplicas > 0) {
-                            tab_min_load2.apply();
-                            meta.nReplicas = meta.nReplicas - 1;
-                            if (meta.nReplicas > 0) {
-                                tab_min_load3.apply();
-                                meta.nReplicas = meta.nReplicas - 1;
-                                if (meta.nReplicas > 0) {
-                                    tab_min_load4.apply();
+                        lookup_min_rload1();
+                        meta.n_replicas = meta.n_replicas - 1;
+                        if (meta.n_replicas > 0) {
+                            lookup_min_rload2();
+                            meta.n_replicas = meta.n_replicas - 1;
+                            if (meta.n_replicas > 0) {
+                                lookup_min_rload3();
+                                meta.n_replicas = meta.n_replicas - 1;
+                                if (meta.n_replicas > 0) {
+                                    lookup_min_rload4();
                                 }
                             }
                         }
@@ -351,9 +347,21 @@ control MyIngress(inout headers hdr,
                 } else {
                     // If key not replicated, forward using
                     // keyhash
-                    meta.dstNode = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
+                    meta.dst_node = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
                 }
-                tab_inc_node_load.apply();
+                inc_node_load();
+            }
+
+            // Update min node load
+            if (meta.nload < meta.min_nload || meta.dst_node == meta.min_nload_node) {
+                update_min_nload(meta.nload, meta.dst_node);
+            }
+
+            // Set forwarding port
+            if (hdr.pegasus.op == OP_REP) {
+                // Reply messages use L2 forwarding
+                tab_mac.apply();
+            } else {
                 tab_node_forward.apply();
             }
         } else if (hdr.ethernet.isValid()) {

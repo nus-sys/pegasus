@@ -54,7 +54,7 @@ def writeRKeyForwardingRules(p4info_helper, sw):
         table_entry = p4info_helper.buildTableEntry(
             table_name="MyIngress.tab_node_forward",
             match_fields={
-                "meta.dstNode": node
+                "meta.dst_node": node
             },
             action_name="MyIngress.node_forward",
             action_params={
