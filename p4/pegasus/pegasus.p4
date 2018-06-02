@@ -93,7 +93,6 @@ struct headers {
 *********************** STATEFUL MEMORY  *******************************
 *************************************************************************/
 register<load_t>(1) total_nload;
-register<bit<1>>(1) min_nload_initialized;
 register<load_t>(1) min_nload;
 register<node_t>(1) min_nload_node;
 register<load_t>(32) node_load;
@@ -208,15 +207,9 @@ control MyIngress(inout headers hdr,
     }
 
     action read_nload_stats() {
-        bit<1> init;
-        min_nload_initialized.read(init, 0);
-        min_nload_initialized.write(0, 1);
         min_nload.read(meta.min_nload, 0);
         min_nload_node.read(meta.min_nload_node, 0);
         total_nload.read(meta.total_nload, 0);
-        if (init == 0) {
-            meta.min_nload = MIN_LOAD_INIT_VALUE;
-        }
     }
 
     action dec_node_load() {
@@ -325,8 +318,7 @@ control MyIngress(inout headers hdr,
             // Read current total and min nload
             read_nload_stats();
 
-            // Find target cache node based on
-            // type of operation
+            // Find target node based on type of operation
             if (hdr.pegasus.op == OP_REP) {
                 meta.dst_node = hdr.pegasus.node;
                 dec_node_load();
