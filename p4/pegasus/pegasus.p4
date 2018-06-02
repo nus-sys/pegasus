@@ -23,7 +23,7 @@ const op_t OP_DEL = 0x2;
 const op_t OP_REP = 0x3;
 const bit<16> PEGASUS_ID = 0x5047; //PG
 const bit<32> HASH_MASK = 0x3; // Max 4 nodes
-const load_t MIN_NLOAD_INIT_VALUE = 0xFFFF;
+const load_t MIN_LOAD_INIT_VALUE = 0xFFFF;
 const bit<3> MAX_REPLICAS = 0x4;
 const bit<3> AVG_LOAD_SHIFT = 0x2;
 
@@ -215,7 +215,7 @@ control MyIngress(inout headers hdr,
         min_nload_node.read(meta.min_nload_node, 0);
         total_nload.read(meta.total_nload, 0);
         if (init == 0) {
-            meta.min_nload = MIN_NLOAD_INIT_VALUE;
+            meta.min_nload = MIN_LOAD_INIT_VALUE;
         }
     }
 
@@ -252,36 +252,13 @@ control MyIngress(inout headers hdr,
         total_nload.write(0, load);
     }
 
-    action lookup_min_rload4() {
+    action lookup_min_rload(node_t node) {
         load_t load;
-        node_load.read(load, (bit<32>)meta.node_4);
+        node_load.read(load, (bit<32>)node);
         if (load < meta.min_rload) {
-            meta.dst_node = meta.node_4;
+            meta.dst_node = node;
             meta.min_rload = load;
         }
-    }
-
-    action lookup_min_rload3() {
-        load_t load;
-        node_load.read(load, (bit<32>)meta.node_3);
-        if (load < meta.min_rload) {
-            meta.dst_node = meta.node_3;
-            meta.min_rload = load;
-        }
-    }
-
-    action lookup_min_rload2() {
-        load_t load;
-        node_load.read(load, (bit<32>)meta.node_2);
-        if (load < meta.min_rload) {
-            meta.dst_node = meta.node_2;
-            meta.min_rload = load;
-        }
-    }
-
-    action lookup_min_rload1() {
-        node_load.read(meta.min_rload, (bit<32>)meta.node_1);
-        meta.dst_node = meta.node_1;
     }
 
     action extend_rep_set3() {
@@ -361,16 +338,17 @@ control MyIngress(inout headers hdr,
                         // Key is either changed or uninitialized
                         init_rkey();
                     } else {
-                        lookup_min_rload1();
+                        meta.min_rload = MIN_LOAD_INIT_VALUE;
+                        lookup_min_rload(meta.node_1);
                         n_replicas = meta.n_replicas - 1;
                         if (n_replicas > 0) {
-                            lookup_min_rload2();
+                            lookup_min_rload(meta.node_2);
                             n_replicas = n_replicas - 1;
                             if (n_replicas > 0) {
-                                lookup_min_rload3();
+                                lookup_min_rload(meta.node_3);
                                 n_replicas = n_replicas - 1;
                                 if (n_replicas > 0) {
-                                    lookup_min_rload4();
+                                    lookup_min_rload(meta.node_4);
                                 }
                             }
                         }
