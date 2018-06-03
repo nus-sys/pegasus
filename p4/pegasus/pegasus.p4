@@ -272,15 +272,19 @@ control MyIngress(inout headers hdr,
         replicated_keys.write(meta.rkey_index, meta.rkey);
     }
 
+    action handle_write() {
+        meta.rkey[34:32] = 1;
+        meta.rkey[38:35] = meta.min_nload_node;
+        replicated_keys.write(meta.rkey_index, meta.rkey);
+        meta.dst_node = meta.min_nload_node;
+    }
+
     action init_rkey() {
-        bit<64> rkey = 0;
-        rkey[31:0] = hdr.pegasus.keyhash;
-        rkey[34:32] = 1;
-        rkey[38:35] = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
-        meta.n_replicas = 1;
-        meta.dst_node = rkey[38:35];
-        node_load.read(meta.min_rload, (bit<32>)meta.dst_node);
-        replicated_keys.write(meta.rkey_index, rkey);
+        meta.rkey[31:0] = hdr.pegasus.keyhash;
+        meta.rkey[34:32] = 1;
+        meta.rkey[38:35] = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
+        replicated_keys.write(meta.rkey_index, meta.rkey);
+        meta.dst_node = meta.rkey[38:35];
     }
 
     action lookup_replicated_key(bit<32> index) {
@@ -324,41 +328,50 @@ control MyIngress(inout headers hdr,
                 dec_node_load();
             } else {
                 if (tab_replicated_keys.apply().hit) {
-                    // If key is replicated, find the node
-                    // with the minimum load to forward to
+                    // Key is replicated
                     if (meta.update_rkey == 1) {
-                        // Key is either changed or uninitialized
+                        // Replicated key is either changed by
+                        // the controller, or has not been
+                        // initialized
                         init_rkey();
                     } else {
-                        meta.min_rload = MIN_LOAD_INIT_VALUE;
-                        lookup_min_rload(meta.node_1);
-                        n_replicas = meta.n_replicas - 1;
-                        if (n_replicas > 0) {
-                            lookup_min_rload(meta.node_2);
-                            n_replicas = n_replicas - 1;
+                        if (hdr.pegasus.op == OP_GET) {
+                            // For read requests, find the replica with
+                            // the least load
+                            meta.min_rload = MIN_LOAD_INIT_VALUE;
+                            lookup_min_rload(meta.node_1);
+                            n_replicas = meta.n_replicas - 1;
                             if (n_replicas > 0) {
-                                lookup_min_rload(meta.node_3);
+                                lookup_min_rload(meta.node_2);
                                 n_replicas = n_replicas - 1;
                                 if (n_replicas > 0) {
-                                    lookup_min_rload(meta.node_4);
+                                    lookup_min_rload(meta.node_3);
+                                    n_replicas = n_replicas - 1;
+                                    if (n_replicas > 0) {
+                                        lookup_min_rload(meta.node_4);
+                                    }
                                 }
                             }
-                        }
-                        // Extend the replication set if all
-                        // replicas are overloaded
-                        if (meta.n_replicas < MAX_REPLICAS && meta.min_rload > (meta.total_nload >> AVG_LOAD_SHIFT)) {
-                            if (meta.n_replicas == 1) {
-                                extend_rep_set1();
-                            } else if (meta.n_replicas == 2) {
-                                extend_rep_set2();
-                            } else if (meta.n_replicas == 3) {
-                                extend_rep_set3();
+                            // Extend the replication set if all
+                            // replicas are overloaded
+                            if (meta.n_replicas < MAX_REPLICAS && meta.min_rload > (meta.total_nload >> AVG_LOAD_SHIFT)) {
+                                if (meta.n_replicas == 1) {
+                                    extend_rep_set1();
+                                } else if (meta.n_replicas == 2) {
+                                    extend_rep_set2();
+                                } else if (meta.n_replicas == 3) {
+                                    extend_rep_set3();
+                                }
                             }
+                        } else {
+                            // For writes, forward the request to the
+                            // least loaded node (overall), and change
+                            // the replication set to that node
+                            handle_write();
                         }
                     }
                 } else {
-                    // If key not replicated, forward using
-                    // keyhash
+                    // If key not replicated, forward using keyhash
                     meta.dst_node = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
                 }
                 inc_node_load();
