@@ -13,7 +13,7 @@ typedef bit<16> udpPort_t;
 typedef bit<8>  op_t;
 typedef bit<32> keyhash_t;
 typedef bit<16> load_t;
-typedef bit<4>  node_t;
+typedef bit<8>  node_t;
 
 const bit<16> TYPE_IPV4 = 0x800;
 const bit<8> PROTO_UDP = 0x11;
@@ -60,7 +60,6 @@ header pegasus_t {
     op_t        op;
     keyhash_t   keyhash;
     node_t      node;
-    bit<4>      pad;
     load_t      load;
 }
 
@@ -72,7 +71,7 @@ struct metadata {
     node_t min_nload_node;
     // replicated keys
     bit<32> rkey_index;
-    bit<64> rkey;
+    bit<128> rkey;
     bit<1> update_rkey;
     load_t min_rload;
     bit<3> n_replicas;
@@ -96,7 +95,7 @@ register<load_t>(1) total_nload;
 register<load_t>(1) min_nload;
 register<node_t>(1) min_nload_node;
 register<load_t>(32) node_load;
-register<bit<64>>(32) replicated_keys; // Format: keyhash + nreplicas(3) + node1(4) + node2(4) + ... (max 4 replicas)
+register<bit<128>>(32) replicated_keys; // Format: keyhash + nreplicas(3) + node1(8) + node2(8) + ... (max 4 replicas)
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
@@ -256,25 +255,25 @@ control MyIngress(inout headers hdr,
 
     action extend_rep_set3() {
         meta.rkey[34:32] = 4;
-        meta.rkey[50:47] = meta.min_nload_node;
+        meta.rkey[66:59] = meta.min_nload_node;
         replicated_keys.write(meta.rkey_index, meta.rkey);
     }
 
     action extend_rep_set2() {
         meta.rkey[34:32] = 3;
-        meta.rkey[46:43] = meta.min_nload_node;
+        meta.rkey[58:51] = meta.min_nload_node;
         replicated_keys.write(meta.rkey_index, meta.rkey);
     }
 
     action extend_rep_set1() {
         meta.rkey[34:32] = 2;
-        meta.rkey[42:39] = meta.min_nload_node;
+        meta.rkey[50:43] = meta.min_nload_node;
         replicated_keys.write(meta.rkey_index, meta.rkey);
     }
 
     action handle_write() {
         meta.rkey[34:32] = 1;
-        meta.rkey[38:35] = meta.min_nload_node;
+        meta.rkey[42:35] = meta.min_nload_node;
         replicated_keys.write(meta.rkey_index, meta.rkey);
         meta.dst_node = meta.min_nload_node;
     }
@@ -282,9 +281,9 @@ control MyIngress(inout headers hdr,
     action init_rkey() {
         meta.rkey[31:0] = hdr.pegasus.keyhash;
         meta.rkey[34:32] = 1;
-        meta.rkey[38:35] = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
+        meta.rkey[42:35] = (bit<8>)(hdr.pegasus.keyhash & HASH_MASK);
         replicated_keys.write(meta.rkey_index, meta.rkey);
-        meta.dst_node = meta.rkey[38:35];
+        meta.dst_node = meta.rkey[42:35];
     }
 
     action lookup_replicated_key(bit<32> index) {
@@ -297,10 +296,10 @@ control MyIngress(inout headers hdr,
         } else {
             meta.update_rkey = 0;
             meta.n_replicas = meta.rkey[34:32];
-            meta.node_1 = meta.rkey[38:35];
-            meta.node_2 = meta.rkey[42:39];
-            meta.node_3 = meta.rkey[46:43];
-            meta.node_4 = meta.rkey[50:47];
+            meta.node_1 = meta.rkey[42:35];
+            meta.node_2 = meta.rkey[50:43];
+            meta.node_3 = meta.rkey[58:51];
+            meta.node_4 = meta.rkey[66:59];
         }
     }
 
@@ -372,7 +371,7 @@ control MyIngress(inout headers hdr,
                     }
                 } else {
                     // If key not replicated, forward using keyhash
-                    meta.dst_node = (bit<4>)(hdr.pegasus.keyhash & HASH_MASK);
+                    meta.dst_node = (bit<8>)(hdr.pegasus.keyhash & HASH_MASK);
                 }
                 inc_node_load();
             }

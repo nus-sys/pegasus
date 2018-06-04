@@ -21,8 +21,7 @@ class Pegasus(Packet):
     fields_desc = [ShortField("id", 0x5047),
                    ByteField("op", None),
                    IntField("keyhash", None),
-                   BitField("node", 0, 4),
-                   BitField("pad", 0, 4),
+                   ByteField("node", 0),
                    ShortField("load", 0)]
 
 def get_if():
