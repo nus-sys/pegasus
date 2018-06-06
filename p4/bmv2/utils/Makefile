@@ -4,7 +4,7 @@ LOG_DIR = logs
 
 TOPO = topology.json
 P4C = p4c-bm2-ss
-RUN_SCRIPT = ../utils/run_exercise.py
+RUN_SCRIPT = utils/run_exercise.py
 
 source := $(wildcard *.p4)
 outfile := $(source:.p4=.json)
