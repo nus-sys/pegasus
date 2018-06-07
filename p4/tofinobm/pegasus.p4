@@ -7,6 +7,7 @@
 
 #define ETHERTYPE_IPV4  0x800
 #define PROTO_UDP       0x11
+#define PEGASUS_ID      0x5047
 
 header_type ethernet_t {
     fields {
@@ -49,6 +50,25 @@ header_type udp_t {
 
 header udp_t udp;
 
+header_type apphdr_t {
+    fields {
+        id : 16;
+    }
+}
+
+header apphdr_t apphdr;
+
+header_type pegasus_t {
+    fields {
+        op : 8;
+        keyhash : 32;
+        node : 8;
+        load : 16;
+    }
+}
+
+header pegasus_t pegasus;
+
 parser start {
     return parse_ethernet;
 }
@@ -71,6 +91,19 @@ parser parse_ipv4 {
 
 parser parse_udp {
     extract(udp);
+    return parse_apphdr;
+}
+
+parser parse_apphdr {
+    extract(apphdr);
+    return select(latest.id) {
+        PEGASUS_ID: parse_pegasus;
+        default: ingress;
+    }
+}
+
+parser parse_pegasus {
+    extract(pegasus);
     return ingress;
 }
 
@@ -96,14 +129,33 @@ table tab_l2_forward {
     actions {
         l2_forward;
         _drop;
-        nop;
     }
-    default_action : nop;
+    default_action : _drop;
     size : 1024;
 }
 
+action rkey_forward(port) {
+    modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
+}
+
+table tab_replicated_keys {
+    reads {
+        pegasus.keyhash: exact;
+    }
+    actions {
+        rkey_forward;
+        _drop;
+    }
+    default_action : _drop;
+    size : 32;
+}
+
 control ingress {
-    apply(tab_l2_forward);
+    if (valid(pegasus)) {
+        apply(tab_replicated_keys);
+    } else {
+        apply(tab_l2_forward);
+    }
 }
 
 /*************************************************************************

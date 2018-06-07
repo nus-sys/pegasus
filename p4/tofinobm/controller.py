@@ -1,3 +1,6 @@
+import argparse
+import json
+
 from res_pd_rpc.ttypes import *
 from ptf.thriftutils import *
 from pegasus.p4_pd_rpc.ttypes import *
@@ -24,22 +27,46 @@ class Controller(object):
         self.dev = 0
         self.dev_tgt = DevTarget_t(self.dev, hex_to_i16(0xFFFF))
 
-    def install_table_entries(self):
-        self.client.tab_l2_forward_table_add_with_l2_forward(
-            self.sess_hdl, self.dev_tgt,
-            pegasus_tab_l2_forward_match_spec_t(
-                ethernet_dstAddr=macAddr_to_string("8a:d3:05:ce:51:67")),
-            pegasus_l2_forward_action_spec_t(
-                action_port=1))
+    def install_table_entries(self, tables):
+        # tab_l2_forward
+        self.client.tab_l2_forward_set_default_action__drop(
+            self.sess_hdl, self.dev_tgt)
+        for (mac, port) in tables["tab_l2_forward"].items():
+            self.client.tab_l2_forward_table_add_with_l2_forward(
+                self.sess_hdl, self.dev_tgt,
+                pegasus_tab_l2_forward_match_spec_t(
+                    ethernet_dstAddr = macAddr_to_string(mac)),
+                pegasus_l2_forward_action_spec_t(
+                    action_port = port))
+        # tab_replicated_keys
+        self.client.tab_replicated_keys_set_default_action__drop(
+            self.sess_hdl, self.dev_tgt)
+        for (keyhash, port) in tables["tab_replicated_keys"].items():
+            self.client.tab_replicated_keys_table_add_with_rkey_forward(
+                self.sess_hdl, self.dev_tgt,
+                pegasus_tab_replicated_keys_match_spec_t(
+                    pegasus_keyhash = int(keyhash)),
+                pegasus_rkey_forward_action_spec_t(
+                    action_port = port))
         self.conn_mgr.complete_operations(self.sess_hdl)
 
     def close(self):
         self.transport.close()
 
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config",
+                        required=True,
+                        help="configuration (JSON) file")
+    args = parser.parse_args()
+    with open(args.config) as fp:
+        tables = json.load(fp)
+
     controller = Controller("localhost")
-    controller.install_table_entries()
+    controller.install_table_entries(tables)
     controller.close()
+
 
 if __name__ == "__main__":
     main()
