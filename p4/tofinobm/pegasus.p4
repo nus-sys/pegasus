@@ -8,6 +8,7 @@
 #define ETHERTYPE_IPV4  0x800
 #define PROTO_UDP       0x11
 #define PEGASUS_ID      0x5047
+#define HASH_MASK       0x3 // Max 4 nodes
 
 header_type ethernet_t {
     fields {
@@ -68,6 +69,56 @@ header_type pegasus_t {
 }
 
 header pegasus_t pegasus;
+
+header_type metadata_t {
+    fields {
+        dst_node : 8;
+        rkey_index : 32;
+    }
+}
+
+metadata metadata_t meta;
+
+/*************************************************************************
+*********************** STATEFUL MEMORY  *********************************
+*************************************************************************/
+register replicated_keys {
+    width : 128;
+    instance_count : 32;
+}
+/*************************************************************************
+*********************** CHECKSUM *****************************************
+*************************************************************************/
+
+field_list ipv4_field_list {
+    ipv4.version;
+    ipv4.ihl;
+    ipv4.diffserv;
+    ipv4.totalLen;
+    ipv4.identification;
+    ipv4.flags;
+    ipv4.fragOffset;
+    ipv4.ttl;
+    ipv4.protocol;
+    ipv4.srcAddr;
+    ipv4.dstAddr;
+}
+
+field_list_calculation ipv4_chksum_calc {
+    input {
+        ipv4_field_list;
+    }
+    algorithm : csum16;
+    output_width: 16;
+}
+
+calculated_field ipv4.hdrChecksum {
+    update ipv4_chksum_calc;
+}
+
+/*************************************************************************
+*********************** P A R S E R S  ***********************************
+*************************************************************************/
 
 parser start {
     return parse_ethernet;
@@ -130,12 +181,33 @@ table tab_l2_forward {
         l2_forward;
         _drop;
     }
-    default_action : _drop;
     size : 1024;
 }
 
-action rkey_forward(port) {
+action node_forward(mac_addr, ip_addr, port) {
+    modify_field(ethernet.dstAddr, mac_addr);
+    modify_field(ipv4.dstAddr, ip_addr);
     modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
+}
+
+table tab_node_forward {
+    reads {
+        meta.dst_node: exact;
+    }
+    actions {
+        node_forward;
+        _drop;
+    }
+    size : 32;
+}
+
+action lookup_rkey_meta(rkey_index, dst_node) {
+    modify_field(meta.rkey_index, rkey_index);
+    modify_field(meta.dst_node, dst_node);
+}
+
+action default_dst_node() {
+    modify_field(meta.dst_node, pegasus.keyhash & HASH_MASK);
 }
 
 table tab_replicated_keys {
@@ -143,16 +215,16 @@ table tab_replicated_keys {
         pegasus.keyhash: exact;
     }
     actions {
-        rkey_forward;
-        _drop;
+        lookup_rkey_meta;
+        default_dst_node;
     }
-    default_action : _drop;
     size : 32;
 }
 
 control ingress {
     if (valid(pegasus)) {
         apply(tab_replicated_keys);
+        apply(tab_node_forward);
     } else {
         apply(tab_l2_forward);
     }

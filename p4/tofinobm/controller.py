@@ -39,15 +39,28 @@ class Controller(object):
                 pegasus_l2_forward_action_spec_t(
                     action_port = port))
         # tab_replicated_keys
-        self.client.tab_replicated_keys_set_default_action__drop(
+        self.client.tab_replicated_keys_set_default_action_default_dst_node(
             self.sess_hdl, self.dev_tgt)
-        for (keyhash, port) in tables["tab_replicated_keys"].items():
-            self.client.tab_replicated_keys_table_add_with_rkey_forward(
+        for (keyhash, attrs) in tables["tab_replicated_keys"].items():
+            self.client.tab_replicated_keys_table_add_with_lookup_rkey_meta(
                 self.sess_hdl, self.dev_tgt,
                 pegasus_tab_replicated_keys_match_spec_t(
                     pegasus_keyhash = int(keyhash)),
-                pegasus_rkey_forward_action_spec_t(
-                    action_port = port))
+                pegasus_lookup_rkey_meta_action_spec_t(
+                    action_rkey_index = attrs["rkey_index"],
+                    action_dst_node = attrs["dst_node"]))
+        # tab_node_forward
+        self.client.tab_node_forward_set_default_action__drop(
+            self.sess_hdl, self.dev_tgt)
+        for (node, attrs) in tables["tab_node_forward"].items():
+            self.client.tab_node_forward_table_add_with_node_forward(
+                self.sess_hdl, self.dev_tgt,
+                pegasus_tab_node_forward_match_spec_t(
+                    meta_dst_node = int(node)),
+                pegasus_node_forward_action_spec_t(
+                    action_mac_addr = macAddr_to_string(attrs["mac"]),
+                    action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
+                    action_port = attrs["port"]))
         self.conn_mgr.complete_operations(self.sess_hdl)
 
     def close(self):

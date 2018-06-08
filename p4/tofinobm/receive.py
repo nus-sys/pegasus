@@ -9,8 +9,6 @@ from scapy.all import ShortField, IntField, LongField, BitField, FieldListField,
 from scapy.all import IP, TCP, UDP, Raw
 from scapy.layers.inet import _IPOption_HDR
 
-server_iface = "veth0"
-
 def handle_pkt(pkt):
     if UDP in pkt and pkt[UDP].dport == 12345:
         print "got a packet"
@@ -18,6 +16,11 @@ def handle_pkt(pkt):
         sys.stdout.flush()
 
 def main():
+    if len(sys.argv) < 2:
+        print 'pass 1 argument: <interface>'
+        exit(1)
+
+    server_iface = sys.argv[1]
     print "sniffing on %s" % server_iface
     sys.stdout.flush()
     sniff(iface = server_iface,

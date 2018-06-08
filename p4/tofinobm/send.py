@@ -10,10 +10,11 @@ from scapy.all import Packet
 from scapy.all import Ether, IP, UDP, TCP
 from scapy.all import ByteField, ShortField, IntField, BitField
 
-server_iface = "veth0"
-client_iface = "veth2"
-server_ip = socket.gethostbyname("10.0.0.1")
-client_ip = socket.gethostbyname("10.0.0.3")
+server_mac = "FF:FF:FF:FF:FF:FF"
+client_mac = "00:00:00:00:00:09"
+client_iface = "veth8"
+server_ip = socket.gethostbyname("10.0.0.255")
+client_ip = socket.gethostbyname("10.0.0.9")
 
 class Pegasus(Packet):
     name = "PEGASUS"
@@ -34,7 +35,7 @@ def main():
     dst_ip = server_ip
     src_ip = client_ip
 
-    pkt = Ether(src=get_if_hwaddr(client_iface), dst=get_if_hwaddr(server_iface))
+    pkt = Ether(src=client_mac, dst=server_mac)
     pkt = pkt / IP(dst=dst_ip, src=src_ip)
     pkt = pkt / UDP(dport=12345, sport=random.randint(49152,65535))
     pkt = pkt / Pegasus(op=op, keyhash=keyhash)
