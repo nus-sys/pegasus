@@ -74,6 +74,11 @@ header_type metadata_t {
     fields {
         dst_node : 8;
         rkey_index : 32;
+        n_replicas : 4;
+        rnode_1 : 8;
+        rnode_2 : 8;
+        rnode_3 : 8;
+        rnode_4 : 8;
     }
 }
 
@@ -82,8 +87,24 @@ metadata metadata_t meta;
 /*************************************************************************
 *********************** STATEFUL MEMORY  *********************************
 *************************************************************************/
-register replicated_keys {
-    width : 128;
+register reg_nreps {
+    width : 4;
+    instance_count : 32;
+}
+register reg_rnode1 {
+    width : 8;
+    instance_count : 32;
+}
+register reg_rnode2 {
+    width : 8;
+    instance_count : 32;
+}
+register reg_rnode3 {
+    width : 8;
+    instance_count : 32;
+}
+register reg_rnode4 {
+    width : 8;
     instance_count : 32;
 }
 /*************************************************************************
@@ -201,9 +222,45 @@ table tab_node_forward {
     size : 32;
 }
 
-action lookup_rkey_meta(rkey_index, dst_node) {
+action lookup_min_rnode () {
+    modify_field(meta.dst_node, meta.rnode_1);
+}
+
+table tab_lookup_min_rnode {
+    actions {
+        lookup_min_rnode;
+    }
+}
+
+action init_rkey() {
+    register_write(reg_rnode1, meta.rkey_index, pegasus.keyhash & HASH_MASK);
+    register_write(reg_nreps, meta.rkey_index, 1);
+    modify_field(meta.n_replicas, 1);
+    modify_field(meta.rnode_1, pegasus.keyhash & HASH_MASK);
+}
+
+table tab_init_rkey {
+    actions {
+        init_rkey;
+    }
+}
+
+action extract_rnodes() {
+    register_read(meta.n_replicas, reg_nreps, meta.rkey_index);
+    register_read(meta.rnode_1, reg_rnode1, meta.rkey_index);
+    register_read(meta.rnode_2, reg_rnode2, meta.rkey_index);
+    register_read(meta.rnode_3, reg_rnode3, meta.rkey_index);
+    register_read(meta.rnode_4, reg_rnode4, meta.rkey_index);
+}
+
+table tab_extract_rnodes {
+    actions {
+        extract_rnodes;
+    }
+}
+
+action lookup_rkey(rkey_index) {
     modify_field(meta.rkey_index, rkey_index);
-    modify_field(meta.dst_node, dst_node);
 }
 
 action default_dst_node() {
@@ -215,7 +272,7 @@ table tab_replicated_keys {
         pegasus.keyhash: exact;
     }
     actions {
-        lookup_rkey_meta;
+        lookup_rkey;
         default_dst_node;
     }
     size : 32;
@@ -223,7 +280,15 @@ table tab_replicated_keys {
 
 control ingress {
     if (valid(pegasus)) {
-        apply(tab_replicated_keys);
+        apply(tab_replicated_keys) {
+            hit {
+                apply(tab_extract_rnodes);
+                if (meta.n_replicas == 0) {
+                    apply(tab_init_rkey);
+                }
+                apply(tab_lookup_min_rnode);
+            }
+        }
         apply(tab_node_forward);
     } else {
         apply(tab_l2_forward);

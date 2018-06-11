@@ -42,13 +42,21 @@ class Controller(object):
         self.client.tab_replicated_keys_set_default_action_default_dst_node(
             self.sess_hdl, self.dev_tgt)
         for (keyhash, attrs) in tables["tab_replicated_keys"].items():
-            self.client.tab_replicated_keys_table_add_with_lookup_rkey_meta(
+            self.client.tab_replicated_keys_table_add_with_lookup_rkey(
                 self.sess_hdl, self.dev_tgt,
                 pegasus_tab_replicated_keys_match_spec_t(
                     pegasus_keyhash = int(keyhash)),
-                pegasus_lookup_rkey_meta_action_spec_t(
-                    action_rkey_index = attrs["rkey_index"],
-                    action_dst_node = attrs["dst_node"]))
+                pegasus_lookup_rkey_action_spec_t(
+                    action_rkey_index = attrs["rkey_index"]))
+        # tab_extract_rnodes
+        self.client.tab_extract_rnodes_set_default_action_extract_rnodes(
+            self.sess_hdl, self.dev_tgt)
+        # tab_init_rkey
+        self.client.tab_init_rkey_set_default_action_init_rkey(
+            self.sess_hdl, self.dev_tgt)
+        # tab_lookup_min_rnode
+        self.client.tab_lookup_min_rnode_set_default_action_lookup_min_rnode(
+            self.sess_hdl, self.dev_tgt)
         # tab_node_forward
         self.client.tab_node_forward_set_default_action__drop(
             self.sess_hdl, self.dev_tgt)

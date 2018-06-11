@@ -8,12 +8,10 @@
     },
     "tab_replicated_keys": {
         "16": {
-            "rkey_index": 0,
-            "dst_node": 0
+            "rkey_index": 0
         },
-        "32": {
-            "rkey_index": 1,
-            "dst_node": 1
+        "18": {
+            "rkey_index": 1
         }
     },
     "tab_node_forward": {
