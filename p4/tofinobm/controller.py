@@ -57,6 +57,15 @@ class Controller(object):
         # tab_lookup_min_rnode
         self.client.tab_lookup_min_rnode_set_default_action_lookup_min_rnode(
             self.sess_hdl, self.dev_tgt)
+        # tab_read_node_load_stats
+        self.client.tab_read_node_load_stats_set_default_action_read_node_load_stats(
+            self.sess_hdl, self.dev_tgt)
+        # tab_update_node_load
+        self.client.tab_update_node_load_set_default_action_update_node_load(
+            self.sess_hdl, self.dev_tgt)
+        # tab_update_min_node_load
+        self.client.tab_update_min_node_load_set_default_action_update_min_node_load(
+            self.sess_hdl, self.dev_tgt)
         # tab_node_forward
         self.client.tab_node_forward_set_default_action__drop(
             self.sess_hdl, self.dev_tgt)

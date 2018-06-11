@@ -9,6 +9,11 @@
 #define PROTO_UDP       0x11
 #define PEGASUS_ID      0x5047
 #define HASH_MASK       0x3 // Max 4 nodes
+#define OP_GET          0x0
+#define OP_PUT          0x1
+#define OP_DEL          0x2
+#define OP_REP          0x3
+
 
 header_type ethernet_t {
     fields {
@@ -73,6 +78,9 @@ header pegasus_t pegasus;
 header_type metadata_t {
     fields {
         dst_node : 8;
+        total_node_load : 16;
+        min_node : 8;
+        min_node_load : 16;
         rkey_index : 32;
         n_replicas : 4;
         rnode_1 : 8;
@@ -87,6 +95,14 @@ metadata metadata_t meta;
 /*************************************************************************
 *********************** STATEFUL MEMORY  *********************************
 *************************************************************************/
+register reg_min_node {
+    width : 8;
+    instance_count : 1;
+}
+register reg_min_node_load {
+    width : 16;
+    instance_count : 1;
+}
 register reg_nreps {
     width : 4;
     instance_count : 32;
@@ -105,6 +121,14 @@ register reg_rnode3 {
 }
 register reg_rnode4 {
     width : 8;
+    instance_count : 32;
+}
+register reg_total_node_load {
+    width : 16;
+    instance_count : 1;
+}
+register reg_node_load {
+    width : 16;
     instance_count : 32;
 }
 /*************************************************************************
@@ -278,18 +302,66 @@ table tab_replicated_keys {
     size : 32;
 }
 
+action update_min_node_load() {
+    register_write(reg_min_node, 0, pegasus.node);
+    register_write(reg_min_node_load, 0, pegasus.load);
+}
+
+table tab_update_min_node_load {
+    actions {
+        update_min_node_load;
+    }
+}
+
+action update_node_load() {
+    register_write(reg_node_load, pegasus.node, pegasus.load);
+}
+
+table tab_update_node_load {
+    actions {
+        update_node_load;
+    }
+}
+
+action read_node_load_stats() {
+    register_read(meta.total_node_load, reg_total_node_load, 0);
+    register_read(meta.min_node, reg_min_node, 0);
+    register_read(meta.min_node_load, reg_min_node_load, 0);
+}
+
+table tab_read_node_load_stats {
+    actions {
+        read_node_load_stats;
+    }
+}
+
 control ingress {
     if (valid(pegasus)) {
-        apply(tab_replicated_keys) {
-            hit {
-                apply(tab_extract_rnodes);
-                if (meta.n_replicas == 0) {
-                    apply(tab_init_rkey);
+        apply(tab_read_node_load_stats);
+        if (pegasus.op == OP_REP) {
+            apply(tab_update_node_load);
+            // Update min node load
+            if (pegasus.load < meta.min_node_load or pegasus.node == meta.min_node) {
+                apply(tab_update_min_node_load);
+            }
+        } else {
+            apply(tab_replicated_keys) {
+                hit {
+                    apply(tab_extract_rnodes);
+                    if (meta.n_replicas == 0) {
+                        apply(tab_init_rkey);
+                    }
+                    apply(tab_lookup_min_rnode);
                 }
-                apply(tab_lookup_min_rnode);
             }
         }
-        apply(tab_node_forward);
+        // Forward reply messages using L2, all other
+        // operations are forwarded based on node.
+        if (pegasus.op == OP_REP) {
+            apply(tab_l2_forward);
+        } else {
+            apply(tab_node_forward);
+        }
     } else {
         apply(tab_l2_forward);
     }

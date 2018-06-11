@@ -26,19 +26,25 @@ class Pegasus(Packet):
 
 def main():
     if len(sys.argv) < 4:
-        print 'pass 3 arguments: <op> <keyhash> "<message>"'
+        print 'pass 3 arguments: <op> <keyhash> "<message>" (node, load)'
         exit(1)
 
     op = int(sys.argv[1])
     keyhash = int(sys.argv[2])
     msg = sys.argv[3]
+    node = 0
+    load = 0
+    if len(sys.argv) >= 6:
+        node = int(sys.argv[4])
+        load = int(sys.argv[5])
+
     dst_ip = server_ip
     src_ip = client_ip
 
     pkt = Ether(src=client_mac, dst=server_mac)
     pkt = pkt / IP(dst=dst_ip, src=src_ip)
     pkt = pkt / UDP(dport=12345, sport=random.randint(49152,65535))
-    pkt = pkt / Pegasus(op=op, keyhash=keyhash)
+    pkt = pkt / Pegasus(op=op, keyhash=keyhash, node=node, load=load)
     pkt = pkt / msg
     pkt.show2()
     sendp(pkt, iface=client_iface, verbose=False)
