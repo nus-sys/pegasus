@@ -7,19 +7,9 @@
 
 namespace memcachekv {
 
-typedef uint32_t keyhash_t;
+void convert_endian(void *dst, void *src, size_t size);
 
-struct KeyRange {
-    keyhash_t start;
-    keyhash_t end;
-};
-// Comparator for KeyRange
-struct KeyRangeComparator {
-    bool operator() (const KeyRange& lhs, const KeyRange& rhs) const
-    {
-        return lhs.start < rhs.start;
-    }
-};
+typedef uint32_t keyhash_t;
 
 struct Operation {
     enum class Type {
@@ -73,7 +63,7 @@ struct MemcacheKVReply {
 };
 
 struct MigrationRequest {
-    KeyRange keyrange;
+    keyhash_t keyhash;
     std::vector<Operation> ops;
 };
 
@@ -97,8 +87,8 @@ class MessageCodec {
 public:
     virtual ~MessageCodec() {};
 
-    virtual void decode(const std::string &in, MemcacheKVMessage &out) = 0;
-    virtual void encode(std::string &out, const MemcacheKVMessage &in) = 0;
+    virtual bool decode(const std::string &in, MemcacheKVMessage &out) = 0;
+    virtual bool encode(std::string &out, const MemcacheKVMessage &in) = 0;
 };
 
 class ProtobufCodec : public MessageCodec {
@@ -106,8 +96,8 @@ public:
     ProtobufCodec() {};
     ~ProtobufCodec() {};
 
-    void decode(const std::string &in, MemcacheKVMessage &out) override;
-    void encode(std::string &out, const MemcacheKVMessage &in) override;
+    bool decode(const std::string &in, MemcacheKVMessage &out) override;
+    bool encode(std::string &out, const MemcacheKVMessage &in) override;
 };
 
 class WireCodec : public MessageCodec {
@@ -115,44 +105,45 @@ public:
     WireCodec() {};
     ~WireCodec() {};
 
-    void decode(const std::string &in, MemcacheKVMessage &out) override;
-    void encode(std::string &out, const MemcacheKVMessage &in) override;
+    bool decode(const std::string &in, MemcacheKVMessage &out) override;
+    bool encode(std::string &out, const MemcacheKVMessage &in) override;
 
 private:
     /* Wire format:
-     * type (8) + rsvd (8) + port (16) + key_hash (32) + message
+     * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) + message
      *
      * Request format:
-     * client_id (32) + req_id (32) + op_type (8) + key_len (16) + key (+ value_len(16) + value)
+     * client_id (32) + req_id (32) + key_len (16) + key (+ value_len(16) + value)
      *
      * Reply format:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value
      *
      * Migration request format:
-     * range_start (32) + range_end (32) + nops (16) + nops * (key_len (16) + key + value_len(16) + value)
+     * nops (16) + nops * (key_len (16) + key + value_len(16) + value)
      */
-    typedef uint8_t type_t;
-    typedef uint8_t rsvd_t;
-    typedef uint16_t port_t;
+    typedef uint16_t identifier_t;
+    typedef uint8_t op_type_t;
     typedef uint32_t keyhash_t;
+    typedef uint8_t node_t;
+    typedef uint16_t load_t;
     typedef uint32_t client_id_t ;
     typedef uint32_t req_id_t;
-    typedef uint8_t op_type_t;
     typedef uint16_t key_len_t;
     typedef uint8_t result_t;
     typedef uint16_t value_len_t;
     typedef uint16_t nops_t;
 
-    static const type_t TYPE_REQUEST = 0;
-    static const type_t TYPE_REPLY = 1;
-    static const type_t TYPE_MIGRATION_REQUEST = 2;
-    static const size_t PACKET_BASE_SIZE = sizeof(type_t) + sizeof(rsvd_t) + sizeof(port_t) + sizeof(keyhash_t);
+    static const identifier_t PEGASUS = 0x5047;
+    static const op_type_t OP_GET = 0x0;
+    static const op_type_t OP_PUT = 0x1;
+    static const op_type_t OP_DEL = 0x2;
+    static const op_type_t OP_REP = 0x3;
+    static const op_type_t OP_MGR = 0x4;
+    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t);
 
-    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) +
-        sizeof(op_type_t) + sizeof(key_len_t);
-    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) +
-        sizeof(result_t) + sizeof(value_len_t);
-    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + 2 * sizeof(keyhash_t) + sizeof(nops_t);
+    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(key_len_t);
+    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
+    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nops_t);
 };
 
 enum class Ack {

@@ -6,7 +6,17 @@ using std::string;
 
 namespace memcachekv {
 
-void
+void convert_endian(void *dst, void *src, size_t size)
+{
+    uint8_t *dptr, *sptr;
+    for (dptr = (uint8_t*)dst, sptr = (uint8_t*)src + size - 1;
+         size > 0;
+         size--) {
+        *dptr++ = *sptr--;
+    }
+}
+
+bool
 ProtobufCodec::decode(const string &in, MemcacheKVMessage &out)
 {
     proto::MemcacheKVMessage msg;
@@ -21,9 +31,10 @@ ProtobufCodec::decode(const string &in, MemcacheKVMessage &out)
     } else {
         panic("protobuf MemcacheKVMessage wrong format");
     }
+    return true;
 }
 
-void
+bool
 ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
 {
     proto::MemcacheKVMessage msg;
@@ -51,67 +62,90 @@ ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
     }
 
     msg.SerializeToString(&out);
+    return true;
 }
 
-void
+bool
 WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
 {
     const char *buf = in.data();
     const char *ptr = buf;
     size_t buf_size = in.size();
 
-    assert(buf_size > PACKET_BASE_SIZE);
-    type_t type = *(type_t *)ptr;
-    ptr += sizeof(type_t) + sizeof(rsvd_t) + sizeof(port_t);
-    keyhash_t keyhash;
-    uint8_t *hash_ptr = (uint8_t*)&keyhash;
-    // Big Endian
-    for (size_t i = 0; i < sizeof(keyhash_t); i++) {
-        *hash_ptr++ = *(uint8_t*)(ptr + sizeof(keyhash_t) - i -1);
+    if (buf_size < PACKET_BASE_SIZE) {
+        return false;
     }
+    if (*(identifier_t*)ptr != PEGASUS) {
+        return false;
+    }
+    ptr += sizeof(identifier_t);
+    op_type_t op_type = *(op_type_t*)ptr;
+    ptr += sizeof(op_type_t);
+    keyhash_t keyhash;
+    convert_endian(&keyhash, ptr, sizeof(keyhash_t));
     ptr += sizeof(keyhash_t);
 
-    switch (type) {
-    case TYPE_REQUEST: {
-        assert(buf_size > REQUEST_BASE_SIZE);
+    switch (op_type) {
+    case OP_GET:
+    case OP_PUT:
+    case OP_DEL: {
+        if (buf_size < REQUEST_BASE_SIZE) {
+            return false;
+        }
         out.type = MemcacheKVMessage::Type::REQUEST;
-        out.request.client_id = (int)*(client_id_t *)ptr;
+        out.request.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
-        out.request.req_id = (uint32_t)*(req_id_t *)ptr;
+        out.request.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
-        out.request.op.op_type = static_cast<Operation::Type>(*(op_type_t *)ptr);
+        if (op_type == OP_GET) {
+            out.request.op.op_type = Operation::Type::GET;
+        } else if (op_type == OP_PUT) {
+            out.request.op.op_type = Operation::Type::PUT;
+        } else {
+            out.request.op.op_type = Operation::Type::DEL;
+        }
         ptr += sizeof(op_type_t);
-        key_len_t key_len = *(key_len_t *)ptr;
+        key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
-        assert(buf_size >= REQUEST_BASE_SIZE + key_len + 1);
+        if (buf_size < REQUEST_BASE_SIZE + key_len) {
+            return false;
+        }
         out.request.op.key = string(ptr, key_len);
-        ptr += key_len + 1;
+        ptr += key_len;
         out.request.op.keyhash = keyhash;
-        if (out.request.op.op_type == Operation::Type::PUT) {
-            assert(buf_size > REQUEST_BASE_SIZE + key_len + 1 + sizeof(value_len_t));
-            value_len_t value_len = *(value_len_t *)ptr;
+        if (op_type == OP_PUT) {
+            if (buf_size < REQUEST_BASE_SIZE + key_len + sizeof(value_len_t)) {
+                return false;
+            }
+            value_len_t value_len = *(value_len_t*)ptr;
             ptr += sizeof(value_len_t);
-            assert(buf_size >= REQUEST_BASE_SIZE + key_len + 1 + sizeof(value_len_t) + value_len + 1);
+            if (buf_size < REQUEST_BASE_SIZE + key_len + sizeof(value_len_t) + value_len) {
+                return false;
+            }
             out.request.op.value = string(ptr, value_len);
         }
         break;
     }
-    case TYPE_REPLY: {
-        assert(buf_size > REPLY_BASE_SIZE);
+    case OP_REP: {
+        if (buf_size < REPLY_BASE_SIZE) {
+            return false;
+        }
         out.type = MemcacheKVMessage::Type::REPLY;
-        out.reply.client_id = (int)*(client_id_t *)ptr;
+        out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
-        out.reply.req_id = (uint32_t)*(req_id_t *)ptr;
+        out.reply.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
-        out.reply.result = static_cast<Result>(*(result_t *)ptr);
+        out.reply.result = static_cast<Result>(*(result_t*)ptr);
         ptr += sizeof(result_t);
-        value_len_t value_len = *(value_len_t *)ptr;
+        value_len_t value_len = *(value_len_t*)ptr;
         ptr += sizeof(value_len_t);
-        assert(buf_size > REPLY_BASE_SIZE + value_len + 1);
+        if (buf_size < REPLY_BASE_SIZE + value_len) {
+            return false;
+        }
         out.reply.value = string(ptr, value_len);
         break;
     }
-    case TYPE_MIGRATION_REQUEST: {
+    case OP_MGR: {
         assert(buf_size > MIGRATION_REQUEST_BASE_SIZE);
         out.type = MemcacheKVMessage::Type::MIGRATION_REQUEST;
         out.migration_request.keyrange.start = *(keyhash_t*)ptr;
