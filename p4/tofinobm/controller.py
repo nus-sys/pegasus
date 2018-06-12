@@ -38,34 +38,6 @@ class Controller(object):
                     ethernet_dstAddr = macAddr_to_string(mac)),
                 pegasus_l2_forward_action_spec_t(
                     action_port = port))
-        # tab_replicated_keys
-        self.client.tab_replicated_keys_set_default_action_default_dst_node(
-            self.sess_hdl, self.dev_tgt)
-        for (keyhash, attrs) in tables["tab_replicated_keys"].items():
-            self.client.tab_replicated_keys_table_add_with_lookup_rkey(
-                self.sess_hdl, self.dev_tgt,
-                pegasus_tab_replicated_keys_match_spec_t(
-                    pegasus_keyhash = int(keyhash)),
-                pegasus_lookup_rkey_action_spec_t(
-                    action_rkey_index = attrs["rkey_index"]))
-        # tab_extract_rnodes
-        self.client.tab_extract_rnodes_set_default_action_extract_rnodes(
-            self.sess_hdl, self.dev_tgt)
-        # tab_init_rkey
-        self.client.tab_init_rkey_set_default_action_init_rkey(
-            self.sess_hdl, self.dev_tgt)
-        # tab_lookup_min_rnode
-        self.client.tab_lookup_min_rnode_set_default_action_lookup_min_rnode(
-            self.sess_hdl, self.dev_tgt)
-        # tab_read_node_load_stats
-        self.client.tab_read_node_load_stats_set_default_action_read_node_load_stats(
-            self.sess_hdl, self.dev_tgt)
-        # tab_update_node_load
-        self.client.tab_update_node_load_set_default_action_update_node_load(
-            self.sess_hdl, self.dev_tgt)
-        # tab_update_min_node_load
-        self.client.tab_update_min_node_load_set_default_action_update_min_node_load(
-            self.sess_hdl, self.dev_tgt)
         # tab_node_forward
         self.client.tab_node_forward_set_default_action__drop(
             self.sess_hdl, self.dev_tgt)
@@ -78,6 +50,75 @@ class Controller(object):
                     action_mac_addr = macAddr_to_string(attrs["mac"]),
                     action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
                     action_port = attrs["port"]))
+        # tab_extend_rset
+        self.client.tab_extend_rset_set_default_action__drop(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_extend_rset_table_add_with_extend_rset2(
+            self.sess_hdl, self.dev_tgt,
+            pegasus_tab_extend_rset_match_spec_t(
+                meta_n_replicas = 1))
+        self.client.tab_extend_rset_table_add_with_extend_rset3(
+            self.sess_hdl, self.dev_tgt,
+            pegasus_tab_extend_rset_match_spec_t(
+                meta_n_replicas = 2))
+        self.client.tab_extend_rset_table_add_with_extend_rset4(
+            self.sess_hdl, self.dev_tgt,
+            pegasus_tab_extend_rset_match_spec_t(
+                meta_n_replicas = 3))
+        # tab_update_min_rnode
+        self.client.tab_update_min_rnode1_set_default_action_update_min_rnode1(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_update_min_rnode2_set_default_action_update_min_rnode2(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_update_min_rnode3_set_default_action_update_min_rnode3(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_update_min_rnode4_set_default_action_update_min_rnode4(
+            self.sess_hdl, self.dev_tgt)
+        # tab_init_rkey
+        self.client.tab_init_rkey_set_default_action_init_rkey(
+            self.sess_hdl, self.dev_tgt)
+        # tab_extract_rloads
+        self.client.tab_extract_rloads_set_default_action_extract_rloads(
+            self.sess_hdl, self.dev_tgt)
+        # tab_extract_rnodes
+        self.client.tab_extract_rnodes_set_default_action_extract_rnodes(
+            self.sess_hdl, self.dev_tgt)
+        # tab_replicated_keys
+        self.client.tab_replicated_keys_set_default_action_default_dst_node(
+            self.sess_hdl, self.dev_tgt)
+        for (keyhash, attrs) in tables["tab_replicated_keys"].items():
+            self.client.tab_replicated_keys_table_add_with_lookup_rkey(
+                self.sess_hdl, self.dev_tgt,
+                pegasus_tab_replicated_keys_match_spec_t(
+                    pegasus_keyhash = int(keyhash)),
+                pegasus_lookup_rkey_action_spec_t(
+                    action_rkey_index = attrs["rkey_index"]))
+        # tab_update_min_node_load
+        self.client.tab_update_min_node_load3_set_default_action_update_min_node_load3(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_update_min_node_load2_set_default_action_update_min_node_load2(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_update_min_node_load1_set_default_action_update_min_node_load1(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_update_min_node_load_from_meta_set_default_action_update_min_node_load_from_meta(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_update_min_node_load_from_hdr_set_default_action_update_min_node_load_from_hdr(
+            self.sess_hdl, self.dev_tgt)
+        # tab_check_min_node_load
+        self.client.tab_check_min_node_load0_set_default_action_check_min_node_load0(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_check_min_node_load1_set_default_action_check_min_node_load1(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_check_min_node_load2_set_default_action_check_min_node_load2(
+            self.sess_hdl, self.dev_tgt)
+        self.client.tab_check_min_node_load3_set_default_action_check_min_node_load3(
+            self.sess_hdl, self.dev_tgt)
+        # tab_update_node_load
+        self.client.tab_update_node_load_set_default_action_update_node_load(
+            self.sess_hdl, self.dev_tgt)
+        # tab_read_node_load_stats
+        self.client.tab_read_node_load_stats_set_default_action_read_node_load_stats(
+            self.sess_hdl, self.dev_tgt)
         self.conn_mgr.complete_operations(self.sess_hdl)
 
     def close(self):
