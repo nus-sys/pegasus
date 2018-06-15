@@ -41,20 +41,11 @@ private:
                               const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
-    void process_ctrl_migration(const ControllerMigrationRequest &msg);
-    void process_ctrl_register(const ControllerRegisterReply &msg);
-    bool keyhash_in_range(keyhash_t keyhash);
-    bool insert_keyrange(const KeyRange &keyrange);
-    bool remove_keyrange(const KeyRange &keyrange);
-    void insert_kv(const std::string &key, keyhash_t keyhash, const std::string &value);
-    void remove_kv(const std::string &key, keyhash_t keyhash);
 
     Transport *transport;
     Configuration *config;
     MessageCodec *codec;
     ControllerCodec *ctrl_codec;
-    std::set<KeyRange, KeyRangeComparator> key_ranges;
-    std::map<keyhash_t, std::set<std::string> > key_hashes;
     std::unordered_map<std::string, std::string> store;
     int node_id;
     int proc_latency;

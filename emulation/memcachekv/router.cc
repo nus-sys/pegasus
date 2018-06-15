@@ -27,7 +27,7 @@ Router::receive_message(const std::string &message, const sockaddr &src_addr)
         break;
     }
     default:
-        printf("Unknown message type %u\n", msg.type);
+        printf("Unknown message type %u\n", static_cast<unsigned int>(msg.type));
     }
 }
 

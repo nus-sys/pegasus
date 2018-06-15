@@ -31,14 +31,13 @@ int main(int argc, char *argv[])
         app_core = -1, transport_core = -1, dscp = -1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
-    memcachekv::ControllerResetRequest::LBType lb_type = memcachekv::ControllerResetRequest::LBType::STATIC;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
     memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
     CodecMode codec_mode = PROTOBUF;
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:k:l:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -70,18 +69,6 @@ int main(int argc, char *argv[])
         }
         case 'j': {
             dscp = stoi(std::string(optarg));
-            break;
-        }
-        case 'k': {
-            if (strcmp(optarg, "static") == 0) {
-                lb_type = memcachekv::ControllerResetRequest::LBType::STATIC;
-            } else if (strcmp(optarg, "iload") == 0) {
-                lb_type = memcachekv::ControllerResetRequest::LBType::ILOAD;
-            } else if (strcmp(optarg, "pload") == 0) {
-                lb_type = memcachekv::ControllerResetRequest::LBType::PLOAD;
-            } else if (strcmp(optarg, "ipload") == 0) {
-                lb_type = memcachekv::ControllerResetRequest::LBType::IPLOAD;
-            }
             break;
         }
         case 'l': {
@@ -273,7 +260,6 @@ int main(int argc, char *argv[])
         memcachekv::ControllerMessage msg;
         msg.type = memcachekv::ControllerMessage::Type::RESET_REQ;
         msg.reset_req.num_nodes = num_nodes;
-        msg.reset_req.lb_type = lb_type;
         app = new memcachekv::Controller(&transport, &node_config, msg);
         transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
