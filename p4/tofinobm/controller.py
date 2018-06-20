@@ -45,7 +45,7 @@ class Controller(object):
             self.client.tab_node_forward_table_add_with_node_forward(
                 self.sess_hdl, self.dev_tgt,
                 pegasus_tab_node_forward_match_spec_t(
-                    meta_dst_node = int(node)),
+                    pegasus_node = int(node)),
                 pegasus_node_forward_action_spec_t(
                     action_mac_addr = macAddr_to_string(attrs["mac"]),
                     action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
@@ -113,8 +113,22 @@ class Controller(object):
             self.sess_hdl, self.dev_tgt)
         self.client.tab_check_min_node_load3_set_default_action_check_min_node_load3(
             self.sess_hdl, self.dev_tgt)
+        # tab_update_total_node_load
+        self.client.tab_update_total_node_load_table_add_with_dec_total_node_load(
+            self.sess_hdl, self.dev_tgt,
+            pegasus_tab_update_total_node_load_match_spec_t(
+                pegasus_op = 3))
+        self.client.tab_update_total_node_load_set_default_action_inc_total_node_load(
+            self.sess_hdl, self.dev_tgt)
         # tab_update_node_load
-        self.client.tab_update_node_load_set_default_action_update_node_load(
+        self.client.tab_update_node_load_table_add_with_dec_node_load(
+            self.sess_hdl, self.dev_tgt,
+            pegasus_tab_update_node_load_match_spec_t(
+                pegasus_op = 3))
+        self.client.tab_update_node_load_set_default_action_inc_node_load(
+            self.sess_hdl, self.dev_tgt)
+        # tab_read_node_load
+        self.client.tab_read_node_load_set_default_action_read_node_load(
             self.sess_hdl, self.dev_tgt)
         # tab_read_node_load_stats
         self.client.tab_read_node_load_stats_set_default_action_read_node_load_stats(

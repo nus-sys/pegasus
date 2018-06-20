@@ -78,7 +78,6 @@ header pegasus_t pegasus;
 
 header_type metadata_t {
     fields {
-        dst_node : 8;
         // Node load stats
         total_node_load : 16;
         min_node : 8;
@@ -244,14 +243,11 @@ action node_forward(mac_addr, ip_addr, port) {
     modify_field(ethernet.dstAddr, mac_addr);
     modify_field(ipv4.dstAddr, ip_addr);
     modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
-    // debug
-    modify_field(pegasus.node, meta.min_node);
-    modify_field(pegasus.load, meta.min_node_load);
 }
 
 table tab_node_forward {
     reads {
-        meta.dst_node: exact;
+        pegasus.node: exact;
     }
     actions {
         node_forward;
@@ -289,7 +285,7 @@ table tab_extend_rset {
 }
 
 action update_min_rnode4 () {
-    modify_field(meta.dst_node, meta.rnode_4);
+    modify_field(pegasus.node, meta.rnode_4);
     modify_field(meta.min_rload, meta.rload_4);
 }
 
@@ -300,7 +296,7 @@ table tab_update_min_rnode4 {
 }
 
 action update_min_rnode3 () {
-    modify_field(meta.dst_node, meta.rnode_3);
+    modify_field(pegasus.node, meta.rnode_3);
     modify_field(meta.min_rload, meta.rload_3);
 }
 
@@ -311,7 +307,7 @@ table tab_update_min_rnode3 {
 }
 
 action update_min_rnode2 () {
-    modify_field(meta.dst_node, meta.rnode_2);
+    modify_field(pegasus.node, meta.rnode_2);
     modify_field(meta.min_rload, meta.rload_2);
 }
 
@@ -322,7 +318,7 @@ table tab_update_min_rnode2 {
 }
 
 action update_min_rnode1 () {
-    modify_field(meta.dst_node, meta.rnode_1);
+    modify_field(pegasus.node, meta.rnode_1);
     modify_field(meta.min_rload, meta.rload_1);
 }
 
@@ -378,7 +374,7 @@ action lookup_rkey(rkey_index) {
 }
 
 action default_dst_node() {
-    modify_field(meta.dst_node, pegasus.keyhash & HASH_MASK);
+    modify_field(pegasus.node, pegasus.keyhash & HASH_MASK);
 }
 
 table tab_replicated_keys {
@@ -488,16 +484,53 @@ table tab_update_min_node_load_from_hdr {
     }
 }
 
-action update_node_load() {
-    register_read(meta.tmp_load, reg_node_load, pegasus.node);
-    modify_field(meta.total_node_load, meta.total_node_load - meta.tmp_load + pegasus.load);
-    register_write(reg_node_load, pegasus.node, pegasus.load);
-    register_write(reg_total_node_load, 0, meta.total_node_load);
+action dec_total_node_load() {
+    register_write(reg_total_node_load, 0, meta.total_node_load - 1);
+}
+
+action inc_total_node_load() {
+    register_write(reg_total_node_load, 0, meta.total_node_load + 1);
+}
+
+table tab_update_total_node_load {
+    reads {
+        pegasus.op : exact;
+    }
+    actions {
+        inc_total_node_load;
+        dec_total_node_load;
+    }
+    size : 1;
+}
+
+action dec_node_load() {
+    register_write(reg_node_load, pegasus.node, pegasus.load - 1);
+    modify_field(pegasus.load, pegasus.load - 1);
+}
+
+action inc_node_load() {
+    register_write(reg_node_load, pegasus.node, pegasus.load + 1);
+    modify_field(pegasus.load, pegasus.load + 1);
 }
 
 table tab_update_node_load {
+    reads {
+        pegasus.op : exact;
+    }
     actions {
-        update_node_load;
+        inc_node_load;
+        dec_node_load;
+    }
+    size : 1;
+}
+
+action read_node_load() {
+    register_read(pegasus.load, reg_node_load, pegasus.node);
+}
+
+table tab_read_node_load {
+    actions {
+        read_node_load;
     }
 }
 
@@ -516,30 +549,7 @@ table tab_read_node_load_stats {
 control ingress {
     if (valid(pegasus)) {
         apply(tab_read_node_load_stats);
-        if (pegasus.op == OP_REP) {
-            apply(tab_update_node_load);
-            // Update minimum node load
-            if (pegasus.load < meta.min_node_load) {
-                apply(tab_update_min_node_load_from_hdr);
-            } else if (pegasus.node == meta.min_node and pegasus.load > meta.min_node_load) {
-                // The previous minimum-loaded node potentially is no longer the min node,
-                // search for the new min
-                apply(tab_check_min_node_load0);
-                apply(tab_check_min_node_load1);
-                if (meta.tmp_load < meta.min_node_load) {
-                    apply(tab_update_min_node_load1);
-                }
-                apply(tab_check_min_node_load2);
-                if (meta.tmp_load < meta.min_node_load) {
-                    apply(tab_update_min_node_load2);
-                }
-                apply(tab_check_min_node_load3);
-                if (meta.tmp_load < meta.min_node_load) {
-                    apply(tab_update_min_node_load3);
-                }
-                apply(tab_update_min_node_load_from_meta);
-            }
-        } else {
+        if (pegasus.op != OP_REP) {
             apply(tab_replicated_keys) {
                 hit {
                     apply(tab_extract_rnodes);
@@ -572,6 +582,43 @@ control ingress {
                 }
             }
         }
+
+        // Update node load and total load
+        apply(tab_read_node_load);
+        if (pegasus.op == OP_REP) {
+            if (pegasus.load > 0 and meta.total_node_load > 0) {
+                apply(tab_update_node_load);
+                apply(tab_update_total_node_load);
+            }
+        } else {
+            if (pegasus.load + 1 > pegasus.load and
+                    meta.total_node_load + 1 > meta.total_node_load) {
+                apply(tab_update_node_load);
+                apply(tab_update_total_node_load);
+            }
+        }
+        // Update minimum node load
+        if (pegasus.load < meta.min_node_load) {
+            apply(tab_update_min_node_load_from_hdr);
+        } else if (pegasus.node == meta.min_node and pegasus.load > meta.min_node_load) {
+            // The previous minimum-loaded node potentially is no longer the min node,
+            // search for the new min
+            apply(tab_check_min_node_load0);
+            apply(tab_check_min_node_load1);
+            if (meta.tmp_load < meta.min_node_load) {
+                apply(tab_update_min_node_load1);
+            }
+            apply(tab_check_min_node_load2);
+            if (meta.tmp_load < meta.min_node_load) {
+                apply(tab_update_min_node_load2);
+            }
+            apply(tab_check_min_node_load3);
+            if (meta.tmp_load < meta.min_node_load) {
+                apply(tab_update_min_node_load3);
+            }
+            apply(tab_update_min_node_load_from_meta);
+        }
+
         // Forward reply messages using L2, all other
         // operations are forwarded based on node.
         if (pegasus.op == OP_REP) {
