@@ -42,7 +42,6 @@ Transport::register_node(TransportReceiver *receiver,
     } else {
         assert(node_id < config->num_nodes);
         register_address(receiver, config, config->addresses.at(node_id));
-        listen_on_router(config->addresses.at(node_id));
         listen_on_controller();
     }
 }
