@@ -30,7 +30,7 @@ struct Operation {
 
 struct MemcacheKVRequest {
     MemcacheKVRequest()
-        : client_id(-1), req_id(0) {};
+        : client_id(0), req_id(0) {};
     MemcacheKVRequest(const proto::MemcacheKVRequest &request)
         : client_id(request.client_id()),
         req_id(request.req_id()),
@@ -48,13 +48,15 @@ enum class Result {
 
 struct MemcacheKVReply {
     MemcacheKVReply()
-        : client_id(-1), req_id(0), result(Result::OK), value("") {};
+        : node_id(0), client_id(0), req_id(0), result(Result::OK), value("") {};
     MemcacheKVReply(const proto::MemcacheKVReply &reply)
-        : client_id(reply.client_id()),
+        : node_id(reply.node_id()),
+        client_id(reply.client_id()),
         req_id(reply.req_id()),
         result(static_cast<Result>(reply.result())),
         value(reply.value()) {};
 
+    int node_id;
     int client_id;
     uint32_t req_id;
     Result result;
@@ -131,7 +133,7 @@ private:
     typedef uint16_t value_len_t;
     typedef uint16_t nops_t;
 
-    static const identifier_t PEGASUS = 0x5047;
+    static const identifier_t PEGASUS = 0x4750;
     static const op_type_t OP_GET  = 0x0;
     static const op_type_t OP_PUT  = 0x1;
     static const op_type_t OP_DEL  = 0x2;

@@ -51,6 +51,7 @@ ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {
+        msg.mutable_reply()->set_node_id(in.reply.node_id);
         msg.mutable_reply()->set_client_id(in.reply.client_id);
         msg.mutable_reply()->set_req_id(in.reply.req_id);
         msg.mutable_reply()->set_result(static_cast<proto::Result>(in.reply.result));
@@ -84,6 +85,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     keyhash_t keyhash;
     convert_endian(&keyhash, ptr, sizeof(keyhash_t));
     ptr += sizeof(keyhash_t);
+    int node_id = *(node_t*)ptr;
     ptr += sizeof(node_t);
     ptr += sizeof(load_t);
 
@@ -114,7 +116,6 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
             out.request.op.op_type = Operation::Type::GETM;
             break;
         }
-        ptr += sizeof(op_type_t);
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
         if (buf_size < REQUEST_BASE_SIZE + key_len) {
@@ -141,6 +142,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
+        out.reply.node_id = node_id;
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
@@ -218,8 +220,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     char *buf = new char[buf_size];
     char *ptr = buf;
     // App header
-    identifier_t id = PEGASUS;
-    convert_endian(ptr, &id, sizeof(identifier_t));
+    *(identifier_t*)ptr = PEGASUS;
     ptr += sizeof(identifier_t);
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
@@ -249,7 +250,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(op_type_t);
         // No keyhash required
         ptr += sizeof(keyhash_t);
-        // XXX should insert node and load here
+        *(node_t*)ptr = in.reply.node_id;
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         break;

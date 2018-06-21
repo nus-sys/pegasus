@@ -70,6 +70,7 @@ Server::process_kv_request(const MemcacheKVRequest &msg,
     MemcacheKVMessage reply_msg;
     string reply_msg_str;
     reply_msg.type = MemcacheKVMessage::Type::REPLY;
+    reply_msg.reply.node_id = this->node_id;
     reply_msg.reply.client_id = msg.client_id;
     reply_msg.reply.req_id = msg.req_id;
 

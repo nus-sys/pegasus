@@ -25,10 +25,11 @@ enum Result {
 }
 
 message MemcacheKVReply {
-    int32 client_id = 1;
-    uint32 req_id = 2;
-    Result result = 3;
-    string value = 4;
+    int32 node_id = 1;
+    int32 client_id = 2;
+    uint32 req_id = 3;
+    Result result = 4;
+    string value = 5;
 }
 
 message MemcacheKVMessage {
