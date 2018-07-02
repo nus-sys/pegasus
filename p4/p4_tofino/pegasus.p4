@@ -16,6 +16,7 @@
 #define OP_DEL          0x2
 #define OP_REP          0x3
 #define AVG_LOAD_SHIFT  0x2
+#define RNODE_NONE      0x7F
 
 header_type ethernet_t {
     fields {
@@ -24,7 +25,6 @@ header_type ethernet_t {
         etherType : 16;
     }
 }
-
 
 header ethernet_t ethernet;
 
@@ -710,12 +710,18 @@ control process_replicated_keys {
     apply(tab_extract_rnode_4);
     apply(tab_find_min_rnode_id_1);
     apply(tab_find_min_rnode_1);
-    apply(tab_find_min_rnode_id_2);
-    apply(tab_find_min_rnode_2);
-    apply(tab_find_min_rnode_id_3);
-    apply(tab_find_min_rnode_3);
-    apply(tab_find_min_rnode_id_4);
-    apply(tab_find_min_rnode_4);
+    if (meta.rnode_2 != RNODE_NONE) {
+        apply(tab_find_min_rnode_id_2);
+        apply(tab_find_min_rnode_2);
+    }
+    if (meta.rnode_3 != RNODE_NONE) {
+        apply(tab_find_min_rnode_id_3);
+        apply(tab_find_min_rnode_3);
+    }
+    if (meta.rnode_4 != RNODE_NONE) {
+        apply(tab_find_min_rnode_id_4);
+        apply(tab_find_min_rnode_4);
+    }
 }
 
 control ingress {
