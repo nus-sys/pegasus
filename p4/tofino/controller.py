@@ -12,6 +12,9 @@ from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.protocol import TMultiplexedProtocol
 
+HASH_MASK = 0x3
+RNODE_NONE = 0x7F
+
 class Controller(object):
     def __init__(self, thrift_server):
         self.transport = TSocket.TSocket(thrift_server, 9090)
@@ -50,6 +53,49 @@ class Controller(object):
                     action_mac_addr = macAddr_to_string(attrs["mac"]),
                     action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
                     action_port = attrs["port"]))
+        # tab_replicated_keys, reg_rnode (1-4)
+        for (keyhash, rkey_index) in tables["tab_replicated_keys"].items():
+            self.client.tab_replicated_keys_table_add_with_lookup_rkey(
+                self.sess_hdl, self.dev_tgt,
+                pegasus_tab_replicated_keys_match_spec_t(
+                    pegasus_keyhash = int(keyhash)),
+                pegasus_lookup_rkey_action_spec_t(
+                    action_rkey_index = rkey_index))
+            self.client.register_write_reg_rnode_1(
+                self.sess_hdl, self.dev_tgt, rkey_index,
+                int(keyhash) & HASH_MASK)
+            self.client.register_write_reg_rnode_2(
+                self.sess_hdl, self.dev_tgt, rkey_index,
+                RNODE_NONE)
+            self.client.register_write_reg_rnode_3(
+                self.sess_hdl, self.dev_tgt, rkey_index,
+                RNODE_NONE)
+            self.client.register_write_reg_rnode_4(
+                self.sess_hdl, self.dev_tgt, rkey_index,
+                RNODE_NONE)
+        # reg_node_id (1-4)
+        for i in range(4):
+            self.client.register_write_reg_node_id_1(
+                self.sess_hdl, self.dev_tgt, i,
+                pegasus_reg_node_id_1_value_t(
+                    f0 = i,
+                    f1 = 0))
+            self.client.register_write_reg_node_id_2(
+                self.sess_hdl, self.dev_tgt, i,
+                pegasus_reg_node_id_2_value_t(
+                    f0 = i,
+                    f1 = 0))
+            self.client.register_write_reg_node_id_3(
+                self.sess_hdl, self.dev_tgt, i,
+                pegasus_reg_node_id_3_value_t(
+                    f0 = i,
+                    f1 = 0))
+            self.client.register_write_reg_node_id_4(
+                self.sess_hdl, self.dev_tgt, i,
+                pegasus_reg_node_id_4_value_t(
+                    f0 = i,
+                    f1 = 0))
+
         self.conn_mgr.complete_operations(self.sess_hdl)
 
     def close(self):
