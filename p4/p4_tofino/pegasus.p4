@@ -619,18 +619,21 @@ blackbox stateful_alu sa_find_min_rnode_id_1 {
 blackbox stateful_alu sa_find_min_rnode_id_2 {
     reg: reg_node_id_2;
     condition_lo: register_lo < meta.min_rload;
+    output_predicate: condition_lo;
     output_value: register_hi;
     output_dst: pegasus.node;
 }
 blackbox stateful_alu sa_find_min_rnode_id_3 {
     reg: reg_node_id_3;
     condition_lo: register_lo < meta.min_rload;
+    output_predicate: condition_lo;
     output_value: register_hi;
     output_dst: pegasus.node;
 }
 blackbox stateful_alu sa_find_min_rnode_id_4 {
     reg: reg_node_id_4;
     condition_lo: register_lo < meta.min_rload;
+    output_predicate: condition_lo;
     output_value: register_hi;
     output_dst: pegasus.node;
 }
@@ -681,6 +684,18 @@ table tab_find_min_rnode_id_4 {
     size: 1;
 }
 
+action debug() {
+    modify_field(pegasus.load, meta.min_rload);
+}
+
+table tab_debug {
+    actions {
+        debug;
+    }
+    default_action: debug;
+    size: 1;
+}
+
 control process_pegasus_reply {
     apply(tab_update_min_node_load);
     apply(tab_update_node_load_1);
@@ -701,6 +716,7 @@ control process_pegasus_request {
         }
     }
     apply(tab_node_forward);
+    apply(tab_debug);
 }
 
 control process_replicated_keys {
@@ -708,8 +724,10 @@ control process_replicated_keys {
     apply(tab_extract_rnode_2);
     apply(tab_extract_rnode_3);
     apply(tab_extract_rnode_4);
-    apply(tab_find_min_rnode_id_1);
-    apply(tab_find_min_rnode_1);
+    if (meta.rnode_1 != RNODE_NONE) {
+        apply(tab_find_min_rnode_id_1);
+        apply(tab_find_min_rnode_1);
+    }
     if (meta.rnode_2 != RNODE_NONE) {
         apply(tab_find_min_rnode_id_2);
         apply(tab_find_min_rnode_2);
