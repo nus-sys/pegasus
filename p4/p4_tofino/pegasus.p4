@@ -545,21 +545,35 @@ blackbox stateful_alu sa_find_min_rnode_2 {
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: meta.min_rload;
+    output_dst: pegasus.load;
 }
-blackbox stateful_alu sa_find_min_rnode_3 {
+blackbox stateful_alu sa_find_min_rnode_3_a {
     reg: reg_node_load_3;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: meta.min_rload;
+    output_dst: pegasus.load;
 }
-blackbox stateful_alu sa_find_min_rnode_4 {
+blackbox stateful_alu sa_find_min_rnode_3_b {
+    reg: reg_node_load_3;
+    condition_lo: register_lo < pegasus.load;
+    output_predicate: condition_lo;
+    output_value: register_lo;
+    output_dst: pegasus.load;
+}
+blackbox stateful_alu sa_find_min_rnode_4_a {
     reg: reg_node_load_4;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: meta.min_rload;
+    output_dst: pegasus.load;
+}
+blackbox stateful_alu sa_find_min_rnode_4_b {
+    reg: reg_node_load_4;
+    condition_lo: register_lo < pegasus.load;
+    output_predicate: condition_lo;
+    output_value: register_lo;
+    output_dst: pegasus.load;
 }
 
 action find_min_rnode_1() {
@@ -568,11 +582,17 @@ action find_min_rnode_1() {
 action find_min_rnode_2() {
     sa_find_min_rnode_2.execute_stateful_alu(meta.rnode_2);
 }
-action find_min_rnode_3() {
-    sa_find_min_rnode_3.execute_stateful_alu(meta.rnode_3);
+action find_min_rnode_3_a() {
+    sa_find_min_rnode_3_a.execute_stateful_alu(meta.rnode_3);
 }
-action find_min_rnode_4() {
-    sa_find_min_rnode_4.execute_stateful_alu(meta.rnode_4);
+action find_min_rnode_3_b() {
+    sa_find_min_rnode_3_b.execute_stateful_alu(meta.rnode_3);
+}
+action find_min_rnode_4_a() {
+    sa_find_min_rnode_4_a.execute_stateful_alu(meta.rnode_4);
+}
+action find_min_rnode_4_b() {
+    sa_find_min_rnode_4_b.execute_stateful_alu(meta.rnode_4);
 }
 
 @pragma stage 2
@@ -592,19 +612,35 @@ table tab_find_min_rnode_2 {
     size: 1;
 }
 @pragma stage 4
-table tab_find_min_rnode_3 {
+table tab_find_min_rnode_3_a {
     actions {
-        find_min_rnode_3;
+        find_min_rnode_3_a;
     }
-    default_action: find_min_rnode_3;
+    default_action: find_min_rnode_3_a;
+    size: 1;
+}
+@pragma stage 4
+table tab_find_min_rnode_3_b {
+    actions {
+        find_min_rnode_3_b;
+    }
+    default_action: find_min_rnode_3_b;
     size: 1;
 }
 @pragma stage 5
-table tab_find_min_rnode_4 {
+table tab_find_min_rnode_4_a {
     actions {
-        find_min_rnode_4;
+        find_min_rnode_4_a;
     }
-    default_action: find_min_rnode_4;
+    default_action: find_min_rnode_4_a;
+    size: 1;
+}
+@pragma stage 5
+table tab_find_min_rnode_4_b {
+    actions {
+        find_min_rnode_4_b;
+    }
+    default_action: find_min_rnode_4_b;
     size: 1;
 }
 
@@ -621,21 +657,35 @@ blackbox stateful_alu sa_find_min_rnode_id_2 {
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: pegasus.node;
+    output_dst: meta.tmp_node;
 }
-blackbox stateful_alu sa_find_min_rnode_id_3 {
+blackbox stateful_alu sa_find_min_rnode_id_3_a {
     reg: reg_node_id_3;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: pegasus.node;
+    output_dst: meta.tmp_node;
 }
-blackbox stateful_alu sa_find_min_rnode_id_4 {
+blackbox stateful_alu sa_find_min_rnode_id_3_b {
+    reg: reg_node_id_3;
+    condition_lo: register_lo < pegasus.load;
+    output_predicate: condition_lo;
+    output_value: register_hi;
+    output_dst: meta.tmp_node;
+}
+blackbox stateful_alu sa_find_min_rnode_id_4_a {
     reg: reg_node_id_4;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: pegasus.node;
+    output_dst: meta.tmp_node;
+}
+blackbox stateful_alu sa_find_min_rnode_id_4_b {
+    reg: reg_node_id_4;
+    condition_lo: register_lo < pegasus.load;
+    output_predicate: condition_lo;
+    output_value: register_hi;
+    output_dst: meta.tmp_node;
 }
 
 action find_min_rnode_id_1() {
@@ -644,11 +694,17 @@ action find_min_rnode_id_1() {
 action find_min_rnode_id_2() {
     sa_find_min_rnode_id_2.execute_stateful_alu(meta.rnode_2);
 }
-action find_min_rnode_id_3() {
-    sa_find_min_rnode_id_3.execute_stateful_alu(meta.rnode_3);
+action find_min_rnode_id_3_a() {
+    sa_find_min_rnode_id_3_a.execute_stateful_alu(meta.rnode_3);
 }
-action find_min_rnode_id_4() {
-    sa_find_min_rnode_id_4.execute_stateful_alu(meta.rnode_4);
+action find_min_rnode_id_3_b() {
+    sa_find_min_rnode_id_3_b.execute_stateful_alu(meta.rnode_3);
+}
+action find_min_rnode_id_4_a() {
+    sa_find_min_rnode_id_4_a.execute_stateful_alu(meta.rnode_4);
+}
+action find_min_rnode_id_4_b() {
+    sa_find_min_rnode_id_4_b.execute_stateful_alu(meta.rnode_4);
 }
 
 @pragma stage 2
@@ -668,22 +724,73 @@ table tab_find_min_rnode_id_2 {
     size: 1;
 }
 @pragma stage 4
-table tab_find_min_rnode_id_3 {
+table tab_find_min_rnode_id_3_a {
     actions {
-        find_min_rnode_id_3;
+        find_min_rnode_id_3_a;
     }
-    default_action: find_min_rnode_id_3;
+    default_action: find_min_rnode_id_3_a;
+    size: 1;
+}
+@pragma stage 4
+table tab_find_min_rnode_id_3_b {
+    actions {
+        find_min_rnode_id_3_b;
+    }
+    default_action: find_min_rnode_id_3_b;
     size: 1;
 }
 @pragma stage 5
-table tab_find_min_rnode_id_4 {
+table tab_find_min_rnode_id_4_a {
     actions {
-        find_min_rnode_id_4;
+        find_min_rnode_id_4_a;
     }
-    default_action: find_min_rnode_id_4;
+    default_action: find_min_rnode_id_4_a;
+    size: 1;
+}
+@pragma stage 5
+table tab_find_min_rnode_id_4_b {
+    actions {
+        find_min_rnode_id_4_b;
+    }
+    default_action: find_min_rnode_id_4_b;
     size: 1;
 }
 
+/*
+   copy load node (3-4)
+*/
+action copy_load_node() {
+    modify_field(meta.min_rload, pegasus.load);
+    modify_field(pegasus.node, meta.tmp_node);
+}
+
+table tab_copy_load_node_3 {
+    actions {
+        copy_load_node;
+    }
+    default_action: copy_load_node;
+    size: 1;
+}
+
+table tab_copy_load_node_4 {
+    actions {
+        copy_load_node;
+    }
+    default_action: copy_load_node;
+    size: 1;
+}
+
+table tab_copy_load_node_5 {
+    actions {
+        copy_load_node;
+    }
+    default_action: copy_load_node;
+    size: 1;
+}
+
+/*
+   debug
+*/
 action debug() {
     modify_field(pegasus.load, meta.min_rload);
 }
@@ -733,12 +840,27 @@ control process_replicated_keys {
         apply(tab_find_min_rnode_2);
     }
     if (meta.rnode_3 != RNODE_NONE) {
-        apply(tab_find_min_rnode_id_3);
-        apply(tab_find_min_rnode_3);
+        if (pegasus.load == 0) {
+            apply(tab_find_min_rnode_id_3_a);
+            apply(tab_find_min_rnode_3_a);
+        } else {
+            apply(tab_copy_load_node_3);
+            apply(tab_find_min_rnode_id_3_b);
+            apply(tab_find_min_rnode_3_b);
+        }
     }
     if (meta.rnode_4 != RNODE_NONE) {
-        apply(tab_find_min_rnode_id_4);
-        apply(tab_find_min_rnode_4);
+        if (pegasus.load == 0) {
+            apply(tab_find_min_rnode_id_4_a);
+            apply(tab_find_min_rnode_4_a);
+        } else {
+            apply(tab_copy_load_node_4);
+            apply(tab_find_min_rnode_id_4_b);
+            apply(tab_find_min_rnode_4_b);
+        }
+        if (pegasus.load != 0) {
+            apply(tab_copy_load_node_5);
+        }
     }
 }
 
