@@ -1,5 +1,6 @@
 import argparse
 import json
+import time
 
 from res_pd_rpc.ttypes import *
 from ptf.thriftutils import *
@@ -14,6 +15,12 @@ from thrift.protocol import TMultiplexedProtocol
 
 HASH_MASK = 0x3
 RNODE_NONE = 0x7F
+MAX_RSET_SIZE = 0x4
+
+class ReplicatedKey(object):
+    def __init__(self, keyhash):
+        self.keyhash = keyhash
+        self.nodes = set()
 
 class Controller(object):
     def __init__(self, thrift_server):
@@ -29,6 +36,20 @@ class Controller(object):
         self.sess_hdl = self.conn_mgr.client_init()
         self.dev = 0
         self.dev_tgt = DevTarget_t(self.dev, hex_to_i16(0xFFFF))
+
+        self.write_reg_rnode_fns = []
+        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_1)
+        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_2)
+        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_3)
+        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_4)
+        self.read_reg_rnode_fns = []
+        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_1)
+        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_2)
+        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_3)
+        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_4)
+
+        self.replicated_keys = {} # index -> ReplicatedKey
+        self.node_load = {} # index -> load
 
     def install_table_entries(self, tables):
         # tab_l2_forward
@@ -53,6 +74,7 @@ class Controller(object):
                     action_mac_addr = macAddr_to_string(attrs["mac"]),
                     action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
                     action_port = attrs["port"]))
+            self.node_load[int(node)] = 0
         # tab_replicated_keys, reg_rnode (1-4)
         for (keyhash, rkey_index) in tables["tab_replicated_keys"].items():
             self.client.tab_replicated_keys_table_add_with_lookup_rkey(
@@ -61,18 +83,14 @@ class Controller(object):
                     pegasus_keyhash = int(keyhash)),
                 pegasus_lookup_rkey_action_spec_t(
                     action_rkey_index = rkey_index))
-            self.client.register_write_reg_rnode_1(
-                self.sess_hdl, self.dev_tgt, rkey_index,
-                int(keyhash) & HASH_MASK)
-            self.client.register_write_reg_rnode_2(
-                self.sess_hdl, self.dev_tgt, rkey_index,
-                RNODE_NONE)
-            self.client.register_write_reg_rnode_3(
-                self.sess_hdl, self.dev_tgt, rkey_index,
-                RNODE_NONE)
-            self.client.register_write_reg_rnode_4(
-                self.sess_hdl, self.dev_tgt, rkey_index,
-                RNODE_NONE)
+            for i in range(4):
+                if i == 0:
+                    node = int(keyhash) & HASH_MASK
+                else:
+                    node = RNODE_NONE
+                self.write_reg_rnode_fns[i](
+                    self.sess_hdl, self.dev_tgt, rkey_index, node)
+            self.replicated_keys[rkey_index] = ReplicatedKey(int(keyhash))
         # reg_node_id (1-4)
         for i in range(4):
             self.client.register_write_reg_node_id_1(
@@ -98,6 +116,48 @@ class Controller(object):
 
         self.conn_mgr.complete_operations(self.sess_hdl)
 
+    def read_registers(self):
+        flags = pegasus_register_flags_t(read_hw_sync=True)
+        # read node load
+        for index in self.node_load.keys():
+            self.node_load[index] = self.client.register_read_reg_node_load_1(
+                self.sess_hdl, self.dev_tgt, index, flags)[0]
+        # read replicated key nodes
+        for index in self.replicated_keys.keys():
+            self.replicated_keys[index].nodes = set()
+            for i in range(4):
+                node = self.read_reg_rnode_fns[i](
+                    self.sess_hdl, self.dev_tgt, index, flags)[0]
+                if node == RNODE_NONE:
+                    break
+                self.replicated_keys[index].nodes.add(node)
+
+    def try_expand_rset(self):
+        # calculate average load
+        avg_load = sum(self.node_load.values()) / len(self.node_load)
+        min_node = min(self.node_load, key=self.node_load.get)
+        # check if we need to expand any replication set
+        for (index, rkey) in self.replicated_keys.items():
+            if len(rkey.nodes) < MAX_RSET_SIZE:
+                min_load = min(map(self.node_load.get, rkey.nodes))
+                if min_load > avg_load:
+                    # XXX should send a migration message to
+                    # a node in rset
+                    self.write_reg_rnode_fns[len(rkey.nodes)](
+                        self.sess_hdl, self.dev_tgt, index, min_node)
+
+    def print_registers(self):
+        print "node load:", self.node_load
+        print "replicated keys:"
+        for rkey in self.replicated_keys.values():
+            print "keyhash", rkey.keyhash, "nodes", rkey.nodes
+
+    def run(self):
+        while True:
+            self.read_registers()
+            self.try_expand_rset()
+            time.sleep(10)
+
     def close(self):
         self.transport.close()
 
@@ -113,6 +173,7 @@ def main():
 
     controller = Controller("oyster")
     controller.install_table_entries(tables)
+    controller.run()
     controller.close()
 
 
