@@ -275,6 +275,7 @@ action node_forward(mac_addr, ip_addr, port) {
     modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
 }
 
+@pragma stage 7
 table tab_node_forward {
     reads {
         pegasus.node: exact;
@@ -446,7 +447,14 @@ table tab_update_node_id_4 {
 /*
    replicated keys
 */
+blackbox stateful_alu sa_extract_min_node_load {
+    reg: reg_min_node_load;
+    output_value: register_hi;
+    output_dst: pegasus.node;
+}
+
 action lookup_rkey(rkey_index) {
+    sa_extract_min_node_load.execute_stateful_alu(0);
     modify_field(meta.rkey_index, rkey_index);
 }
 
@@ -780,11 +788,73 @@ table tab_copy_load_node_4 {
     size: 1;
 }
 
-table tab_copy_load_node_5 {
+table tab_copy_load_node_last {
     actions {
         copy_load_node;
     }
     default_action: copy_load_node;
+    size: 1;
+}
+
+/*
+   update rnode (1-4)
+*/
+blackbox stateful_alu sa_update_rnode_1 {
+    reg: reg_rnode_1;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_update_rnode_2 {
+    reg: reg_rnode_2;
+    update_lo_1_value: RNODE_NONE;
+}
+blackbox stateful_alu sa_update_rnode_3 {
+    reg: reg_rnode_3;
+    update_lo_1_value: RNODE_NONE;
+}
+blackbox stateful_alu sa_update_rnode_4 {
+    reg: reg_rnode_4;
+    update_lo_1_value: RNODE_NONE;
+}
+
+action update_rnode_1() {
+    sa_update_rnode_1.execute_stateful_alu(meta.rkey_index);
+}
+action update_rnode_2() {
+    sa_update_rnode_2.execute_stateful_alu(meta.rkey_index);
+}
+action update_rnode_3() {
+    sa_update_rnode_3.execute_stateful_alu(meta.rkey_index);
+}
+action update_rnode_4() {
+    sa_update_rnode_4.execute_stateful_alu(meta.rkey_index);
+}
+
+table tab_update_rnode_1 {
+    actions {
+        update_rnode_1;
+    }
+    default_action: update_rnode_1;
+    size: 1;
+}
+table tab_update_rnode_2 {
+    actions {
+        update_rnode_2;
+    }
+    default_action: update_rnode_2;
+    size: 1;
+}
+table tab_update_rnode_3 {
+    actions {
+        update_rnode_3;
+    }
+    default_action: update_rnode_3;
+    size: 1;
+}
+table tab_update_rnode_4 {
+    actions {
+        update_rnode_4;
+    }
+    default_action: update_rnode_4;
     size: 1;
 }
 
@@ -804,41 +874,59 @@ table tab_debug {
 }
 
 control process_pegasus_reply {
+    // stage 0
     apply(tab_update_min_node_load);
+    // stage 2
     apply(tab_update_node_load_1);
     apply(tab_update_node_id_1);
+    // stage 3
     apply(tab_update_node_load_2);
     apply(tab_update_node_id_2);
+    // stage 4
     apply(tab_update_node_load_3);
     apply(tab_update_node_id_3);
+    // stage 5
     apply(tab_update_node_load_4);
     apply(tab_update_node_id_4);
+    // stage ?
     apply(tab_l2_forward);
 }
 
 control process_pegasus_request {
+    // stage 0
     apply(tab_replicated_keys) {
         hit {
-            process_replicated_keys();
+            if (pegasus.op == OP_GET) {
+                // stage 1-6
+                process_replicated_read();
+            } else {
+                // stage 1
+                process_replicated_write();
+            }
         }
     }
+    // stage 7
     apply(tab_node_forward);
     apply(tab_debug);
 }
 
-control process_replicated_keys {
+control process_replicated_read {
+    // stage 1
     apply(tab_extract_rnode_1);
     apply(tab_extract_rnode_2);
     apply(tab_extract_rnode_3);
     apply(tab_extract_rnode_4);
+    // stage 2
     if (meta.rnode_1 != RNODE_NONE) {
         apply(tab_find_min_rnode_id_1);
         apply(tab_find_min_rnode_1);
     }
+    // stage 3
     if (meta.rnode_2 != RNODE_NONE) {
         apply(tab_find_min_rnode_id_2);
         apply(tab_find_min_rnode_2);
     }
+    // stage 4
     if (meta.rnode_3 != RNODE_NONE) {
         if (pegasus.load == 0) {
             apply(tab_find_min_rnode_id_3_a);
@@ -849,6 +937,7 @@ control process_replicated_keys {
             apply(tab_find_min_rnode_3_b);
         }
     }
+    // stage 5
     if (meta.rnode_4 != RNODE_NONE) {
         if (pegasus.load == 0) {
             apply(tab_find_min_rnode_id_4_a);
@@ -858,10 +947,19 @@ control process_replicated_keys {
             apply(tab_find_min_rnode_id_4_b);
             apply(tab_find_min_rnode_4_b);
         }
-        if (pegasus.load != 0) {
-            apply(tab_copy_load_node_5);
-        }
     }
+    // stage 6
+    if (pegasus.load != 0) {
+        apply(tab_copy_load_node_last);
+    }
+}
+
+control process_replicated_write {
+    // stage 1
+    apply(tab_update_rnode_1);
+    apply(tab_update_rnode_2);
+    apply(tab_update_rnode_3);
+    apply(tab_update_rnode_4);
 }
 
 control ingress {
