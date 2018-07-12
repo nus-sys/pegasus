@@ -269,9 +269,10 @@ table tab_l2_forward {
 /*
    node forward
 */
-action node_forward(mac_addr, ip_addr, port) {
+action node_forward(mac_addr, ip_addr, udp_addr, port) {
     modify_field(ethernet.dstAddr, mac_addr);
     modify_field(ipv4.dstAddr, ip_addr);
+    modify_field(udp.dstPort, udp_addr);
     modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
 }
 

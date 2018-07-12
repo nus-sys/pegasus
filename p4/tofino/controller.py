@@ -73,6 +73,7 @@ class Controller(object):
                 pegasus_node_forward_action_spec_t(
                     action_mac_addr = macAddr_to_string(attrs["mac"]),
                     action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
+                    action_udp_addr = attrs["udp"],
                     action_port = attrs["port"]))
             self.node_load[int(node)] = 0
         # tab_replicated_keys, reg_rnode (1-4)

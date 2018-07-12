@@ -9,8 +9,10 @@ from scapy.all import ShortField, IntField, LongField, BitField, FieldListField,
 from scapy.all import IP, TCP, UDP, Raw
 from scapy.layers.inet import _IPOption_HDR
 
+ports = [12345, 12346, 12347, 12348]
+
 def handle_pkt(pkt):
-    if UDP in pkt and pkt[UDP].dport == 12345:
+    if UDP in pkt and pkt[UDP].dport in ports:
         print "got a packet"
         pkt.show2()
         sys.stdout.flush()
