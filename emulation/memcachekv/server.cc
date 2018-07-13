@@ -44,7 +44,7 @@ Server::process_kv_message(const MemcacheKVMessage &msg,
         process_kv_request(msg.request, addr);
         break;
     }
-    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
+    case MemcacheKVMessage::Type::MGR: {
         process_kv_migration(msg.migration_request, addr);
         break;
     }
@@ -75,6 +75,7 @@ Server::process_kv_request(const MemcacheKVRequest &msg,
     reply_msg.reply.req_id = msg.req_id;
 
     process_op(msg.op, reply_msg.reply);
+    reply_msg.reply.load = calculate_load();
 
     this->codec->encode(reply_msg_str, reply_msg);
     this->transport->send_message(reply_msg_str, addr);
@@ -114,13 +115,16 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         reply.result = Result::OK;
         break;
     }
-    case Operation::Type::GETM: {
-        // XXX todo
-        break;
-    }
     default:
         panic("Unknown memcachekv op type");
     }
+}
+
+load_t
+Server::calculate_load()
+{
+    // XXX
+    return 0;
 }
 
 } // namespace memcachekv

@@ -41,6 +41,7 @@ private:
                               const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
+    load_t calculate_load();
 
     Transport *transport;
     Configuration *config;

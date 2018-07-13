@@ -11,7 +11,7 @@ MigrationServer::receive_message(const string &message, const sockaddr &src_addr
     MemcacheKVMessage request_msg;
     this->codec->decode(message, request_msg);
     switch (request_msg.type) {
-    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
+    case MemcacheKVMessage::Type::MGR: {
         for (const auto &op : request_msg.migration_request.ops) {
             this->store[op.key] = op.value;
         }

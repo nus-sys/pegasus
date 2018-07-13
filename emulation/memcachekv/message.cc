@@ -92,8 +92,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     switch (op_type) {
     case OP_GET:
     case OP_PUT:
-    case OP_DEL:
-    case OP_GETM: {
+    case OP_DEL: {
         if (buf_size < REQUEST_BASE_SIZE) {
             return false;
         }
@@ -112,9 +111,6 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         case OP_DEL:
             out.request.op.op_type = Operation::Type::DEL;
             break;
-        case OP_GETM:
-            out.request.op.op_type = Operation::Type::GETM;
-            break;
         }
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
@@ -123,7 +119,6 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         }
         out.request.op.key = string(ptr, key_len);
         ptr += key_len;
-        out.request.op.keyhash = keyhash;
         if (op_type == OP_PUT) {
             if (buf_size < REQUEST_BASE_SIZE + key_len + sizeof(value_len_t)) {
                 return false;
@@ -158,10 +153,10 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         break;
     }
     case OP_MGR: {
-        if (buf_size < MIGRATION_REQUEST_BASE_SIZE) {
+        if (buf_size < MGR_BASE_SIZE) {
             return false;
         }
-        out.type = MemcacheKVMessage::Type::MIGRATION_REQUEST;
+        out.type = MemcacheKVMessage::Type::MGR;
         nops_t nops = *(nops_t *)ptr;
         ptr += sizeof(nops_t);
         out.migration_request.ops.clear();
@@ -206,8 +201,8 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         buf_size = REPLY_BASE_SIZE + in.reply.value.size();
         break;
     }
-    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
-        buf_size = MIGRATION_REQUEST_BASE_SIZE;
+    case MemcacheKVMessage::Type::MGR: {
+        buf_size = MGR_BASE_SIZE;
         for (const auto &op : in.migration_request.ops) {
             buf_size += sizeof(key_len_t) + op.key.size() + sizeof(value_len_t) + op.value.size();
         }
@@ -252,10 +247,11 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(keyhash_t);
         *(node_t*)ptr = in.reply.node_id;
         ptr += sizeof(node_t);
+        *(load_t*)ptr = in.reply.load;
         ptr += sizeof(load_t);
         break;
     }
-    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
+    case MemcacheKVMessage::Type::MGR: {
         *(op_type_t*)ptr = OP_MGR;
         ptr += sizeof(op_type_t);
         // No keyhash required
@@ -300,7 +296,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += in.reply.value.size();
         break;
     }
-    case MemcacheKVMessage::Type::MIGRATION_REQUEST: {
+    case MemcacheKVMessage::Type::MGR: {
         *(nops_t*)ptr = (nops_t)in.migration_request.ops.size();
         ptr += sizeof(nops_t);
         for (const auto &op : in.migration_request.ops) {
@@ -335,23 +331,35 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
     case ControllerMessage::Type::RESET_REPLY:
         buf_size = RESET_REPLY_SIZE;
         break;
+    case ControllerMessage::Type::HK_REPORT:
+        buf_size = HK_REPORT_BASE_SIZE + in.hk_report.reports.size() * (sizeof(keyhash_t) + sizeof(load_t));
     default:
         return false;
     }
 
     char *buf = new char[buf_size];
     char *ptr = buf;
-    *(identifier_t*)ptr = IDENTIFIER;
+    *(identifier_t*)ptr = CONTROLLER;
     ptr += sizeof(identifier_t);
     *(type_t*)ptr = static_cast<type_t>(in.type);
     ptr += sizeof(type_t);
 
     switch (in.type) {
     case ControllerMessage::Type::RESET_REQ:
-        *(num_nodes_t*)ptr = in.reset_req.num_nodes;
+        *(nnodes_t*)ptr = in.reset_req.num_nodes;
         break;
     case ControllerMessage::Type::RESET_REPLY:
         *(ack_t*)ptr = static_cast<ack_t>(in.reset_reply.ack);
+        break;
+    case ControllerMessage::Type::HK_REPORT:
+        *(nkeys_t*)ptr = in.hk_report.reports.size();
+        ptr += sizeof(nkeys_t);
+        for (const auto report : in.hk_report.reports) {
+            *(keyhash_t*)ptr = report.keyhash;
+            ptr += sizeof(keyhash_t);
+            *(load_t*)ptr = report.load;
+            ptr += sizeof(load_t);
+        }
         break;
     }
 
@@ -369,7 +377,7 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
     if (buf_size < PACKET_BASE_SIZE) {
         return false;
     }
-    if (*(identifier_t*)ptr != IDENTIFIER) {
+    if (*(identifier_t*)ptr != CONTROLLER) {
         return false;
     }
     ptr += sizeof(identifier_t);
@@ -382,7 +390,7 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
             return false;
         }
         out.type = ControllerMessage::Type::RESET_REQ;
-        out.reset_req.num_nodes = *(num_nodes_t*)ptr;
+        out.reset_req.num_nodes = *(nnodes_t*)ptr;
         break;
     case TYPE_RESET_REPLY:
         if (buf_size < RESET_REPLY_SIZE) {
@@ -391,6 +399,24 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
         out.type = ControllerMessage::Type::RESET_REPLY;
         out.reset_reply.ack = static_cast<Ack>(*(ack_t*)ptr);
         break;
+    case TYPE_HK_REPORT: {
+        if (buf_size < HK_REPORT_BASE_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::HK_REPORT;
+        out.hk_report.reports.clear();
+        nkeys_t nkeys = *(nkeys_t*)ptr;
+        ptr += sizeof(nkeys_t);
+        for (int i = 0; i < nkeys; i++) {
+            ControllerHKReport::Report report;
+            report.keyhash = *(keyhash_t*)ptr;
+            ptr += sizeof(keyhash_t);
+            report.load = *(load_t*)ptr;
+            ptr += sizeof(load_t);
+            out.hk_report.reports.push_back(report);
+        }
+        break;
+    }
     default:
         return false;
     }

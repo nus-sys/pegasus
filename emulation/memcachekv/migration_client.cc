@@ -90,7 +90,7 @@ void
 MigrationClient::migrate()
 {
     MemcacheKVMessage request;
-    request.type = MemcacheKVMessage::Type::MIGRATION_REQUEST;
+    request.type = MemcacheKVMessage::Type::MGR;
     for (const auto &key : this->keys) {
         request.migration_request.ops.push_back(Operation());
         Operation &op = request.migration_request.ops.back();

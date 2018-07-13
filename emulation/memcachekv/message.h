@@ -8,23 +8,25 @@
 namespace memcachekv {
 
 typedef uint32_t keyhash_t;
+typedef uint16_t load_t;
 
+/*
+ * KV messages
+ */
 struct Operation {
     enum class Type {
         GET,
         PUT,
-        DEL,
-        GETM
+        DEL
     };
     Operation()
-        : op_type(Type::GET), key(""), keyhash(0), value("") {};
+        : op_type(Type::GET), key(""), value("") {};
     Operation(const proto::Operation &op)
         : op_type(static_cast<Operation::Type>(op.op_type())),
         key(op.key()), value(op.value()) {};
 
     Type op_type;
     std::string key;
-    keyhash_t keyhash;
     std::string value;
 };
 
@@ -48,7 +50,7 @@ enum class Result {
 
 struct MemcacheKVReply {
     MemcacheKVReply()
-        : node_id(0), client_id(0), req_id(0), result(Result::OK), value("") {};
+        : node_id(0), load(0), client_id(0), req_id(0), result(Result::OK), value("") {};
     MemcacheKVReply(const proto::MemcacheKVReply &reply)
         : node_id(reply.node_id()),
         client_id(reply.client_id()),
@@ -57,6 +59,7 @@ struct MemcacheKVReply {
         value(reply.value()) {};
 
     int node_id;
+    load_t load;
     int client_id;
     uint32_t req_id;
     Result result;
@@ -71,7 +74,7 @@ struct MemcacheKVMessage {
     enum class Type {
         REQUEST,
         REPLY,
-        MIGRATION_REQUEST,
+        MGR,
         UNKNOWN
     };
     MemcacheKVMessage()
@@ -134,19 +137,21 @@ private:
     typedef uint16_t nops_t;
 
     static const identifier_t PEGASUS = 0x4750;
-    static const op_type_t OP_GET  = 0x0;
-    static const op_type_t OP_PUT  = 0x1;
-    static const op_type_t OP_DEL  = 0x2;
-    static const op_type_t OP_GETM = 0x3;
-    static const op_type_t OP_REP  = 0x4;
-    static const op_type_t OP_MGR  = 0x5;
+    static const op_type_t OP_GET   = 0x0;
+    static const op_type_t OP_PUT   = 0x1;
+    static const op_type_t OP_DEL   = 0x2;
+    static const op_type_t OP_REP   = 0x3;
+    static const op_type_t OP_MGR   = 0x4;
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t);
 
     static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
-    static const size_t MIGRATION_REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nops_t);
+    static const size_t MGR_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nops_t);
 };
 
+/*
+ * Controller messages
+ */
 enum class Ack {
     OK,
     FAILED
@@ -160,14 +165,24 @@ struct ControllerResetReply {
     Ack ack;
 };
 
+struct ControllerHKReport {
+    struct Report {
+        keyhash_t keyhash;
+        load_t load;
+    };
+    std::vector<Report> reports;
+};
+
 struct ControllerMessage {
     enum class Type {
         RESET_REQ,
         RESET_REPLY,
+        HK_REPORT
     };
     Type type;
     ControllerResetRequest reset_req;
     ControllerResetReply reset_reply;
+    ControllerHKReport hk_report;
 };
 
 class ControllerCodec {
@@ -183,30 +198,39 @@ public:
 
 private:
     /* Wire format:
-     * IDENTIFIER (32) + type (8) + message
+     * IDENTIFIER (16) + type (8) + message
      *
-     * Reset format:
-     * num_nodes (32)
+     * Reset request:
+     * num_nodes (16)
      *
-     * Reset Reply format:
+     * Reset reply:
      * ack (8)
+     *
+     * Hot key report:
+     * nkeys (16) + nkeys * (keyhash (32) + load (16))
      */
-    typedef uint32_t identifier_t;
+    typedef uint16_t identifier_t;
     typedef uint8_t type_t;
-    typedef uint32_t num_nodes_t;
+    typedef uint16_t nnodes_t;
     typedef uint8_t ack_t;
+    typedef uint8_t node_t;
+    typedef uint16_t nkeys_t;
+    typedef uint32_t keyhash_t;
+    typedef uint16_t load_t;
 
-    static const identifier_t IDENTIFIER = 0xDEADDEAD;
+    static const identifier_t CONTROLLER = 0xDEAC;
 
-    static const type_t TYPE_RESET_REQ          = 0;
-    static const type_t TYPE_RESET_REPLY        = 1;
+    static const type_t TYPE_RESET_REQ      = 0;
+    static const type_t TYPE_RESET_REPLY    = 1;
+    static const type_t TYPE_HK_REPORT      = 2;
 
     static const ack_t ACK_OK       = 0;
     static const ack_t ACK_FAILED   = 1;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(type_t);
-    static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(num_nodes_t);
+    static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(nnodes_t);
     static const size_t RESET_REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
+    static const size_t HK_REPORT_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nkeys_t);
 };
 
 } // namespace memcachekv
