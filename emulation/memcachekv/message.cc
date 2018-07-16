@@ -87,7 +87,8 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     ptr += sizeof(keyhash_t);
     int node_id = *(node_t*)ptr;
     ptr += sizeof(node_t);
-    load_t load = *(load_t*)ptr;
+    load_t load;
+    convert_endian(&load, ptr, sizeof(load_t));
     ptr += sizeof(load_t);
 
     switch (op_type) {
@@ -249,7 +250,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(keyhash_t);
         *(node_t*)ptr = in.reply.node_id;
         ptr += sizeof(node_t);
-        *(load_t*)ptr = in.reply.load;
+        convert_endian(ptr, &in.reply.load, sizeof(load_t));
         ptr += sizeof(load_t);
         break;
     }
