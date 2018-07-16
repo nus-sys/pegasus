@@ -12,18 +12,8 @@ namespace memcachekv {
 
 class Server : public Application {
 public:
-    Server(Transport *transport,
-           Configuration *config,
-           MessageCodec *codec,
-           ControllerCodec *ctrl_codec,
-           int node_id,
-           int proc_latency = 0)
-        : transport(transport),
-        config(config),
-        codec(codec),
-        ctrl_codec(ctrl_codec),
-        node_id(node_id),
-        proc_latency(proc_latency) {};
+    Server(Transport *transport, Configuration *config, MessageCodec *codec,
+           ControllerCodec *ctrl_codec, int node_id, int proc_latency = 0);
     ~Server() {};
 
     void receive_message(const std::string &message,
@@ -50,6 +40,9 @@ private:
     std::unordered_map<std::string, std::string> store;
     int node_id;
     int proc_latency;
+    static const int EPOCH_DURATION = 1000; // 1ms
+    struct timeval epoch_start;
+    std::list<struct timeval> request_ts;
 };
 
 } // namespace memcachekv

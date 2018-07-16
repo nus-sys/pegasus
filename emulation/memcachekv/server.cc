@@ -7,6 +7,19 @@ using std::string;
 
 namespace memcachekv {
 
+Server::Server(Transport *transport, Configuration *config, MessageCodec *codec,
+       ControllerCodec *ctrl_codec, int node_id, int proc_latency)
+    : transport(transport),
+    config(config),
+    codec(codec),
+    ctrl_codec(ctrl_codec),
+    node_id(node_id),
+    proc_latency(proc_latency)
+{
+    this->epoch_start.tv_sec = 0;
+    this->epoch_start.tv_usec = 0;
+}
+
 void
 Server::receive_message(const string &message, const sockaddr &src_addr)
 {
@@ -123,8 +136,29 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
 load_t
 Server::calculate_load()
 {
-    // XXX
-    return 0;
+    struct timeval now;
+
+    gettimeofday(&now, nullptr);
+    if (this->epoch_start.tv_sec == 0 && this->epoch_start.tv_usec == 0) {
+        // Initialize epoch
+        this->epoch_start = now;
+    }
+    this->request_ts.push_back(now);
+
+    if (latency(this->epoch_start, now) > EPOCH_DURATION) {
+        this->epoch_start = get_prev_timeval(now, EPOCH_DURATION);
+        for (auto it = this->request_ts.begin(); it != this->request_ts.end(); ) {
+            // Remove ts that fall out of the epoch
+            if (timeval_cmp(*it, this->epoch_start) < 0) {
+                it = this->request_ts.erase(it);
+            } else {
+                // ts should be in order
+                break;
+            }
+        }
+    }
+
+    return this->request_ts.size();
 }
 
 } // namespace memcachekv

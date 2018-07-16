@@ -87,6 +87,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     ptr += sizeof(keyhash_t);
     int node_id = *(node_t*)ptr;
     ptr += sizeof(node_t);
+    load_t load = *(load_t*)ptr;
     ptr += sizeof(load_t);
 
     switch (op_type) {
@@ -138,6 +139,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         }
         out.type = MemcacheKVMessage::Type::REPLY;
         out.reply.node_id = node_id;
+        out.reply.load = load;
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
