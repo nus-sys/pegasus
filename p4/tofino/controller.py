@@ -121,14 +121,16 @@ class Controller(object):
         flags = pegasus_register_flags_t(read_hw_sync=True)
         # read node load
         for index in self.node_load.keys():
-            self.node_load[index] = self.client.register_read_reg_node_load_1(
-                self.sess_hdl, self.dev_tgt, index, flags)[0]
+            read_value = self.client.register_read_reg_node_load_1(
+                self.sess_hdl, self.dev_tgt, index, flags)
+            self.node_load[index] = read_value[1]
         # read replicated key nodes
         for index in self.replicated_keys.keys():
             self.replicated_keys[index].nodes = set()
             for i in range(4):
-                node = self.read_reg_rnode_fns[i](
-                    self.sess_hdl, self.dev_tgt, index, flags)[0]
+                read_value = self.read_reg_rnode_fns[i](
+                    self.sess_hdl, self.dev_tgt, index, flags)
+                node = read_value[1]
                 if node == RNODE_NONE:
                     break
                 self.replicated_keys[index].nodes.add(node)
