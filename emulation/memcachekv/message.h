@@ -1,7 +1,7 @@
 #ifndef __MEMCACHEKV_MESSAGE_H__
 #define __MEMCACHEKV_MESSAGE_H__
 
-#include <vector>
+#include <list>
 #include <string>
 #include "memcachekv/memcachekv.pb.h"
 
@@ -67,7 +67,7 @@ struct MemcacheKVReply {
 };
 
 struct MigrationRequest {
-    std::vector<Operation> ops;
+    std::list<Operation> ops;
 };
 
 struct MemcacheKVMessage {
@@ -167,10 +167,14 @@ struct ControllerResetReply {
 
 struct ControllerHKReport {
     struct Report {
+        Report()
+            : keyhash(0), load(0) {}
+        Report(keyhash_t keyhash, load_t load)
+            : keyhash(keyhash), load(load) {}
         keyhash_t keyhash;
         load_t load;
     };
-    std::vector<Report> reports;
+    std::list<Report> reports;
 };
 
 struct ControllerMessage {

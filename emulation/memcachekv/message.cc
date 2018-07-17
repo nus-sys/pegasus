@@ -163,9 +163,6 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         nops_t nops = *(nops_t *)ptr;
         ptr += sizeof(nops_t);
         out.migration_request.ops.clear();
-        if (out.migration_request.ops.capacity() < nops) {
-            out.migration_request.ops.reserve(nops);
-        }
         for (nops_t i = 0; i < nops; i++) {
             out.migration_request.ops.push_back(Operation());
             Operation &op = out.migration_request.ops.back();
@@ -357,7 +354,7 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
     case ControllerMessage::Type::HK_REPORT:
         *(nkeys_t*)ptr = in.hk_report.reports.size();
         ptr += sizeof(nkeys_t);
-        for (const auto report : in.hk_report.reports) {
+        for (const auto &report : in.hk_report.reports) {
             *(keyhash_t*)ptr = report.keyhash;
             ptr += sizeof(keyhash_t);
             *(load_t*)ptr = report.load;
