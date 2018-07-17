@@ -183,20 +183,6 @@ Transport::register_address(TransportReceiver *receiver,
 
     event_add(sock_ev, NULL);
     this->events.push_back(sock_ev);
-
-    // Add signal events
-    struct event *term_ev = evsignal_new(this->event_base,
-                                         SIGTERM,
-                                         &Transport::signal_callback,
-                                         (void *)this);
-    struct event *int_ev = evsignal_new(this->event_base,
-                                        SIGINT,
-                                        signal_callback,
-                                        (void *)this);
-    event_add(term_ev, NULL);
-    this->events.push_back(term_ev);
-    event_add(int_ev, NULL);
-    this->events.push_back(int_ev);
 }
 
 void

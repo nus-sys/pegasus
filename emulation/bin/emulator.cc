@@ -1,6 +1,8 @@
 #include <unistd.h>
 #include <fstream>
 #include <sched.h>
+#include <signal.h>
+
 #include "node.h"
 #include "transport.h"
 #include "memcachekv/config.h"
@@ -23,6 +25,12 @@ enum CodecMode {
     WIRE
 };
 
+void signal_handler(int param)
+{
+    printf("Received INT/TERM signal\n");
+    exit(1);
+}
+
 int main(int argc, char *argv[])
 {
     int opt;
@@ -36,6 +44,9 @@ int main(int argc, char *argv[])
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
     memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
     CodecMode codec_mode = PROTOBUF;
+
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
 
     while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
         switch (opt) {
