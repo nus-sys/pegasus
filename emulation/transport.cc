@@ -69,7 +69,7 @@ Transport::stop()
 void
 Transport::send_message(const std::string &msg, const sockaddr &addr)
 {
-    if (sendto(this->socket_fd, msg.c_str(), msg.size()+1, 0, &addr, sizeof(addr)) == -1) {
+    if (sendto(this->socket_fd, msg.c_str(), msg.size(), 0, &addr, sizeof(addr)) == -1) {
         printf("Failed to send message\n");
     }
 }
@@ -92,7 +92,7 @@ Transport::send_message_to_controller(const std::string &msg)
 {
     if (sendto(this->controller_fd,
                msg.c_str(),
-               msg.size()+1,
+               msg.size(),
                0,
                (struct sockaddr *)&this->config->controller_address.sin,
                sizeof(this->config->controller_address.sin)) == -1) {
