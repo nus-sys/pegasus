@@ -25,9 +25,15 @@ enum CodecMode {
     WIRE
 };
 
-void signal_handler(int param)
+void sigint_handler(int param)
 {
-    printf("Received INT/TERM signal\n");
+    printf("Received INT signal\n");
+    exit(1);
+}
+
+void sigterm_handler(int param)
+{
+    printf("Received TERM signal\n");
     exit(1);
 }
 
@@ -43,10 +49,10 @@ int main(int argc, char *argv[])
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
     memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
-    CodecMode codec_mode = PROTOBUF;
+    CodecMode codec_mode = WIRE;
 
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    signal(SIGINT, sigint_handler);
+    signal(SIGTERM, sigterm_handler);
 
     while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
         switch (opt) {
@@ -209,7 +215,11 @@ int main(int argc, char *argv[])
         break;
     }
     case WIRE: {
-        codec = new memcachekv::WireCodec();
+        if (node_config_mode == memcachekv::MemcacheKVConfig::ROUTER) {
+            codec = new memcachekv::WireCodec(true);
+        } else {
+            codec = new memcachekv::WireCodec(false);
+        }
         break;
     }
     default:

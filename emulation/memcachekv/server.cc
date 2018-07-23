@@ -1,3 +1,5 @@
+#include <functional>
+#include <set>
 #include "logger.h"
 #include "utils.h"
 #include "memcachekv/config.h"
@@ -18,6 +20,7 @@ Server::Server(Transport *transport, Configuration *config, MessageCodec *codec,
 {
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
+    this->request_count = 0;
 }
 
 void
@@ -37,10 +40,48 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
     }
 }
 
+typedef std::function<bool(std::pair<keyhash_t, unsigned int>,
+                           std::pair<keyhash_t, unsigned int>)> Comparator;
+static Comparator comp =
+[](std::pair<keyhash_t, unsigned int> a,
+   std::pair<keyhash_t, unsigned int> b)
+{
+    return a.second > b.second;
+};
+
 void
 Server::run(int duration)
 {
-    // Empty
+    // Send HK report periodically
+    while (true) {
+        usleep(HK_EPOCH);
+        // Sort hk_report
+        std::set<std::pair<keyhash_t, unsigned int>, Comparator> sorted_hk(this->hk_report.begin(), this->hk_report.end(), comp);
+        this->hk_report.clear();
+        this->key_count.clear();
+
+        if (sorted_hk.size() == 0) {
+            continue;
+        }
+
+        // hk report has a max of MAX_HK_SIZE reports
+        ControllerMessage msg;
+        string msg_str;
+        msg.type = ControllerMessage::Type::HK_REPORT;
+        int i = 0;
+        for (const auto &hk : sorted_hk) {
+            if (i >= MAX_HK_SIZE) {
+                break;
+            }
+            msg.hk_report.reports.push_back(ControllerHKReport::Report(hk.first, hk.second));
+            i++;
+        }
+        if (this->ctrl_codec->encode(msg_str, msg)) {
+            this->transport->send_message_to_controller(msg_str);
+        } else {
+            printf("Failed to encode hk report\n");
+        }
+    }
 }
 
 void
@@ -92,6 +133,8 @@ Server::process_kv_request(const MemcacheKVRequest &msg,
 
     this->codec->encode(reply_msg_str, reply_msg);
     this->transport->send_message(reply_msg_str, addr);
+
+    update_rate(msg.op);
 }
 
 void
@@ -130,6 +173,16 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     }
     default:
         panic("Unknown memcachekv op type");
+    }
+}
+
+void
+Server::update_rate(const Operation &op)
+{
+    if (++this->request_count % KR_SAMPLE_RATE == 0) {
+        if (++this->key_count[op.keyhash] >= this->HK_THRESHOLD) {
+            this->hk_report[op.keyhash] = this->key_count[op.keyhash];
+        }
     }
 }
 

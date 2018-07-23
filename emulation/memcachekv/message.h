@@ -9,6 +9,7 @@ namespace memcachekv {
 
 typedef uint32_t keyhash_t;
 typedef uint16_t load_t;
+#define KEYHASH_MASK 0x7FFFFFFF;
 
 /*
  * KV messages
@@ -20,12 +21,13 @@ struct Operation {
         DEL
     };
     Operation()
-        : op_type(Type::GET), key(""), value("") {};
+        : op_type(Type::GET), keyhash(0), key(""), value("") {};
     Operation(const proto::Operation &op)
         : op_type(static_cast<Operation::Type>(op.op_type())),
         key(op.key()), value(op.value()) {};
 
     Type op_type;
+    keyhash_t keyhash;
     std::string key;
     std::string value;
 };
@@ -105,13 +107,17 @@ public:
 
 class WireCodec : public MessageCodec {
 public:
-    WireCodec() {};
+    WireCodec()
+        : proto_enable(false) {};
+    WireCodec(bool proto_enable)
+        : proto_enable(proto_enable) {};
     ~WireCodec() {};
 
     bool decode(const std::string &in, MemcacheKVMessage &out) override;
     bool encode(std::string &out, const MemcacheKVMessage &in) override;
 
 private:
+    bool proto_enable;
     /* Wire format:
      * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) + message
      *
@@ -137,6 +143,7 @@ private:
     typedef uint16_t nops_t;
 
     static const identifier_t PEGASUS = 0x4750;
+    static const identifier_t STATIC = 0x1573;
     static const op_type_t OP_GET   = 0x0;
     static const op_type_t OP_PUT   = 0x1;
     static const op_type_t OP_DEL   = 0x2;

@@ -31,6 +31,7 @@ private:
                               const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
+    void update_rate(const Operation &op);
     load_t calculate_load();
 
     Transport *transport;
@@ -40,9 +41,18 @@ private:
     std::unordered_map<std::string, std::string> store;
     int node_id;
     int proc_latency;
+    /* Load related */
     static const int EPOCH_DURATION = 1000; // 1ms
     struct timeval epoch_start;
     std::list<struct timeval> request_ts;
+
+    static const int HK_EPOCH = 10000; // 10ms
+    static const int MAX_HK_SIZE = 8;
+    static const int KR_SAMPLE_RATE = 50;
+    static const int HK_THRESHOLD = 5;
+    unsigned int request_count;
+    std::unordered_map<keyhash_t, unsigned int> key_count;
+    std::unordered_map<keyhash_t, unsigned int> hk_report;
 };
 
 } // namespace memcachekv

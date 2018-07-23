@@ -76,7 +76,10 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     if (buf_size < PACKET_BASE_SIZE) {
         return false;
     }
-    if (*(identifier_t*)ptr != PEGASUS) {
+    if (this->proto_enable && *(identifier_t*)ptr != PEGASUS) {
+        return false;
+    }
+    if (!this->proto_enable && *(identifier_t*)ptr != STATIC) {
         return false;
     }
     ptr += sizeof(identifier_t);
@@ -114,6 +117,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
             out.request.op.op_type = Operation::Type::DEL;
             break;
         }
+        out.request.op.keyhash = keyhash;
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
         if (buf_size < REQUEST_BASE_SIZE + key_len) {
@@ -215,7 +219,11 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     char *buf = new char[buf_size];
     char *ptr = buf;
     // App header
-    *(identifier_t*)ptr = PEGASUS;
+    if (this->proto_enable) {
+        *(identifier_t*)ptr = PEGASUS;
+    } else {
+        *(identifier_t*)ptr = STATIC;
+    }
     ptr += sizeof(identifier_t);
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
@@ -234,6 +242,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         }
         ptr += sizeof(op_type_t);
         keyhash_t hash = (keyhash_t)compute_keyhash(in.request.op.key);
+        hash = hash & KEYHASH_MASK; // controller uses signed int
         convert_endian(ptr, &hash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         ptr += sizeof(node_t);
@@ -333,6 +342,7 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         break;
     case ControllerMessage::Type::HK_REPORT:
         buf_size = HK_REPORT_BASE_SIZE + in.hk_report.reports.size() * (sizeof(keyhash_t) + sizeof(load_t));
+        break;
     default:
         return false;
     }

@@ -28,16 +28,18 @@ Controller::receive_message(const std::string &message, const sockaddr &src_addr
 void
 Controller::run(int duration)
 {
-    // Just send one controller message to the router
+    // Just send one message to the controller
     this->replied = false;
     std::string msg_str;
     this->codec.encode(msg_str, this->msg);
     this->transport->send_message_to_addr(msg_str, this->config->controller_address);
-    // Wait for ack from switch
+    // Wait for ack
+    /*
     std::unique_lock<std::mutex> lck(mtx);
     while (!this->replied) {
         this->cv.wait(lck);
     }
+    */
 }
 
 } // namespace memcachekv
