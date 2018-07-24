@@ -102,6 +102,14 @@ metadata metadata_t meta;
 *********************** STATEFUL MEMORY  *********************************
 *************************************************************************/
 /*
+   Current number of outstanding requests (queue length)
+   at each node.
+ */
+register reg_queue_len {
+    width: 16;
+    instance_count: 32;
+}
+/*
    We need n sets of node load registers, where n is the
    max number of replicas.
 */
@@ -164,6 +172,13 @@ register reg_rnode_3 {
 register reg_rnode_4 {
     width: 8;
     instance_count: 32;
+}
+/*************************************************************************
+*********************** RESUBMIT  ****************************************
+*************************************************************************/
+field_list resubmit_fields {
+    meta.tmp_node;
+    meta.tmp_load;
 }
 /*************************************************************************
 *********************** CHECKSUM *****************************************
@@ -273,7 +288,7 @@ action node_forward(mac_addr, ip_addr, udp_addr, port) {
     modify_field(ethernet.dstAddr, mac_addr);
     modify_field(ipv4.dstAddr, ip_addr);
     modify_field(udp.dstPort, udp_addr);
-    modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
+    //modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
 }
 
 @pragma stage 7
@@ -286,6 +301,75 @@ table tab_node_forward {
         _drop;
     }
     size: 32;
+}
+
+/*
+   inc queue len
+ */
+blackbox stateful_alu sa_inc_queue_len {
+    reg: reg_queue_len;
+    update_lo_1_value: register_lo + 1;
+    output_value: alu_lo;
+    output_dst: pegasus.load;
+}
+
+action inc_queue_len() {
+    sa_inc_queue_len.execute_stateful_alu(pegasus.node);
+    resubmit(resubmit_fields);
+}
+
+@pragma stage 7
+table tab_inc_queue_len {
+    actions {
+        inc_queue_len;
+    }
+    default_action: inc_queue_len;
+    size: 1;
+}
+
+/*
+   dec queue len
+ */
+blackbox stateful_alu sa_dec_queue_len {
+    reg: reg_queue_len;
+    condition_lo: register_lo > 0;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo - 1;
+    output_value: alu_lo;
+    output_dst: pegasus.load;
+}
+
+action dec_queue_len() {
+    sa_dec_queue_len.execute_stateful_alu(pegasus.node);
+    resubmit(resubmit_fields);
+}
+
+@pragma stage 7
+table tab_dec_queue_len {
+    actions {
+        dec_queue_len;
+    }
+    default_action: dec_queue_len;
+    size: 1;
+}
+
+/*
+   dummies
+ */
+blackbox stateful_alu sa_dummy_0 {
+    reg: reg_min_node_load;
+}
+
+action dummy_0() {
+    sa_dummy_0.execute_stateful_alu(pegasus.node);
+}
+
+table tab_dummy_0 {
+    actions {
+        dummy_0;
+    }
+    default_action: dummy_0;
+    size: 1;
 }
 
 /*
@@ -463,6 +547,7 @@ action set_default_dst_node() {
     bit_and(pegasus.node, pegasus.keyhash, HASH_MASK);
 }
 
+@pragma stage 0
 table tab_replicated_keys {
     reads {
         pegasus.keyhash: exact;
@@ -874,7 +959,7 @@ table tab_debug {
     size: 1;
 }
 
-control process_pegasus_reply {
+control process_resubmit {
     // stage 0
     apply(tab_update_min_node_load);
     // stage 2
@@ -893,6 +978,11 @@ control process_pegasus_reply {
     apply(tab_l2_forward);
 }
 
+control process_pegasus_reply {
+    apply(tab_dummy_0);
+    apply(tab_dec_queue_len);
+}
+
 control process_pegasus_request {
     // stage 0
     apply(tab_replicated_keys) {
@@ -908,7 +998,8 @@ control process_pegasus_request {
     }
     // stage 7
     apply(tab_node_forward);
-    apply(tab_debug);
+    apply(tab_inc_queue_len);
+    //apply(tab_debug);
 }
 
 control process_replicated_read {
@@ -964,14 +1055,22 @@ control process_replicated_write {
 }
 
 control ingress {
-    if (valid(pegasus)) {
-        if (pegasus.op == OP_REP) {
-            process_pegasus_reply();
+    if (0 == ig_intr_md.resubmit_flag) {
+        if (valid(pegasus)) {
+            if (pegasus.op == OP_REP) {
+                process_pegasus_reply();
+            } else {
+                process_pegasus_request();
+            }
         } else {
-            process_pegasus_request();
+            apply(tab_l2_forward);
         }
     } else {
-        apply(tab_l2_forward);
+        if (valid(pegasus)) {
+            process_resubmit();
+        } else {
+            apply(tab_l2_forward);
+        }
     }
 }
 
