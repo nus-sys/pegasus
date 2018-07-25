@@ -92,6 +92,7 @@ header_type metadata_t {
         min_rload : 16;
         // Temporary variables
         tmp_node : 8;
+        tmp_node_1 : 8;
         tmp_load : 16;
     }
 }
@@ -288,13 +289,13 @@ action node_forward(mac_addr, ip_addr, udp_addr, port) {
     modify_field(ethernet.dstAddr, mac_addr);
     modify_field(ipv4.dstAddr, ip_addr);
     modify_field(udp.dstPort, udp_addr);
-    //modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
+    modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
 }
 
 @pragma stage 7
 table tab_node_forward {
     reads {
-        pegasus.node: exact;
+        meta.tmp_node: exact;
     }
     actions {
         node_forward;
@@ -310,11 +311,11 @@ blackbox stateful_alu sa_inc_queue_len {
     reg: reg_queue_len;
     update_lo_1_value: register_lo + 1;
     output_value: alu_lo;
-    output_dst: pegasus.load;
+    output_dst: meta.tmp_load;
 }
 
 action inc_queue_len() {
-    sa_inc_queue_len.execute_stateful_alu(pegasus.node);
+    sa_inc_queue_len.execute_stateful_alu(meta.tmp_node);
     resubmit(resubmit_fields);
 }
 
@@ -332,15 +333,15 @@ table tab_inc_queue_len {
  */
 blackbox stateful_alu sa_dec_queue_len {
     reg: reg_queue_len;
-    condition_lo: register_lo > 0;
+    condition_lo: register_lo > 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: register_lo - 1;
     output_value: alu_lo;
-    output_dst: pegasus.load;
+    output_dst: meta.tmp_load;
 }
 
 action dec_queue_len() {
-    sa_dec_queue_len.execute_stateful_alu(pegasus.node);
+    sa_dec_queue_len.execute_stateful_alu(meta.tmp_node);
     resubmit(resubmit_fields);
 }
 
@@ -350,6 +351,21 @@ table tab_dec_queue_len {
         dec_queue_len;
     }
     default_action: dec_queue_len;
+    size: 1;
+}
+
+/*
+   copy header
+ */
+action copy_pegasus_header() {
+    modify_field(meta.tmp_node, pegasus.node);
+}
+
+table tab_copy_pegasus_header {
+    actions {
+        copy_pegasus_header;
+    }
+    default_action: copy_pegasus_header;
     size: 1;
 }
 
@@ -377,12 +393,12 @@ table tab_dummy_0 {
 */
 blackbox stateful_alu sa_update_min_node_load {
     reg: reg_min_node_load;
-    condition_lo: pegasus.load < register_lo;
-    condition_hi: pegasus.node == register_hi;
+    condition_lo: meta.tmp_load < register_lo;
+    condition_hi: meta.tmp_node == register_hi;
     update_lo_1_predicate: condition_lo or condition_hi;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
     update_hi_1_predicate: condition_lo or condition_hi;
-    update_hi_1_value: pegasus.node;
+    update_hi_1_value: meta.tmp_node;
 }
 
 action update_min_node_load() {
@@ -402,32 +418,32 @@ table tab_update_min_node_load {
 */
 blackbox stateful_alu sa_update_node_load_1 {
     reg: reg_node_load_1;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 blackbox stateful_alu sa_update_node_load_2 {
     reg: reg_node_load_2;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 blackbox stateful_alu sa_update_node_load_3 {
     reg: reg_node_load_3;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 blackbox stateful_alu sa_update_node_load_4 {
     reg: reg_node_load_4;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 
 action update_node_load_1() {
-    sa_update_node_load_1.execute_stateful_alu(pegasus.node);
+    sa_update_node_load_1.execute_stateful_alu(meta.tmp_node);
 }
 action update_node_load_2() {
-    sa_update_node_load_2.execute_stateful_alu(pegasus.node);
+    sa_update_node_load_2.execute_stateful_alu(meta.tmp_node);
 }
 action update_node_load_3() {
-    sa_update_node_load_3.execute_stateful_alu(pegasus.node);
+    sa_update_node_load_3.execute_stateful_alu(meta.tmp_node);
 }
 action update_node_load_4() {
-    sa_update_node_load_4.execute_stateful_alu(pegasus.node);
+    sa_update_node_load_4.execute_stateful_alu(meta.tmp_node);
 }
 
 @pragma stage 2
@@ -468,32 +484,32 @@ table tab_update_node_load_4 {
 */
 blackbox stateful_alu sa_update_node_id_1 {
     reg: reg_node_id_1;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 blackbox stateful_alu sa_update_node_id_2 {
     reg: reg_node_id_2;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 blackbox stateful_alu sa_update_node_id_3 {
     reg: reg_node_id_3;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 blackbox stateful_alu sa_update_node_id_4 {
     reg: reg_node_id_4;
-    update_lo_1_value: pegasus.load;
+    update_lo_1_value: meta.tmp_load;
 }
 
 action update_node_id_1() {
-    sa_update_node_id_1.execute_stateful_alu(pegasus.node);
+    sa_update_node_id_1.execute_stateful_alu(meta.tmp_node);
 }
 action update_node_id_2() {
-    sa_update_node_id_2.execute_stateful_alu(pegasus.node);
+    sa_update_node_id_2.execute_stateful_alu(meta.tmp_node);
 }
 action update_node_id_3() {
-    sa_update_node_id_3.execute_stateful_alu(pegasus.node);
+    sa_update_node_id_3.execute_stateful_alu(meta.tmp_node);
 }
 action update_node_id_4() {
-    sa_update_node_id_4.execute_stateful_alu(pegasus.node);
+    sa_update_node_id_4.execute_stateful_alu(meta.tmp_node);
 }
 
 @pragma stage 2
@@ -535,7 +551,7 @@ table tab_update_node_id_4 {
 blackbox stateful_alu sa_extract_min_node_load {
     reg: reg_min_node_load;
     output_value: register_hi;
-    output_dst: pegasus.node;
+    output_dst: meta.tmp_node;
 }
 
 action lookup_rkey(rkey_index) {
@@ -544,7 +560,7 @@ action lookup_rkey(rkey_index) {
 }
 
 action set_default_dst_node() {
-    bit_and(pegasus.node, pegasus.keyhash, HASH_MASK);
+    bit_and(meta.tmp_node, pegasus.keyhash, HASH_MASK);
 }
 
 @pragma stage 0
@@ -639,35 +655,35 @@ blackbox stateful_alu sa_find_min_rnode_2 {
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: pegasus.load;
+    output_dst: meta.tmp_load;
 }
 blackbox stateful_alu sa_find_min_rnode_3_a {
     reg: reg_node_load_3;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: pegasus.load;
+    output_dst: meta.tmp_load;
 }
 blackbox stateful_alu sa_find_min_rnode_3_b {
     reg: reg_node_load_3;
-    condition_lo: register_lo < pegasus.load;
+    condition_lo: register_lo < meta.tmp_load;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: pegasus.load;
+    output_dst: meta.tmp_load;
 }
 blackbox stateful_alu sa_find_min_rnode_4_a {
     reg: reg_node_load_4;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: pegasus.load;
+    output_dst: meta.tmp_load;
 }
 blackbox stateful_alu sa_find_min_rnode_4_b {
     reg: reg_node_load_4;
-    condition_lo: register_lo < pegasus.load;
+    condition_lo: register_lo < meta.tmp_load;
     output_predicate: condition_lo;
     output_value: register_lo;
-    output_dst: pegasus.load;
+    output_dst: meta.tmp_load;
 }
 
 action find_min_rnode_1() {
@@ -744,42 +760,42 @@ table tab_find_min_rnode_4_b {
 blackbox stateful_alu sa_find_min_rnode_id_1 {
     reg: reg_node_id_1;
     output_value: register_hi;
-    output_dst: pegasus.node;
+    output_dst: meta.tmp_node;
 }
 blackbox stateful_alu sa_find_min_rnode_id_2 {
     reg: reg_node_id_2;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: meta.tmp_node;
+    output_dst: meta.tmp_node_1;
 }
 blackbox stateful_alu sa_find_min_rnode_id_3_a {
     reg: reg_node_id_3;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: meta.tmp_node;
+    output_dst: meta.tmp_node_1;
 }
 blackbox stateful_alu sa_find_min_rnode_id_3_b {
     reg: reg_node_id_3;
-    condition_lo: register_lo < pegasus.load;
+    condition_lo: register_lo < meta.tmp_load;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: meta.tmp_node;
+    output_dst: meta.tmp_node_1;
 }
 blackbox stateful_alu sa_find_min_rnode_id_4_a {
     reg: reg_node_id_4;
     condition_lo: register_lo < meta.min_rload;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: meta.tmp_node;
+    output_dst: meta.tmp_node_1;
 }
 blackbox stateful_alu sa_find_min_rnode_id_4_b {
     reg: reg_node_id_4;
-    condition_lo: register_lo < pegasus.load;
+    condition_lo: register_lo < meta.tmp_load;
     output_predicate: condition_lo;
     output_value: register_hi;
-    output_dst: meta.tmp_node;
+    output_dst: meta.tmp_node_1;
 }
 
 action find_min_rnode_id_1() {
@@ -854,8 +870,8 @@ table tab_find_min_rnode_id_4_b {
    copy load node (3-4)
 */
 action copy_load_node() {
-    modify_field(meta.min_rload, pegasus.load);
-    modify_field(pegasus.node, meta.tmp_node);
+    modify_field(meta.min_rload, meta.tmp_load);
+    modify_field(meta.tmp_node, meta.tmp_node_1);
 }
 
 table tab_copy_load_node_3 {
@@ -887,7 +903,7 @@ table tab_copy_load_node_last {
 */
 blackbox stateful_alu sa_update_rnode_1 {
     reg: reg_rnode_1;
-    update_lo_1_value: pegasus.node;
+    update_lo_1_value: meta.tmp_node;
 }
 blackbox stateful_alu sa_update_rnode_2 {
     reg: reg_rnode_2;
@@ -948,7 +964,8 @@ table tab_update_rnode_4 {
    debug
 */
 action debug() {
-    modify_field(pegasus.load, meta.min_rload);
+    modify_field(pegasus.node, meta.tmp_node);
+    modify_field(pegasus.load, meta.tmp_load);
 }
 
 table tab_debug {
@@ -975,11 +992,17 @@ control process_resubmit {
     apply(tab_update_node_load_4);
     apply(tab_update_node_id_4);
     // stage ?
-    apply(tab_l2_forward);
+    apply(tab_debug);
+    if (pegasus.op == OP_REP) {
+        apply(tab_l2_forward);
+    } else {
+        apply(tab_node_forward);
+    }
 }
 
 control process_pegasus_reply {
     apply(tab_dummy_0);
+    apply(tab_copy_pegasus_header);
     apply(tab_dec_queue_len);
 }
 
@@ -997,9 +1020,7 @@ control process_pegasus_request {
         }
     }
     // stage 7
-    apply(tab_node_forward);
     apply(tab_inc_queue_len);
-    //apply(tab_debug);
 }
 
 control process_replicated_read {
@@ -1020,7 +1041,7 @@ control process_replicated_read {
     }
     // stage 4
     if (meta.rnode_3 != RNODE_NONE) {
-        if (pegasus.load == 0) {
+        if (meta.tmp_load == 0) {
             apply(tab_find_min_rnode_id_3_a);
             apply(tab_find_min_rnode_3_a);
         } else {
@@ -1031,7 +1052,7 @@ control process_replicated_read {
     }
     // stage 5
     if (meta.rnode_4 != RNODE_NONE) {
-        if (pegasus.load == 0) {
+        if (meta.tmp_load == 0) {
             apply(tab_find_min_rnode_id_4_a);
             apply(tab_find_min_rnode_4_a);
         } else {
@@ -1041,7 +1062,7 @@ control process_replicated_read {
         }
     }
     // stage 6
-    if (pegasus.load != 0) {
+    if (meta.tmp_load != 0) {
         apply(tab_copy_load_node_last);
     }
 }
@@ -1066,11 +1087,7 @@ control ingress {
             apply(tab_l2_forward);
         }
     } else {
-        if (valid(pegasus)) {
-            process_resubmit();
-        } else {
-            apply(tab_l2_forward);
-        }
+        process_resubmit();
     }
 }
 
