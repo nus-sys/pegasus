@@ -109,6 +109,7 @@ class MessageHandler(threading.Thread):
     def handle_reset_request(self, addr, msg):
         global controller
         print "Reset request with", msg.num_nodes, "nodes"
+        controller.reset_node_load()
         controller.clear_rkeys()
 
     def handle_hk_report(self, addr, msg):
@@ -173,7 +174,7 @@ class Controller(object):
             self.client.tab_node_forward_table_add_with_node_forward(
                 self.sess_hdl, self.dev_tgt,
                 pegasus_tab_node_forward_match_spec_t(
-                    pegasus_node = int(node)),
+                    meta_tmp_node = int(node)),
                 pegasus_node_forward_action_spec_t(
                     action_mac_addr = macAddr_to_string(attrs["mac"]),
                     action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
@@ -252,6 +253,11 @@ class Controller(object):
                     pegasus_keyhash = keyhash))
         self.replicated_keys.clear()
         self.conn_mgr.complete_operations(self.sess_hdl)
+
+    def reset_node_load(self):
+        for i in range(4):
+            self.client.register_write_reg_queue_len(
+                self.sess_hdl, self.dev_tgt, i, 0)
 
     def add_rkey(self, keyhash, rkey_index, load):
         self.client.tab_replicated_keys_table_add_with_lookup_rkey(
