@@ -5,6 +5,7 @@
 #include <map>
 #include <unordered_map>
 #include <set>
+#include <mutex>
 #include "application.h"
 #include "memcachekv/message.h"
 
@@ -53,6 +54,7 @@ private:
     unsigned int request_count;
     std::unordered_map<keyhash_t, unsigned int> key_count;
     std::unordered_map<keyhash_t, unsigned int> hk_report;
+    std::mutex hk_mutex;
 };
 
 } // namespace memcachekv

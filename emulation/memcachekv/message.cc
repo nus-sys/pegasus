@@ -301,8 +301,10 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(result_t);
         *(value_len_t *)ptr = (value_len_t)in.reply.value.size();
         ptr += sizeof(value_len_t);
-        memcpy(ptr, in.reply.value.data(), in.reply.value.size());
-        ptr += in.reply.value.size();
+        if (in.reply.value.size() > 0) {
+            memcpy(ptr, in.reply.value.data(), in.reply.value.size());
+            ptr += in.reply.value.size();
+        }
         break;
     }
     case MemcacheKVMessage::Type::MGR: {

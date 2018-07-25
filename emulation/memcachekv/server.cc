@@ -37,6 +37,7 @@ Server::receive_message(const string &message, const sockaddr &src_addr)
     MemcacheKVMessage kv_msg;
     if (this->codec->decode(message, kv_msg)) {
         process_kv_message(kv_msg, src_addr);
+        return;
     }
 }
 
@@ -56,9 +57,11 @@ Server::run(int duration)
     while (true) {
         usleep(HK_EPOCH);
         // Sort hk_report
+        this->hk_mutex.lock();
         std::set<std::pair<keyhash_t, unsigned int>, Comparator> sorted_hk(this->hk_report.begin(), this->hk_report.end(), comp);
         this->hk_report.clear();
         this->key_count.clear();
+        this->hk_mutex.unlock();
 
         if (sorted_hk.size() == 0) {
             continue;
@@ -133,8 +136,6 @@ Server::process_kv_request(const MemcacheKVRequest &msg,
 
     this->codec->encode(reply_msg_str, reply_msg);
     this->transport->send_message(reply_msg_str, addr);
-
-    update_rate(msg.op);
 }
 
 void
@@ -158,31 +159,37 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         } else {
             // Key not found
             reply.result = Result::NOT_FOUND;
+            reply.value = "";
         }
         break;
     }
     case Operation::Type::PUT: {
         this->store[op.key] = op.value;
         reply.result = Result::OK;
+        reply.value = "";
         break;
     }
     case Operation::Type::DEL: {
         this->store.erase(op.key);
         reply.result = Result::OK;
+        reply.value = "";
         break;
     }
     default:
         panic("Unknown memcachekv op type");
     }
+    update_rate(op);
 }
 
 void
 Server::update_rate(const Operation &op)
 {
     if (++this->request_count % KR_SAMPLE_RATE == 0) {
+        this->hk_mutex.lock();
         if (++this->key_count[op.keyhash] >= this->HK_THRESHOLD) {
             this->hk_report[op.keyhash] = this->key_count[op.keyhash];
         }
+        this->hk_mutex.unlock();
     }
 }
 
