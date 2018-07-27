@@ -155,6 +155,8 @@ class Controller(object):
         self.replicated_keys = SortedDict(lambda x : self.replicated_keys[x].load)
         self.node_load = {} # index -> load
 
+        self.switch_lock = threading.Lock()
+
     def install_table_entries(self, tables):
         # tab_l2_forward
         self.client.tab_l2_forward_set_default_action__drop(
@@ -245,6 +247,7 @@ class Controller(object):
             self.conn_mgr.complete_operations(self.sess_hdl)
 
     def clear_rkeys(self):
+        self.switch_lock.acquire()
         for keyhash in self.replicated_keys.keys():
             self.client.tab_replicated_keys_table_delete_by_match_spec(
                 self.sess_hdl, self.dev_tgt,
@@ -252,6 +255,7 @@ class Controller(object):
                     pegasus_keyhash = keyhash))
         self.replicated_keys.clear()
         self.conn_mgr.complete_operations(self.sess_hdl)
+        self.switch_lock.release()
 
     def reset_node_load(self):
         for i in range(4):
@@ -277,6 +281,7 @@ class Controller(object):
 
     def handle_hk_report(self, reports):
         switch_update = False
+        self.switch_lock.acquire()
         for report in list(reversed(reports)):
             # Iterate reports in reverse order (highest load first).
             if report.keyhash in self.replicated_keys:
@@ -307,6 +312,7 @@ class Controller(object):
                         break
         if switch_update:
             self.conn_mgr.complete_operations(self.sess_hdl)
+        self.switch_lock.release()
 
     def print_registers(self):
         print "node load:", self.node_load
@@ -316,9 +322,11 @@ class Controller(object):
 
     def run(self):
         while True:
+            self.switch_lock.acquire()
             self.read_registers()
             self.try_expand_rset()
-            time.sleep(1)
+            self.switch_lock.release()
+            #time.sleep(1)
 
     def stop(self):
         self.transport.close()
