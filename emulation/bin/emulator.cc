@@ -11,12 +11,14 @@
 #include "memcachekv/client.h"
 #include "memcachekv/router.h"
 #include "memcachekv/controller.h"
+#include "memcachekv/decrementor.h"
 
 enum NodeMode {
     CLIENT,
     SERVER,
     ROUTER,
     CONTROLLER,
+    DECREMENTOR,
     UNKNOWN
 };
 
@@ -41,8 +43,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0,
-        app_core = -1, transport_core = -1, dscp = -1;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, app_core = -1, transport_core = -1, dscp = -1, dec_interval = 1000, n_dec = 1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
@@ -54,7 +55,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:A:B:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -101,6 +102,8 @@ int main(int argc, char *argv[])
                 mode = ROUTER;
             } else if (strcmp(optarg, "controller") == 0) {
                 mode = CONTROLLER;
+            } else if (strcmp(optarg, "decrementor") == 0) {
+                mode = DECREMENTOR;
             } else {
                 printf("Unknown mode %s\n", optarg);
                 exit(1);
@@ -177,6 +180,22 @@ int main(int argc, char *argv[])
             num_nodes = stoi(std::string(optarg));
             if (num_nodes < 1) {
                 printf("Number of nodes should be > 0\n");
+                exit(1);
+            }
+            break;
+        }
+        case 'A': {
+            dec_interval = stoi(std::string(optarg));
+            if (dec_interval < 1) {
+                printf("Decrement interval should be > 0\n");
+                exit(1);
+            }
+            break;
+        }
+        case 'B': {
+            n_dec = stoi(std::string(optarg));
+            if (n_dec < 1) {
+                printf("Decrement amount should be > 0\n");
                 exit(1);
             }
             break;
@@ -284,6 +303,13 @@ int main(int argc, char *argv[])
         app = new memcachekv::Controller(&transport, &node_config, msg);
         transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
+        break;
+    }
+    case DECREMENTOR: {
+        app = new memcachekv::Decrementor(&transport, &node_config,
+                                          dec_interval, n_dec);
+        transport.register_node(app, &node_config, -1);
+        node = new Node(-1, &transport, app, false, app_core, transport_core);
         break;
     }
     default:
