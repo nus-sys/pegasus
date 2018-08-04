@@ -132,7 +132,6 @@ Server::process_kv_request(const MemcacheKVRequest &msg,
     reply_msg.reply.req_id = msg.req_id;
 
     process_op(msg.op, reply_msg.reply);
-    reply_msg.reply.load = calculate_load();
 
     this->codec->encode(reply_msg_str, reply_msg);
     this->transport->send_message(reply_msg_str, addr);
