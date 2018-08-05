@@ -45,7 +45,7 @@ controller = None
 
 def signal_handler(signum, frame):
     print "Received INT/TERM signal...Exiting"
-    #controller.stop()
+    controller.stop()
     os._exit(1)
 
 # Messages
@@ -109,8 +109,8 @@ class MessageHandler(threading.Thread):
     def handle_reset_request(self, addr, msg):
         global controller
         print "Reset request with", msg.num_nodes, "nodes"
-        controller.reset_node_load()
         controller.clear_rkeys()
+        controller.reset_node_load()
 
     def handle_hk_report(self, addr, msg):
         controller.handle_hk_report(msg.reports)
@@ -141,20 +141,22 @@ class Controller(object):
         self.dev = 0
         self.dev_tgt = DevTarget_t(self.dev, hex_to_i16(0xFFFF))
 
-        self.write_reg_rnode_fns = []
-        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_1)
-        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_2)
-        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_3)
-        self.write_reg_rnode_fns.append(self.client.register_write_reg_rnode_4)
-        self.read_reg_rnode_fns = []
-        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_1)
-        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_2)
-        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_3)
-        self.read_reg_rnode_fns.append(self.client.register_read_reg_rnode_4)
+        self.write_reg_rset_fns = []
+        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_1)
+        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_2)
+        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_3)
+        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_4)
+        self.read_reg_rset_fns = []
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_1)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_2)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_3)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_4)
 
         # keyhash -> ReplicatedKey (sorted in ascending load)
         self.replicated_keys = SortedDict(lambda x : self.replicated_keys[x].load)
         self.node_load = {} # index -> load
+
+        self.switch_lock = threading.Lock()
 
     def install_table_entries(self, tables):
         # tab_l2_forward
@@ -174,38 +176,16 @@ class Controller(object):
             self.client.tab_node_forward_table_add_with_node_forward(
                 self.sess_hdl, self.dev_tgt,
                 pegasus_tab_node_forward_match_spec_t(
-                    meta_tmp_node = int(node)),
+                    meta_node = int(node)),
                 pegasus_node_forward_action_spec_t(
                     action_mac_addr = macAddr_to_string(attrs["mac"]),
                     action_ip_addr = ipv4Addr_to_i32(attrs["ip"]),
                     action_udp_addr = attrs["udp"],
                     action_port = attrs["port"]))
             self.node_load[int(node)] = 0
-        # tab_replicated_keys, reg_rnode (1-4)
+        # tab_replicated_keys, reg_rset (1-4)
         for (keyhash, rkey_index) in tables["tab_replicated_keys"].items():
             self.add_rkey(keyhash, rkey_index, 0)
-        # reg_node_id (1-4)
-        for i in range(4):
-            self.client.register_write_reg_node_id_1(
-                self.sess_hdl, self.dev_tgt, i,
-                pegasus_reg_node_id_1_value_t(
-                    f0 = i,
-                    f1 = 0))
-            self.client.register_write_reg_node_id_2(
-                self.sess_hdl, self.dev_tgt, i,
-                pegasus_reg_node_id_2_value_t(
-                    f0 = i,
-                    f1 = 0))
-            self.client.register_write_reg_node_id_3(
-                self.sess_hdl, self.dev_tgt, i,
-                pegasus_reg_node_id_3_value_t(
-                    f0 = i,
-                    f1 = 0))
-            self.client.register_write_reg_node_id_4(
-                self.sess_hdl, self.dev_tgt, i,
-                pegasus_reg_node_id_4_value_t(
-                    f0 = i,
-                    f1 = 0))
 
         self.conn_mgr.complete_operations(self.sess_hdl)
 
@@ -213,14 +193,16 @@ class Controller(object):
         flags = pegasus_register_flags_t(read_hw_sync=True)
         # read node load
         for index in self.node_load.keys():
-            read_value = self.client.register_read_reg_node_load_1(
+            read_value = self.client.register_read_reg_queue_len(
                 self.sess_hdl, self.dev_tgt, index, flags)
             self.node_load[index] = read_value[1]
         # read replicated key nodes
         for rkey in self.replicated_keys.values():
             rkey.nodes = set()
-            for i in range(4):
-                read_value = self.read_reg_rnode_fns[i](
+            read_value = self.client.register_read_reg_rset_size(
+                self.sess_hdl, self.dev_tgt, rkey.index, flags)
+            for i in range(int(read_value[1])):
+                read_value = self.read_reg_rset_fns[i](
                     self.sess_hdl, self.dev_tgt, rkey.index, flags)
                 node = read_value[1]
                 if node == RNODE_NONE:
@@ -239,45 +221,61 @@ class Controller(object):
                 if min_load > avg_load:
                     # XXX should send a migration message to
                     # a node in rset
-                    self.write_reg_rnode_fns[len(rkey.nodes)](
+                    self.client.register_write_reg_rset_size(
+                        self.sess_hdl, self.dev_tgt, rkey.index, len(rkey.nodes) + 1)
+                    self.write_reg_rset_fns[len(rkey.nodes)](
                         self.sess_hdl, self.dev_tgt, rkey.index, min_node)
                     switch_update = True
         if switch_update:
             self.conn_mgr.complete_operations(self.sess_hdl)
 
     def clear_rkeys(self):
+        self.switch_lock.acquire()
         for keyhash in self.replicated_keys.keys():
             self.client.tab_replicated_keys_table_delete_by_match_spec(
                 self.sess_hdl, self.dev_tgt,
                 pegasus_tab_replicated_keys_match_spec_t(
                     pegasus_keyhash = keyhash))
+        self.client.register_write_reg_rkey_size(
+            self.sess_hdl, self.dev_tgt, 0, 0)
         self.replicated_keys.clear()
         self.conn_mgr.complete_operations(self.sess_hdl)
+        self.switch_lock.release()
 
     def reset_node_load(self):
+        self.switch_lock.acquire()
         for i in range(4):
             self.client.register_write_reg_queue_len(
                 self.sess_hdl, self.dev_tgt, i, 0)
+        self.switch_lock.release()
 
     def add_rkey(self, keyhash, rkey_index, load):
+        for i in range(4):
+            if i == 0:
+                node = int(keyhash) & HASH_MASK
+            else:
+                node = RNODE_NONE
+            self.write_reg_rset_fns[i](
+                self.sess_hdl, self.dev_tgt, rkey_index, node)
+        self.client.register_write_reg_rset_size(
+            self.sess_hdl, self.dev_tgt, rkey_index, 1)
+        self.client.register_write_reg_rkey_min_node(
+            self.sess_hdl, self.dev_tgt, rkey_index,
+            pegasus_reg_rkey_min_node_value_t(f0 = int(keyhash) & HASH_MASK, f1 = 0))
+        self.client.register_write_reg_rkey_size(
+            self.sess_hdl, self.dev_tgt, 0, len(self.replicated_keys) + 1)
         self.client.tab_replicated_keys_table_add_with_lookup_rkey(
             self.sess_hdl, self.dev_tgt,
             pegasus_tab_replicated_keys_match_spec_t(
                 pegasus_keyhash = int(keyhash)),
             pegasus_lookup_rkey_action_spec_t(
                 action_rkey_index = rkey_index))
-        for i in range(4):
-            if i == 0:
-                node = int(keyhash) & HASH_MASK
-            else:
-                node = RNODE_NONE
-            self.write_reg_rnode_fns[i](
-                self.sess_hdl, self.dev_tgt, rkey_index, node)
         self.replicated_keys.setdefault(keyhash, ReplicatedKey(index=int(rkey_index),
                                                                load=load))
 
     def handle_hk_report(self, reports):
         switch_update = False
+        self.switch_lock.acquire()
         for report in list(reversed(reports)):
             # Iterate reports in reverse order (highest load first).
             if report.keyhash in self.replicated_keys:
@@ -308,6 +306,7 @@ class Controller(object):
                         break
         if switch_update:
             self.conn_mgr.complete_operations(self.sess_hdl)
+        self.switch_lock.release()
 
     def print_registers(self):
         print "node load:", self.node_load
@@ -317,9 +316,10 @@ class Controller(object):
 
     def run(self):
         while True:
+            self.switch_lock.acquire()
             self.read_registers()
             self.try_expand_rset()
-            time.sleep(1)
+            self.switch_lock.release()
 
     def stop(self):
         self.transport.close()
