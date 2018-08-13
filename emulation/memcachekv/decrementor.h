@@ -26,8 +26,9 @@ private:
     typedef uint32_t keyhash_t;
     typedef uint8_t node_t;
     typedef uint16_t load_t;
+    typedef uint32_t ver_t;
 
-    static const size_t BUFSIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t);
+    static const size_t BUFSIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
 
     static const identifier_t PEGASUS = 0x4750;
     static const op_type_t DEC = 0xF;

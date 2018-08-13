@@ -22,6 +22,7 @@ Decrementor::run(int duration)
 {
     struct timeval prev, now;
     char buf[BUFSIZE];
+    memset(buf, 0, BUFSIZE);
     char *ptr = buf;
     *(identifier_t*)ptr = PEGASUS;
     ptr += sizeof(identifier_t);
