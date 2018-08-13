@@ -28,10 +28,10 @@ private:
                               const sockaddr &addr);
     void process_kv_request(const MemcacheKVRequest &msg,
                             const sockaddr &addr);
-    void process_kv_migration(const MigrationRequest &msg,
-                              const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
+    void process_migration(const Operation &op, const std::string &value);
+    void process_migration_request(const MigrationRequest &request);
     void update_rate(const Operation &op);
     load_t calculate_load();
 
@@ -39,7 +39,20 @@ private:
     Configuration *config;
     MessageCodec *codec;
     ControllerCodec *ctrl_codec;
-    std::unordered_map<std::string, std::string> store;
+
+    struct Item {
+        Item()
+            : value(""), ver(0) {};
+        std::string value;
+        ver_t ver;
+    };
+    std::unordered_map<std::string, Item> store;
+
+    struct Rkey {
+        std::set<int> replicas; // excluding self node
+    };
+    std::unordered_map<std::string, Rkey> replicated_keys;
+
     int node_id;
     int proc_latency;
     /* Load related */

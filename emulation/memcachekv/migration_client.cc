@@ -90,14 +90,10 @@ void
 MigrationClient::migrate()
 {
     MemcacheKVMessage request;
-    request.type = MemcacheKVMessage::Type::MGR;
-    for (const auto &key : this->keys) {
-        request.migration_request.ops.push_back(Operation());
-        Operation &op = request.migration_request.ops.back();
-        op.op_type = Operation::Type::PUT;
-        op.key = key;
-        op.value = this->store[key];
-    }
+    request.type = MemcacheKVMessage::Type::MGR_REQ;
+    string key = this->keys[0];
+    request.migration_request.key = key;
+    request.migration_request.value = this->store[key];
     string msg;
     this->codec->encode(msg, request);
 

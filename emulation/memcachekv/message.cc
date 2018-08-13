@@ -93,11 +93,17 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     load_t load;
     convert_endian(&load, ptr, sizeof(load_t));
     ptr += sizeof(load_t);
+    ver_t ver;
+    convert_endian(&ver, ptr, sizeof(ver_t));
+    ptr += sizeof(ver_t);
+    ptr += sizeof(node_t);
+    ptr += sizeof(load_t);
 
     switch (op_type) {
     case OP_GET:
     case OP_PUT:
-    case OP_DEL: {
+    case OP_DEL:
+    case OP_MGR: {
         if (buf_size < REQUEST_BASE_SIZE) {
             return false;
         }
@@ -116,8 +122,12 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         case OP_DEL:
             out.request.op.op_type = Operation::Type::DEL;
             break;
+        case OP_MGR:
+            out.request.op.op_type = Operation::Type::MGR;
         }
         out.request.op.keyhash = keyhash;
+        out.request.op.node_id = node_id;
+        out.request.op.ver = ver;
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
         if (buf_size < REQUEST_BASE_SIZE + key_len) {
@@ -138,13 +148,21 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         }
         break;
     }
-    case OP_REP: {
+    case OP_REP_R:
+    case OP_REP_W: {
         if (buf_size < REPLY_BASE_SIZE) {
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
+        if (op_type == OP_REP_R) {
+            out.reply.type = MemcacheKVReply::Type::READ;
+        } else {
+            out.reply.type = MemcacheKVReply::Type::WRITE;
+        }
+        out.reply.keyhash = keyhash;
         out.reply.node_id = node_id;
         out.reply.load = load;
+        out.reply.ver = ver;
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
@@ -159,27 +177,25 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         out.reply.value = string(ptr, value_len);
         break;
     }
-    case OP_MGR: {
-        if (buf_size < MGR_BASE_SIZE) {
+    case OP_MGR_REQ: {
+        if (buf_size < MGR_REQ_BASE_SIZE) {
             return false;
         }
-        out.type = MemcacheKVMessage::Type::MGR;
-        nops_t nops = *(nops_t *)ptr;
-        ptr += sizeof(nops_t);
-        out.migration_request.ops.clear();
-        for (nops_t i = 0; i < nops; i++) {
-            out.migration_request.ops.push_back(Operation());
-            Operation &op = out.migration_request.ops.back();
-            op.op_type = Operation::Type::PUT;
-            key_len_t key_len = *(key_len_t *)ptr;
-            ptr += sizeof(key_len_t);
-            op.key = string(ptr, key_len);
-            ptr += key_len;
-            value_len_t value_len = *(value_len_t *)ptr;
-            ptr += sizeof(value_len_t);
-            op.value = string(ptr, value_len);
-            ptr += value_len;
-        }
+        out.type = MemcacheKVMessage::Type::MGR_REQ;
+        out.migration_request.keyhash = keyhash;
+        out.migration_request.ver = ver;
+        key_len_t key_len = *(key_len_t *)ptr;
+        ptr += sizeof(key_len_t);
+        out.migration_request.key = string(ptr, key_len);
+        ptr += key_len;
+        value_len_t value_len = *(value_len_t *)ptr;
+        ptr += sizeof(value_len_t);
+        out.migration_request.value = string(ptr, value_len);
+        ptr += value_len;
+        break;
+    }
+    case OP_MGR_ACK: {
+        panic("Server should never receive MGR_ACK");
         break;
     }
     default:
@@ -205,11 +221,12 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         buf_size = REPLY_BASE_SIZE + in.reply.value.size();
         break;
     }
-    case MemcacheKVMessage::Type::MGR: {
-        buf_size = MGR_BASE_SIZE;
-        for (const auto &op : in.migration_request.ops) {
-            buf_size += sizeof(key_len_t) + op.key.size() + sizeof(value_len_t) + op.value.size();
-        }
+    case MemcacheKVMessage::Type::MGR_REQ: {
+        buf_size = MGR_REQ_BASE_SIZE + in.migration_request.key.size() + in.migration_request.value.size();
+        break;
+    }
+    case MemcacheKVMessage::Type::MGR_ACK: {
+        buf_size = MGR_ACK_BASE_SIZE;
         break;
     }
     default:
@@ -237,6 +254,9 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         case Operation::Type::DEL:
             *(op_type_t*)ptr = OP_DEL;
             break;
+        case Operation::Type::MGR:
+            panic("Should never generate MGR on a server!");
+            break;
         default:
             return false;
         }
@@ -245,26 +265,62 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         hash = hash & KEYHASH_MASK; // controller uses signed int
         convert_endian(ptr, &hash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
+        *(node_t*)ptr = 0;
+        ptr += sizeof(node_t);
+        ptr += sizeof(load_t);
+        *(ver_t*)ptr = 0;
+        ptr += sizeof(ver_t);
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {
-        *(op_type_t*)ptr = OP_REP;
+        switch (in.reply.type) {
+        case MemcacheKVReply::Type::READ:
+            *(op_type_t*)ptr = OP_REP_R;
+            break;
+        case MemcacheKVReply::Type::WRITE:
+            *(op_type_t*)ptr = OP_REP_W;
+            break;
+        default:
+            return false;
+        }
         ptr += sizeof(op_type_t);
-        // No keyhash required
+        convert_endian(ptr, &in.reply.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         *(node_t*)ptr = in.reply.node_id;
         ptr += sizeof(node_t);
         convert_endian(ptr, &in.reply.load, sizeof(load_t));
         ptr += sizeof(load_t);
+        convert_endian(ptr, &in.reply.ver, sizeof(ver_t));
+        ptr += sizeof(ver_t);
+        ptr += sizeof(node_t);
+        ptr += sizeof(load_t);
         break;
     }
-    case MemcacheKVMessage::Type::MGR: {
-        *(op_type_t*)ptr = OP_MGR;
+    case MemcacheKVMessage::Type::MGR_REQ: {
+        *(op_type_t*)ptr = OP_MGR_REQ;
         ptr += sizeof(op_type_t);
-        // No keyhash required
+        convert_endian(ptr, &in.migration_request.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
+        ptr += sizeof(node_t);
+        ptr += sizeof(load_t);
+        convert_endian(ptr, &in.migration_request.ver, sizeof(ver_t));
+        ptr += sizeof(ver_t);
+        ptr += sizeof(node_t);
+        ptr += sizeof(load_t);
+        break;
+    }
+    case MemcacheKVMessage::Type::MGR_ACK: {
+        *(op_type_t*)ptr = OP_MGR_ACK;
+        ptr += sizeof(op_type_t);
+        convert_endian(ptr, &in.migration_ack.keyhash, sizeof(keyhash_t));
+        ptr += sizeof(keyhash_t);
+        *(node_t*)ptr = in.migration_ack.node_id;
+        ptr += sizeof(node_t);
+        ptr += sizeof(load_t);
+        convert_endian(ptr, &in.migration_ack.ver, sizeof(ver_t));
+        ptr += sizeof(ver_t);
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         break;
@@ -307,19 +363,19 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         }
         break;
     }
-    case MemcacheKVMessage::Type::MGR: {
-        *(nops_t*)ptr = (nops_t)in.migration_request.ops.size();
-        ptr += sizeof(nops_t);
-        for (const auto &op : in.migration_request.ops) {
-            *(key_len_t *)ptr = (key_len_t)op.key.size();
-            ptr += sizeof(key_len_t);
-            memcpy(ptr, op.key.data(), op.key.size());
-            ptr += op.key.size();
-            *(value_len_t *)ptr = (value_len_t)op.value.size();
-            ptr += sizeof(value_len_t);
-            memcpy(ptr, op.value.data(), op.value.size());
-            ptr += op.value.size();
-        }
+    case MemcacheKVMessage::Type::MGR_REQ: {
+        *(key_len_t *)ptr = (key_len_t)in.migration_request.key.size();
+        ptr += sizeof(key_len_t);
+        memcpy(ptr, in.migration_request.key.data(), in.migration_request.key.size());
+        ptr += in.migration_request.key.size();
+        *(value_len_t *)ptr = (value_len_t)in.migration_request.value.size();
+        ptr += sizeof(value_len_t);
+        memcpy(ptr, in.migration_request.value.data(), in.migration_request.value.size());
+        ptr += in.migration_request.value.size();
+        break;
+    }
+    case MemcacheKVMessage::Type::MGR_ACK: {
+        // emptry
         break;
     }
     default:

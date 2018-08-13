@@ -3,25 +3,18 @@
 # General definitions
 SRC_DIR := .
 BIN_DIR := ./bin
-TEST_DIR := ./tests
 BUILD_DIR := ./build
 EMULATOR := ./bin/emulator
 MIGRATOR := ./bin/migrator
-TEST_BIN := $(TEST_DIR)/memcachekv-test
+CLI := ./bin/cli
 
-SRCS := $(shell find $(SRC_DIR) -path $(BUILD_DIR) -prune -o -name "*.cc" -print)
+SRCS := $(shell find $(SRC_DIR) -path $(BUILD_DIR) -prune -o -path $(BIN_DIR) -prune -o -name '*.cc' -print)
 OBJS := $(SRCS:%.cc=$(BUILD_DIR)/%.o)
-DEPS := $(OBJS:.o=.d)
+DEPS := $(shell find $(BUILD_DIR) -type f -name '*.d' > /dev/null 2>&1)
 
-BIN_SRCS := $(filter-out $(wildcard $(TEST_DIR)/*.cc), $(SRCS))
-EMULATOR_SRC := ./bin/emulator.cc
-MIGRATOR_SRC := ./bin/migrator.cc
-EMULATOR_SRCS := $(filter-out $(MIGRATOR_SRC), $(BIN_SRCS))
-EMULATOR_OBJS := $(EMULATOR_SRCS:%.cc=$(BUILD_DIR)/%.o)
-MIGRATOR_SRCS := $(filter-out $(EMULATOR_SRC), $(BIN_SRCS))
-MIGRATOR_OBJS := $(MIGRATOR_SRCS:%.cc=$(BUILD_DIR)/%.o)
-TEST_SRCS := $(filter-out $(wildcard $(BIN_DIR)/*.cc), $(SRCS))
-TEST_OBJS := $(TEST_SRCS:%.cc=$(BUILD_DIR)/%.o)
+EMULATOR_OBJS := $(OBJS) $(BUILD_DIR)/bin/emulator.o
+MIGRATOR_OBJS := $(OBJS) $(BUILD_DIR)/bin/migrator.o
+CLI_OBJS := $(OBJS) $(BUILD_DIR)/bin/cli.o
 
 INC_DIRS := $(shell find $(SRC_DIR) -type d)
 INC_DIRS += $(BUILD_DIR)/gen
@@ -48,11 +41,6 @@ LIBEVENT_LDFLAGS := $(shell pkg-config --libs libevent)
 CFLAGS += $(LIBEVENT_CFlAGS)
 LDFLAGS += $(LIBEVENT_LDFLAGS)
 
-# Google Test definitions
-GTEST_DIR := /usr/src/gtest
-GTEST_OBJS := $(BUILD_DIR)/gtest/gtest-all.o $(BUILD_DIR)/gtest/gtest_main.o
-GTEST_MAIN := $(BUILD_DIR)/gtest/gtest_main.a
-
 # Generate protobuf files
 $(PROTOSRCS): $(BUILD_DIR)/gen/%.pb.cc: %.proto
 	$(MKDIR_P) $(dir $@)
@@ -63,16 +51,9 @@ $(PROTOOBJS): $(BUILD_DIR)/%.o: $(BUILD_DIR)/gen/%.pb.cc
 	$(MKDIR_P) $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS) -c $< -o $@
 
-$(OBJS): $(BUILD_DIR)/%.o: %.cc $(PROTOSRCS)
+$(BUILD_DIR)/%.o: %.cc $(PROTOSRCS)
 	$(MKDIR_P) $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS) -c $< -o $@
-
-$(GTEST_OBJS): $(BUILD_DIR)/gtest/%.o: $(GTEST_DIR)/src/%.cc
-	$(MKDIR_P) $(dir $@)
-	$(CXX) $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS) -I$(GTEST_DIR) -c $< -o $@
-
-$(GTEST_MAIN): $(BUILD_DIR)/gtest/gtest-all.o $(BUILD_DIR)/gtest/gtest_main.o
-	$(AR) $(ARFLAGS) $@ $^
 
 # Linking
 $(EMULATOR): $(EMULATOR_OBJS) $(PROTOOBJS)
@@ -81,8 +62,8 @@ $(EMULATOR): $(EMULATOR_OBJS) $(PROTOOBJS)
 $(MIGRATOR): $(MIGRATOR_OBJS) $(PROTOOBJS)
 	$(CXX) $(MIGRATOR_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
 
-$(TEST_BIN): $(TEST_OBJS) $(PROTOOBJS) $(GTEST_MAIN)
-	$(CXX) $(TEST_OBJS) $(PROTOOBJS) $(GTEST_MAIN) -o $@ $(LDFLAGS)
+$(CLI): $(CLI_OBJS) $(PROTOOBJS)
+	$(CXX) $(CLI_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
 
 -include $(DEPS)
 
@@ -92,13 +73,7 @@ MKDIR_P := mkdir -p
 .PHONY: clean
 clean:
 	$(RM) -r $(BUILD_DIR)
-	$(RM) $(EMULATOR) $(MIGRATOR) $(TEST_BIN)
+	$(RM) $(EMULATOR) $(MIGRATOR) $(CLI)
 
 .PHONY: all
-all: $(EMULATOR) $(MIGRATOR)
-
-$(TEST_BIN:%=run-%): run-%: %
-	$<
-
-.PHONY: test
-test: $(TEST_BIN:%=run-%)
+all: $(EMULATOR) $(MIGRATOR) $(CLI)

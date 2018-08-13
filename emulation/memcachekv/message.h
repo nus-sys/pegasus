@@ -9,6 +9,7 @@ namespace memcachekv {
 
 typedef uint32_t keyhash_t;
 typedef uint16_t load_t;
+typedef uint32_t ver_t;
 #define KEYHASH_MASK 0x7FFFFFFF;
 
 /*
@@ -18,16 +19,20 @@ struct Operation {
     enum class Type {
         GET,
         PUT,
-        DEL
+        DEL,
+        MGR
     };
     Operation()
-        : op_type(Type::GET), keyhash(0), key(""), value("") {};
+        : op_type(Type::GET), keyhash(0), node_id(0), ver(0), key(""), value("") {};
     Operation(const proto::Operation &op)
         : op_type(static_cast<Operation::Type>(op.op_type())),
         key(op.key()), value(op.value()) {};
 
     Type op_type;
     keyhash_t keyhash;
+    int node_id;
+    ver_t ver;
+
     std::string key;
     std::string value;
 };
@@ -51,8 +56,13 @@ enum class Result {
 };
 
 struct MemcacheKVReply {
+    enum class Type {
+        READ,
+        WRITE
+    };
     MemcacheKVReply()
-        : node_id(0), load(0), client_id(0), req_id(0), result(Result::OK), value("") {};
+        : type(Type::READ), keyhash(0), node_id(0), load(0), ver(0),
+        client_id(0), req_id(0), result(Result::OK), value("") {};
     MemcacheKVReply(const proto::MemcacheKVReply &reply)
         : node_id(reply.node_id()),
         client_id(reply.client_id()),
@@ -60,8 +70,12 @@ struct MemcacheKVReply {
         result(static_cast<Result>(reply.result())),
         value(reply.value()) {};
 
+    Type type;
+    keyhash_t keyhash;
     int node_id;
     load_t load;
+    ver_t ver;
+
     int client_id;
     uint32_t req_id;
     Result result;
@@ -69,14 +83,25 @@ struct MemcacheKVReply {
 };
 
 struct MigrationRequest {
-    std::list<Operation> ops;
+    keyhash_t keyhash;
+    ver_t ver;
+
+    std::string key;
+    std::string value;
+};
+
+struct MigrationAck {
+    keyhash_t keyhash;
+    int node_id;
+    ver_t ver;
 };
 
 struct MemcacheKVMessage {
     enum class Type {
         REQUEST,
         REPLY,
-        MGR,
+        MGR_REQ,
+        MGR_ACK,
         UNKNOWN
     };
     MemcacheKVMessage()
@@ -86,6 +111,7 @@ struct MemcacheKVMessage {
     MemcacheKVRequest request;
     MemcacheKVReply reply;
     MigrationRequest migration_request;
+    MigrationAck migration_ack;
 };
 
 class MessageCodec {
@@ -119,7 +145,7 @@ public:
 private:
     bool proto_enable;
     /* Wire format:
-     * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) + message
+     * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) + version (32) + debug_node (8) + debug_load (16) + message
      *
      * Request format:
      * client_id (32) + req_id (32) + key_len (16) + key (+ value_len(16) + value)
@@ -128,32 +154,39 @@ private:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value
      *
      * Migration request format:
-     * nops (16) + nops * (key_len (16) + key + value_len(16) + value)
+     * key_len (16) + key + value_len(16) + value
+     *
+     * Migration ack format:
+     * empty
      */
     typedef uint16_t identifier_t;
     typedef uint8_t op_type_t;
     typedef uint32_t keyhash_t;
     typedef uint8_t node_t;
     typedef uint16_t load_t;
+    typedef uint32_t ver_t;
     typedef uint32_t client_id_t;
     typedef uint32_t req_id_t;
     typedef uint16_t key_len_t;
     typedef uint8_t result_t;
     typedef uint16_t value_len_t;
-    typedef uint16_t nops_t;
 
     static const identifier_t PEGASUS = 0x4750;
     static const identifier_t STATIC = 0x1573;
-    static const op_type_t OP_GET   = 0x0;
-    static const op_type_t OP_PUT   = 0x1;
-    static const op_type_t OP_DEL   = 0x2;
-    static const op_type_t OP_REP   = 0x3;
-    static const op_type_t OP_MGR   = 0x4;
-    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t);
+    static const op_type_t OP_GET       = 0x0;
+    static const op_type_t OP_PUT       = 0x1;
+    static const op_type_t OP_DEL       = 0x2;
+    static const op_type_t OP_REP_R     = 0x3;
+    static const op_type_t OP_REP_W     = 0x4;
+    static const op_type_t OP_MGR       = 0x5;
+    static const op_type_t OP_MGR_REQ   = 0x6;
+    static const op_type_t OP_MGR_ACK   = 0x7;
 
+    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
     static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
-    static const size_t MGR_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nops_t);
+    static const size_t MGR_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
+    static const size_t MGR_ACK_BASE_SIZE = PACKET_BASE_SIZE;
 };
 
 /*
