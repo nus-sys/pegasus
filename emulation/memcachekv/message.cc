@@ -96,6 +96,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     ver_t ver;
     convert_endian(&ver, ptr, sizeof(ver_t));
     ptr += sizeof(ver_t);
+    int num_replicas = *(node_t*)ptr;
     ptr += sizeof(node_t);
     ptr += sizeof(load_t);
 
@@ -128,6 +129,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         out.request.op.keyhash = keyhash;
         out.request.op.node_id = node_id;
         out.request.op.ver = ver;
+        out.request.op.num_replicas = num_replicas;
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
         if (buf_size < REQUEST_BASE_SIZE + key_len) {

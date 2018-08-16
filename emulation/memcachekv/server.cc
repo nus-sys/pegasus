@@ -158,7 +158,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
             reply.value = "";
         }
         if (op.op_type == Operation::Type::MGR) {
-            process_migration(op, reply.value);
+            process_migration(op, reply.value, op.node_id);
         }
         break;
     }
@@ -166,10 +166,19 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         reply.type = MemcacheKVReply::Type::WRITE;
         if (op.ver >= this->store[op.key].ver) {
             this->store[op.key].value = op.value;
-            this->store[op.key].ver = op.ver;
             if (op.ver > this->store[op.key].ver) {
                 // Rkey has a new version, can clear the replica set
+                this->store[op.key].ver = op.ver;
                 this->replicated_keys[op.key].replicas.clear();
+                if (op.num_replicas > 1) {
+                    // replicate to local replicas
+                    // XXX currently send to everyone
+                    for (int i = 0; i < this->config->num_nodes; i++) {
+                        if (i != this->node_id) {
+                            process_migration(op, op.value, i);
+                        }
+                    }
+                }
             }
         }
         reply.result = Result::OK;
@@ -191,14 +200,16 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
 }
 
 void
-Server::process_migration(const Operation &op, const string &value)
+Server::process_migration(const Operation &op,
+                          const string &value,
+                          int dst)
 {
     // Only send migration request if:
     // 1. not to itself
     // 2. has not sent to the targeted node before
-    if (op.node_id != this->node_id) {
-        if (this->replicated_keys[op.key].replicas.count(op.node_id) == 0) {
-            this->replicated_keys[op.key].replicas.insert(op.node_id);
+    if (dst != this->node_id) {
+        if (this->replicated_keys[op.key].replicas.count(dst) == 0) {
+            this->replicated_keys[op.key].replicas.insert(dst);
 
             MemcacheKVMessage mgr_req;
             string mgr_req_str;
@@ -208,7 +219,7 @@ Server::process_migration(const Operation &op, const string &value)
             mgr_req.migration_request.key = op.key;
             mgr_req.migration_request.value = value;
             this->codec->encode(mgr_req_str, mgr_req);
-            this->transport->send_message_to_node(mgr_req_str, op.node_id);
+            this->transport->send_message_to_node(mgr_req_str, dst);
         }
     }
 }
