@@ -304,6 +304,9 @@ class Controller(object):
                 self.sess_hdl, self.dev_tgt, rkey.index, flags)
             rset_size = int(read_value[1])
             print "rset size", rset_size
+            read_value = self.client.register_read_reg_rkey_ver_curr(
+                self.sess_hdl, self.dev_tgt, rkey.index, flags)
+            print "ver curr", read_value[1]
             for i in range(rset_size):
                 read_value = self.read_reg_rset_fns[i](
                     self.sess_hdl, self.dev_tgt, rkey.index, flags)

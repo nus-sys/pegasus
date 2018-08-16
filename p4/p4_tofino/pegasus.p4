@@ -408,7 +408,7 @@ blackbox stateful_alu sa_set_rkey_ver_curr {
     update_lo_1_value: pegasus.ver;
     output_predicate: condition_lo;
     output_value: combined_predicate;
-    output_dst: meta.load; // hack
+    output_dst: meta.ver_matched;
 }
 
 action get_rkey_ver_next() {
@@ -457,7 +457,15 @@ table tab_compare_rkey_ver_curr_b {
     size: 1;
 }
 @pragma stage 1
-table tab_set_rkey_ver_curr {
+table tab_set_rkey_ver_curr_a {
+    actions {
+        set_rkey_ver_curr;
+    }
+    default_action: set_rkey_ver_curr;
+    size: 1;
+}
+@pragma stage 1
+table tab_set_rkey_ver_curr_b {
     actions {
         set_rkey_ver_curr;
     }
@@ -497,7 +505,7 @@ action dec_queue_len() {
     add(meta.node, meta.node, 1);
 }
 
-@pragma stage 5
+@pragma stage 6
 table tab_get_queue_len {
     actions {
         get_queue_len;
@@ -505,7 +513,7 @@ table tab_get_queue_len {
     default_action: get_queue_len;
     size: 1;
 }
-@pragma stage 5
+@pragma stage 6
 table tab_inc_queue_len {
     actions {
         inc_queue_len;
@@ -513,7 +521,7 @@ table tab_inc_queue_len {
     default_action: inc_queue_len;
     size: 1;
 }
-@pragma stage 5
+@pragma stage 6
 table tab_dec_queue_len_a {
     actions {
         dec_queue_len;
@@ -521,7 +529,7 @@ table tab_dec_queue_len_a {
     default_action: dec_queue_len;
     size: 1;
 }
-@pragma stage 5
+@pragma stage 6
 table tab_dec_queue_len_b {
     actions {
         dec_queue_len;
@@ -709,7 +717,15 @@ table tab_get_rkey_min_node {
     size: 1;
 }
 @pragma stage 3
-table tab_set_rkey_min_node {
+table tab_set_rkey_min_node_a {
+    actions {
+        set_rkey_min_node;
+    }
+    default_action: set_rkey_min_node;
+    size: 1;
+}
+@pragma stage 3
+table tab_set_rkey_min_node_b {
     actions {
         set_rkey_min_node;
     }
@@ -828,7 +844,15 @@ table tab_get_rnode_1 {
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_1 {
+table tab_set_rnode_1_a {
+    actions {
+        set_rnode_1;
+    }
+    default_action: set_rnode_1;
+    size: 1;
+}
+@pragma stage 4
+table tab_set_rnode_1_b {
     actions {
         set_rnode_1;
     }
@@ -844,7 +868,15 @@ table tab_get_rnode_2 {
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_2 {
+table tab_set_rnode_2_a {
+    actions {
+        set_rnode_2;
+    }
+    default_action: set_rnode_2;
+    size: 1;
+}
+@pragma stage 4
+table tab_set_rnode_2_b {
     actions {
         set_rnode_2;
     }
@@ -876,7 +908,15 @@ table tab_get_rnode_3 {
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_3 {
+table tab_set_rnode_3_a {
+    actions {
+        set_rnode_3;
+    }
+    default_action: set_rnode_3;
+    size: 1;
+}
+@pragma stage 4
+table tab_set_rnode_3_b {
     actions {
         set_rnode_3;
     }
@@ -899,7 +939,7 @@ table tab_install_rnode_3_b {
     default_action: install_rnode_3;
     size: 1;
 }
-@pragma stage 4
+@pragma stage 5
 table tab_get_rnode_4 {
     actions {
         get_rnode_4;
@@ -907,15 +947,23 @@ table tab_get_rnode_4 {
     default_action: get_rnode_4;
     size: 1;
 }
-@pragma stage 4
-table tab_set_rnode_4 {
+@pragma stage 5
+table tab_set_rnode_4_a {
     actions {
         set_rnode_4;
     }
     default_action: set_rnode_4;
     size: 1;
 }
-@pragma stage 4
+@pragma stage 5
+table tab_set_rnode_4_b {
+    actions {
+        set_rnode_4;
+    }
+    default_action: set_rnode_4;
+    size: 1;
+}
+@pragma stage 5
 table tab_install_rnode_4_a {
     actions {
         install_rnode_4;
@@ -923,7 +971,7 @@ table tab_install_rnode_4_a {
     default_action: install_rnode_4;
     size: 1;
 }
-@pragma stage 4
+@pragma stage 5
 table tab_install_rnode_4_b {
     actions {
         install_rnode_4;
@@ -1003,7 +1051,15 @@ table tab_get_rset_size_b {
     size: 1;
 }
 @pragma stage 2
-table tab_set_rset_size {
+table tab_set_rset_size_a {
+    actions {
+        set_rset_size;
+    }
+    default_action: set_rset_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_set_rset_size_b {
     actions {
         set_rset_size;
     }
@@ -1183,14 +1239,17 @@ control process_reply {
         // if yes, update the key's version number, and store the result in
         // meta.load (as a hack, we can't resubmit more fields...)
         apply(tab_copy_pegasus_header_a);
-        apply(tab_set_rkey_ver_curr);
-        if (meta.load == 1) {
-            apply(tab_set_rset_size);
-            apply(tab_set_rkey_min_node);
-            apply(tab_set_rnode_1);
-            apply(tab_set_rnode_2);
-            apply(tab_set_rnode_3);
-            apply(tab_set_rnode_4);
+        apply(tab_set_rkey_ver_curr_a);
+        if (meta.ver_matched != 0) {
+            apply(tab_set_rset_size_a);
+            apply(tab_set_rkey_min_node_a);
+            apply(tab_set_rnode_1_a);
+            apply(tab_set_rnode_2_a);
+            apply(tab_set_rnode_3_a);
+            apply(tab_set_rnode_4_a);
+            apply(tab_l2_forward);
+        } else {
+            apply(tab_do_resubmit);
         }
     } else {
         apply(tab_set_rkey_none);
@@ -1215,8 +1274,8 @@ control process_reply {
             // Nothing to probe
             apply(tab_set_probe_none);
         }
+        apply(tab_do_resubmit);
     }
-    apply(tab_do_resubmit);
 }
 
 control process_dec {
@@ -1238,19 +1297,21 @@ control process_mgr_req {
 control process_mgr_ack {
     apply(tab_copy_pegasus_header_c);
     if (meta.rkey_index != RKEY_NONE) {
-        apply(tab_compare_rkey_ver_curr_a);
-        if (meta.ver_matched == 1) {
-            apply(tab_inc_rset_size_a);
-            if (meta.rset_size == 1) {
-                apply(tab_install_rnode_2_a);
-            } else if (meta.rset_size == 2) {
-                apply(tab_install_rnode_3_a);
-            } else if (meta.rset_size == 3) {
-                apply(tab_install_rnode_4_a);
-            }
+        apply(tab_set_rkey_ver_curr_b);
+        if (meta.ver_matched != 0) {
+            apply(tab_set_rset_size_b);
+            apply(tab_set_rkey_min_node_b);
+            apply(tab_set_rnode_1_b);
+            apply(tab_set_rnode_2_b);
+            apply(tab_set_rnode_3_b);
+            apply(tab_set_rnode_4_b);
+            apply(tab_do_drop);
+        } else {
+            apply(tab_do_resubmit);
         }
+    } else {
+        apply(tab_do_drop);
     }
-    apply(tab_do_drop);
 }
 
 control process_request {
@@ -1276,20 +1337,18 @@ control process_replicated_write {
 control process_resubmit_reply {
     if (meta.rkey_index != RKEY_NONE) {
         if (pegasus.op == OP_REP_W) {
-            if (meta.load == 0) {
-                // meta.node already copied in the first pass
-                // another replica has received the latest write, install
-                // it in the replication set
-                apply(tab_compare_rkey_ver_curr_b);
-                if (meta.ver_matched == 1) {
-                    apply(tab_inc_rset_size_b);
-                    if (meta.rset_size == 1) {
-                        apply(tab_install_rnode_2_b);
-                    } else if (meta.rset_size == 2) {
-                        apply(tab_install_rnode_3_b);
-                    } else if (meta.rset_size == 3) {
-                        apply(tab_install_rnode_4_b);
-                    }
+            // meta.node already copied in the first pass
+            // another replica has received the latest write, install
+            // it in the replication set
+            apply(tab_compare_rkey_ver_curr_b);
+            if (meta.ver_matched != 0) {
+                apply(tab_inc_rset_size_b);
+                if (meta.rset_size == 1) {
+                    apply(tab_install_rnode_2_b);
+                } else if (meta.rset_size == 2) {
+                    apply(tab_install_rnode_3_b);
+                } else if (meta.rset_size == 3) {
+                    apply(tab_install_rnode_4_b);
                 }
             }
         }
@@ -1307,6 +1366,23 @@ control process_resubmit_dec {
     apply(tab_dec_avg_queue_len_b);
     apply(tab_dummy);
     apply(tab_dec_queue_len_b);
+    apply(tab_do_drop);
+}
+
+control process_resubmit_mgr_ack {
+    if (meta.rkey_index != RKEY_NONE) {
+        apply(tab_compare_rkey_ver_curr_a);
+        if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_size_a);
+            if (meta.rset_size == 1) {
+                apply(tab_install_rnode_2_a);
+            } else if (meta.rset_size == 2) {
+                apply(tab_install_rnode_3_a);
+            } else if (meta.rset_size == 3) {
+                apply(tab_install_rnode_4_a);
+            }
+        }
+    }
     apply(tab_do_drop);
 }
 
@@ -1361,6 +1437,8 @@ control ingress {
                 process_resubmit_reply();
             } else if (pegasus.op == OP_DEC) {
                 process_resubmit_dec();
+            } else if (pegasus.op == OP_MGR_ACK) {
+                process_resubmit_mgr_ack();
             } else {
                 process_resubmit_request();
             }
