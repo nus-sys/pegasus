@@ -27,9 +27,9 @@ MemcacheKVStats::_dump()
     } else {
         printf("Cache Hit Rate: 0\n");
     }
-    printf("GET Percentage: %.2f\n", (float)this->received_replies[Operation::Type::GET] / this->total_ops);
-    printf("PUT Percentage: %.2f\n", (float)this->received_replies[Operation::Type::PUT] / this->total_ops);
-    printf("DEL Percentage: %.2f\n", (float)this->received_replies[Operation::Type::DEL] / this->total_ops);
+    printf("GET Percentage: %.2f\n", (float)this->received_replies[Operation::Type::GET] / this->completed_ops);
+    printf("PUT Percentage: %.2f\n", (float)this->received_replies[Operation::Type::PUT] / this->completed_ops);
+    printf("DEL Percentage: %.2f\n", (float)this->received_replies[Operation::Type::DEL] / this->completed_ops);
 }
 
 } // namespace memcachekv
