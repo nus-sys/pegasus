@@ -499,9 +499,9 @@ blackbox stateful_alu sa_inc_queue_len {
 }
 blackbox stateful_alu sa_dec_queue_len {
     reg: reg_queue_len;
-    condition_lo: register_lo > 1;
+    condition_lo: register_lo > meta.load;
     update_lo_1_predicate: condition_lo;
-    update_lo_1_value: register_lo - 1;
+    update_lo_1_value: register_lo - meta.load;
 }
 
 action get_queue_len() {
@@ -1227,6 +1227,7 @@ table tab_rkey_migration {
  */
 action copy_pegasus_header() {
     modify_field(meta.node, pegasus.node);
+    modify_field(meta.load, pegasus.load);
 }
 
 table tab_copy_pegasus_header_a {
