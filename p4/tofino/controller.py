@@ -25,7 +25,7 @@ HASH_MASK = 0x3
 RNODE_NONE = 0x7F
 BUF_SIZE = 4096
 
-CTRL_ADDR = ("10.100.1.6", 24680)
+CTRL_ADDR = ("10.100.1.16", 24680)
 
 IDENTIFIER = 0xDEAC
 IDENTIFIER_SIZE = 2
@@ -224,6 +224,7 @@ class Controller(object):
         for i in range(self.num_nodes):
             self.client.register_write_reg_queue_len(
                 self.sess_hdl, self.dev_tgt, i, 0)
+        self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
     def add_rkey(self, keyhash, rkey_index, load):

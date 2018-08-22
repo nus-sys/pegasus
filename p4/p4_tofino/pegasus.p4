@@ -29,6 +29,8 @@
 #define RKEY_NONE       0x7F
 
 #define OVERLOAD        0xA
+#define RW_DEC          0x8
+#define RW_MAX          0x30
 
 header_type ethernet_t {
     fields {
@@ -104,6 +106,7 @@ header_type metadata_t {
         avg_load : 16;
         overload : 1;
         ver_matched : 1;
+        read_heavy : 1;
     }
 }
 
@@ -191,6 +194,13 @@ register reg_probe_rkey_counter {
    Probe rset counter
  */
 register reg_probe_rset_counter {
+    width: 8;
+    instance_count: 32;
+}
+/*
+   Read/Write ratio counter
+ */
+register reg_rw_counter {
     width: 8;
     instance_count: 32;
 }
@@ -1157,6 +1167,47 @@ table tab_set_probe_none {
 }
 
 /*
+   rw counter
+ */
+blackbox stateful_alu sa_get_rw_counter {
+    reg: reg_rw_counter;
+    condition_lo: register_lo >= RW_DEC;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo - RW_DEC;
+    output_predicate: condition_lo;
+    output_value: combined_predicate;
+    output_dst: meta.read_heavy;
+}
+blackbox stateful_alu sa_inc_rw_counter {
+    reg: reg_rw_counter;
+    condition_lo: register_lo < RW_MAX;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+}
+
+action get_rw_counter() {
+    sa_get_rw_counter.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rw_counter() {
+    sa_inc_rw_counter.execute_stateful_alu(meta.rkey_index);
+}
+
+table tab_get_rw_counter {
+    actions {
+        get_rw_counter;
+    }
+    default_action: get_rw_counter;
+    size: 1;
+}
+table tab_inc_rw_counter {
+    actions {
+        inc_rw_counter;
+    }
+    default_action: inc_rw_counter;
+    size: 1;
+}
+
+/*
    rkey migration
  */
 action rkey_migration() {
@@ -1392,13 +1443,17 @@ control process_resubmit_request {
     if (meta.rkey_index != RKEY_NONE) {
         if (pegasus.op == OP_GET) {
             apply(tab_get_rkey_ver_curr);
+            apply(tab_inc_rw_counter);
             apply(tab_get_rset_size_b);
             if (meta.rset_size != MAX_REPLICAS) {
                 apply(tab_check_overload_rkey_min_node);
             }
         } else {
             apply(tab_get_rkey_ver_next);
-            apply(tab_write_local_replicas);
+            apply(tab_get_rw_counter);
+            if (meta.read_heavy != 0) {
+                apply(tab_write_local_replicas);
+            }
         }
     }
     apply(tab_compare_min_node);
