@@ -64,7 +64,7 @@ private:
 
     static const int HK_EPOCH = 10000; // 10ms
     static const int MAX_HK_SIZE = 8;
-    static const int KR_SAMPLE_RATE = 50;
+    static const int KR_SAMPLE_RATE = 100;
     static const int HK_THRESHOLD = 5;
     unsigned int request_count;
     std::unordered_map<keyhash_t, unsigned int> key_count;
