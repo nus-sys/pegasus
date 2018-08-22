@@ -36,7 +36,7 @@ MemcacheKVConfig::key_to_address(const std::string &key)
         return this->addresses[hash % this->num_nodes];
     }
     case ROUTER: {
-        return this->router_address;
+        return this->addresses[0];
     }
     default:
         panic("Unknown MemcacheKVConfig mode");
