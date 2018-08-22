@@ -187,6 +187,7 @@ Client::execute_op(const Operation &op)
     this->transport->send_message_to_addr(msg_str, addr);
 
     this->req_id++;
+    this->stats->report_issue();
 }
 
 void

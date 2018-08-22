@@ -11,6 +11,7 @@ public:
     Stats(const char *stats_file);
     virtual ~Stats();
 
+    void report_issue();
     void report_latency(int latency);
     void start();
     void done();
@@ -18,7 +19,8 @@ public:
     virtual void _dump() {};
 
 protected:
-    uint64_t total_ops;
+    uint64_t issued_ops;
+    uint64_t completed_ops;
     bool record;
     std::ofstream file_stream;
 
