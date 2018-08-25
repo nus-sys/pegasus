@@ -21,7 +21,6 @@ from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.protocol import TMultiplexedProtocol
 
-HASH_MASK = 0x3
 RNODE_NONE = 0x7F
 BUF_SIZE = 4096
 
@@ -41,7 +40,8 @@ LOAD_SIZE = 2
 
 MAX_NRKEYS = 8
 MAX_RSET_SIZE = 0x4
-DEFAULT_NUM_NODES = 4
+DEFAULT_NUM_NODES = 8
+HASH_MASK = DEFAULT_NUM_NODES - 1
 
 controller = None
 
@@ -290,7 +290,7 @@ class Controller(object):
             self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
-    def read_registers(self):
+    def print_registers(self):
         flags = pegasus_register_flags_t(read_hw_sync=True)
         self.switch_lock.acquire()
         # read node load

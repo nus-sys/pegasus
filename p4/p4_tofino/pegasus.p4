@@ -10,10 +10,8 @@
 #define PROTO_UDP       0x11
 
 #define PEGASUS_ID      0x5047
-#define HASH_MASK       0x3 // Max 4 nodes
-#define NNODES          0x4
+#define HASH_MASK       0x7 // Max 8 nodes
 #define MAX_REPLICAS    0x4
-#define AVG_SHIFT       0x2
 
 #define OP_GET          0x0
 #define OP_PUT          0x1
@@ -103,7 +101,6 @@ header_type metadata_t {
         probe_rset_index : 8;
         node : 8;
         load : 16;
-        avg_load : 16;
         overload : 1;
         ver_matched : 1;
         read_heavy : 1;
@@ -123,13 +120,6 @@ metadata metadata_t meta;
 register reg_queue_len {
     width: 16;
     instance_count: 32;
-}
-/*
-   Average queue length across all nodes
- */
-register reg_avg_queue_len {
-    width: 16;
-    instance_count: 1;
 }
 /*
    Global least loaded node
@@ -545,65 +535,6 @@ table tab_dec_queue_len_b {
         dec_queue_len;
     }
     default_action: dec_queue_len;
-    size: 1;
-}
-
-/*
-   inc/dec avg queue len
- */
-blackbox stateful_alu sa_inc_avg_queue_len {
-    reg: reg_avg_queue_len;
-    update_lo_1_value: register_lo + 1;
-    output_value: alu_lo;
-    output_dst: meta.avg_load;
-}
-blackbox stateful_alu sa_dec_avg_queue_len {
-    reg: reg_avg_queue_len;
-    condition_lo: register_lo > 1;
-    update_lo_1_predicate: condition_lo;
-    update_lo_1_value: register_lo - 1;
-}
-
-action inc_avg_queue_len() {
-    sa_inc_avg_queue_len.execute_stateful_alu(0);
-}
-action calc_avg_queue_len() {
-    shift_right(meta.avg_load, meta.avg_load, AVG_SHIFT);
-}
-action dec_avg_queue_len() {
-    sa_dec_avg_queue_len.execute_stateful_alu(0);
-}
-
-@pragma stage 0
-table tab_inc_avg_queue_len {
-    actions {
-        inc_avg_queue_len;
-    }
-    default_action: inc_avg_queue_len;
-    size: 1;
-}
-@pragma stage 1
-table tab_calc_avg_queue_len {
-    actions {
-        calc_avg_queue_len;
-    }
-    default_action: calc_avg_queue_len;
-    size: 1;
-}
-@pragma stage 0
-table tab_dec_avg_queue_len_a {
-    actions {
-        dec_avg_queue_len;
-    }
-    default_action: dec_avg_queue_len;
-    size: 1;
-}
-@pragma stage 0
-table tab_dec_avg_queue_len_b {
-    actions {
-        dec_avg_queue_len;
-    }
-    default_action: dec_avg_queue_len;
     size: 1;
 }
 
@@ -1331,7 +1262,6 @@ control process_reply {
 }
 
 control process_dec {
-    apply(tab_dec_avg_queue_len_a);
     apply(tab_copy_pegasus_header_b);
     apply(tab_dec_queue_len_a);
     apply(tab_do_resubmit);
@@ -1415,7 +1345,6 @@ control process_resubmit_reply {
 }
 
 control process_resubmit_dec {
-    apply(tab_dec_avg_queue_len_b);
     apply(tab_dummy);
     apply(tab_dec_queue_len_b);
     apply(tab_do_drop);
@@ -1439,8 +1368,6 @@ control process_resubmit_mgr_ack {
 }
 
 control process_resubmit_request {
-    apply(tab_inc_avg_queue_len);
-    apply(tab_calc_avg_queue_len);
     if (meta.rkey_index != RKEY_NONE) {
         if (pegasus.op == OP_GET) {
             apply(tab_get_rkey_ver_curr);
