@@ -32,7 +32,7 @@ struct Operation {
     keyhash_t keyhash;
     int node_id;
     ver_t ver;
-    int num_replicas; // For node local replication
+    int local_replicas; // For node local replication
 
     std::string key;
     std::string value;

@@ -158,7 +158,12 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
             reply.value = "";
         }
         if (op.op_type == Operation::Type::MGR) {
-            process_migration(op, reply.value, op.node_id);
+            // XXX currently migrate to all nodes
+            for (int i = 0; i < this->config->num_nodes; i++) {
+                if (i != this->node_id) {
+                    process_migration(op, reply.value, i);
+                }
+            }
         }
         break;
     }
@@ -170,7 +175,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
                 // Rkey has a new version, can clear the replica set
                 this->store[op.key].ver = op.ver;
                 this->replicated_keys[op.key].replicas.clear();
-                if (op.num_replicas > 1) {
+                if (op.local_replicas > 1) {
                     // replicate to local replicas
                     // XXX currently send to everyone
                     for (int i = 0; i < this->config->num_nodes; i++) {
