@@ -9,13 +9,27 @@
 #define ETHERTYPE_IPV4  0x800
 #define PROTO_UDP       0x11
 #define PEGASUS_ID      0x5047
-#define HASH_MASK       0x3 // Max 4 nodes
-#define NNODES          0x4
+
+#define HASH_MASK       0x7 // Max 8 nodes
+#define NNODES          0x8
+#define MAX_REPLICAS    0x4
+
 #define OP_GET          0x0
 #define OP_PUT          0x1
 #define OP_DEL          0x2
-#define OP_REP          0x3
+#define OP_REP_R        0x3
+#define OP_REP_W        0x4
+#define OP_MGR          0x5
+#define OP_MGR_REQ      0x6
+#define OP_MGR_ACK      0x7
+#define OP_DEC          0xF
+
 #define RNODE_NONE      0x7F
+#define RKEY_NONE       0x7F
+
+#define OVERLOAD        0xA
+#define RW_DEC          0x8
+#define RW_MAX          0x30
 
 header_type ethernet_t {
     fields {
@@ -71,6 +85,9 @@ header_type pegasus_t {
         keyhash : 32;
         node : 8;
         load : 16;
+        ver : 32;
+        debug_node : 8;
+        debug_load : 16;
     }
 }
 
@@ -78,14 +95,14 @@ header pegasus_t pegasus;
 
 header_type metadata_t {
     fields {
-        // Replica nodes
         rkey_index : 32;
-        rkey_counter : 16;
-        nrnodes : 16;
-        rnode_index: 16;
-        // Temporary variables
+        rset_size : 8;
+        rset_index: 8;
         node : 8;
         load : 16;
+        overload : 1;
+        ver_matched : 1;
+        read_heavy : 1;
     }
 }
 
@@ -94,37 +111,73 @@ metadata metadata_t meta;
 /*************************************************************************
 *********************** STATEFUL MEMORY  *********************************
 *************************************************************************/
-register reg_node_load {
+/*
+   Current number of outstanding requests (queue length)
+   at each node
+ */
+register reg_queue_len {
     width: 16;
+    instance_count: 32;
+}
+/*
+   rkey version number
+*/
+register reg_rkey_ver_next {
+    width: 32;
+    instance_count: 32;
+}
+register reg_rkey_ver_curr {
+    width: 32;
     instance_count: 32;
 }
 register reg_rkey_read_counter {
-    width: 16;
+    // per key counter
+    width: 8;
     instance_count: 32;
 }
 register reg_rkey_write_counter {
-    width: 16;
-    instance_count: 32;
-}
-register reg_nrnodes {
-    width: 16;
-    instance_count: 32;
-}
-register reg_rnode_1 {
+    // one global counter
     width: 8;
     instance_count: 32;
 }
-register reg_rnode_2 {
+register reg_rkey_size {
+    width: 8;
+    instance_count: 1;
+}
+register reg_rset_size {
     width: 8;
     instance_count: 32;
 }
-register reg_rnode_3 {
+register reg_rset_1 {
     width: 8;
     instance_count: 32;
 }
-register reg_rnode_4 {
+register reg_rset_2 {
     width: 8;
     instance_count: 32;
+}
+register reg_rset_3 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_4 {
+    width: 8;
+    instance_count: 32;
+}
+/*
+   Read/Write ratio counter
+ */
+register reg_rw_counter {
+    width: 8;
+    instance_count: 32;
+}
+/*************************************************************************
+*********************** RESUBMIT  ****************************************
+*************************************************************************/
+field_list resubmit_fields {
+    meta.rkey_index;
+    meta.node;
+    meta.load;
 }
 /*************************************************************************
 *********************** CHECKSUM *****************************************
@@ -249,22 +302,103 @@ table tab_node_forward {
 }
 
 /*
-   update node load
-*/
-blackbox stateful_alu sa_update_node_load {
-    reg: reg_node_load;
-    update_lo_1_value: pegasus.load;
+   drop
+ */
+action do_drop() {
+    _drop();
 }
 
-action update_node_load() {
-    sa_update_node_load.execute_stateful_alu(pegasus.node);
-}
-
-table tab_update_node_load {
+table tab_do_drop {
     actions {
-        update_node_load;
+        do_drop;
     }
-    default_action: update_node_load;
+    default_action: do_drop;
+    size: 1;
+}
+
+/*
+   resubmit
+ */
+action do_resubmit() {
+    resubmit(resubmit_fields);
+}
+
+table tab_do_resubmit {
+    actions {
+        do_resubmit;
+    }
+    default_action: do_resubmit;
+    size: 1;
+}
+
+/*
+   dummies
+*/
+blackbox stateful_alu sa_dummy {
+    reg: reg_rkey_ver_curr;
+}
+
+action dummy() {
+    sa_dummy.execute_stateful_alu(0);
+}
+
+@pragma stage 1
+table tab_dummy {
+    actions {
+        dummy;
+    }
+    default_action: dummy;
+    size: 1;
+}
+
+/*
+   inc/dec queue len
+ */
+blackbox stateful_alu sa_inc_queue_len {
+    reg: reg_queue_len;
+    condition_lo: register_lo > OVERLOAD;
+    update_lo_1_value: register_lo + 1;
+    output_predicate: condition_lo;
+    output_value: combined_predicate;
+    output_dst: meta.overload;
+}
+blackbox stateful_alu sa_dec_queue_len {
+    reg: reg_queue_len;
+    condition_lo: register_lo > meta.load;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo - meta.load;
+}
+
+action inc_queue_len() {
+    sa_inc_queue_len.execute_stateful_alu(meta.node);
+}
+action dec_queue_len() {
+    sa_dec_queue_len.execute_stateful_alu(meta.node);
+    add(meta.node, meta.node, 1);
+}
+
+@pragma stage 5
+table tab_inc_queue_len {
+    actions {
+        inc_queue_len;
+    }
+    default_action: inc_queue_len;
+    size: 1;
+}
+@pragma stage 5
+table tab_dec_queue_len_a {
+    actions {
+        dec_queue_len;
+    }
+    default_action: dec_queue_len;
+    size: 1;
+}
+@pragma stage 5
+table tab_dec_queue_len_b {
+    actions {
+        dec_queue_len;
+    }
+    default_action: dec_queue_len;
     size: 1;
 }
 
@@ -277,8 +411,10 @@ action lookup_rkey(rkey_index) {
 
 action set_default_dst_node() {
     bit_and(meta.node, pegasus.keyhash, HASH_MASK);
+    modify_field(meta.rkey_index, RKEY_NONE);
 }
 
+@pragma stage 0
 table tab_replicated_keys {
     reads {
         pegasus.keyhash: exact;
@@ -296,30 +432,17 @@ table tab_replicated_keys {
  */
 blackbox stateful_alu sa_access_rkey_read_counter {
     reg: reg_rkey_read_counter;
-    condition_lo: register_lo == meta.nrnodes;
+    condition_lo: register_lo >= meta.rset_size - 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: 0;
     update_lo_2_predicate: not condition_lo;
     update_lo_2_value: register_lo + 1;
     output_value: alu_lo;
-    output_dst: meta.rnode_index;
+    output_dst: meta.rset_index;
 }
-
-action access_rkey_read_counter() {
-    sa_access_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
-}
-
-table tab_access_rkey_read_counter {
-    actions {
-        access_rkey_read_counter;
-    }
-    default_action: access_rkey_read_counter;
-    size: 1;
-}
-
 blackbox stateful_alu sa_access_rkey_write_counter {
     reg: reg_rkey_write_counter;
-    condition_lo: register_lo == NNODES - 1;
+    condition_lo: register_lo >= NNODES - 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: 0;
     update_lo_2_predicate: not condition_lo;
@@ -328,11 +451,22 @@ blackbox stateful_alu sa_access_rkey_write_counter {
     output_dst: meta.node;
 }
 
+action access_rkey_read_counter() {
+    sa_access_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
+}
 action access_rkey_write_counter() {
-    sa_access_rkey_write_counter.execute_stateful_alu(meta.rkey_index);
+    sa_access_rkey_write_counter.execute_stateful_alu(0);
 }
 
-@pragma stage 2
+@pragma stage 3
+table tab_access_rkey_read_counter {
+    actions {
+        access_rkey_read_counter;
+    }
+    default_action: access_rkey_read_counter;
+    size: 1;
+}
+@pragma stage 3
 table tab_access_rkey_write_counter {
     actions {
         access_rkey_write_counter;
@@ -342,249 +476,610 @@ table tab_access_rkey_write_counter {
 }
 
 /*
-   read nrnodes
+   get/set/inc rset_size
  */
-blackbox stateful_alu sa_read_nrnodes {
-    reg: reg_nrnodes;
+blackbox stateful_alu sa_get_rset_size {
+    reg: reg_rset_size;
     output_value: register_lo;
-    output_dst: meta.nrnodes;
+    output_dst: meta.rset_size;
+}
+blackbox stateful_alu sa_set_rset_size {
+    reg: reg_rset_size;
+    update_lo_1_value: 1;
+}
+blackbox stateful_alu sa_inc_rset_size {
+    reg: reg_rset_size;
+    condition_lo: register_lo < MAX_REPLICAS;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+    output_value: register_lo;
+    output_dst: meta.rset_size;
 }
 
-action read_nrnodes() {
-    sa_read_nrnodes.execute_stateful_alu(meta.rkey_index);
+action get_rset_size() {
+    sa_get_rset_size.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_size() {
+    sa_set_rset_size.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rset_size() {
+    sa_inc_rset_size.execute_stateful_alu(meta.rkey_index);
 }
 
-table tab_read_nrnodes {
+@pragma stage 2
+table tab_get_rset_size {
     actions {
-        read_nrnodes;
+        get_rset_size;
     }
-    default_action: read_nrnodes;
+    default_action: get_rset_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_set_rset_size {
+    actions {
+        set_rset_size;
+    }
+    default_action: set_rset_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_size_a {
+    actions {
+        inc_rset_size;
+    }
+    default_action: inc_rset_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_size_b {
+    actions {
+        inc_rset_size;
+    }
+    default_action: inc_rset_size;
     size: 1;
 }
 
 /*
-   update nrnodes
+   get/set/install rset
  */
-blackbox stateful_alu sa_update_nrnodes {
-    reg: reg_nrnodes;
-    update_lo_1_value: 0;
-}
-
-action update_nrnodes() {
-    sa_update_nrnodes.execute_stateful_alu(meta.rkey_index);
-}
-
-table tab_update_nrnodes {
-    actions {
-        update_nrnodes;
-    }
-    default_action: update_nrnodes;
-    size: 1;
-}
-
-/*
-   read rnode
- */
-blackbox stateful_alu sa_read_rnode_1 {
-    reg: reg_rnode_1;
+blackbox stateful_alu sa_get_rset_1 {
+    reg: reg_rset_1;
     output_value: register_lo;
     output_dst: meta.node;
 }
-blackbox stateful_alu sa_read_rnode_2 {
-    reg: reg_rnode_2;
+blackbox stateful_alu sa_get_rset_2 {
+    reg: reg_rset_2;
     output_value: register_lo;
     output_dst: meta.node;
 }
-blackbox stateful_alu sa_read_rnode_3 {
-    reg: reg_rnode_3;
+blackbox stateful_alu sa_get_rset_3 {
+    reg: reg_rset_3;
     output_value: register_lo;
     output_dst: meta.node;
 }
-blackbox stateful_alu sa_read_rnode_4 {
-    reg: reg_rnode_4;
+blackbox stateful_alu sa_get_rset_4 {
+    reg: reg_rset_4;
     output_value: register_lo;
     output_dst: meta.node;
 }
-
-action read_rnode_1() {
-    sa_read_rnode_1.execute_stateful_alu(meta.rkey_index);
-}
-action read_rnode_2() {
-    sa_read_rnode_2.execute_stateful_alu(meta.rkey_index);
-}
-action read_rnode_3() {
-    sa_read_rnode_3.execute_stateful_alu(meta.rkey_index);
-}
-action read_rnode_4() {
-    sa_read_rnode_4.execute_stateful_alu(meta.rkey_index);
-}
-
-@pragma stage 3
-table tab_read_rnode_1 {
-    actions {
-        read_rnode_1;
-    }
-    default_action: read_rnode_1;
-    size: 1;
-}
-@pragma stage 3
-table tab_read_rnode_2 {
-    actions {
-        read_rnode_2;
-    }
-    default_action: read_rnode_2;
-    size: 1;
-}
-@pragma stage 3
-table tab_read_rnode_3 {
-    actions {
-        read_rnode_3;
-    }
-    default_action: read_rnode_3;
-    size: 1;
-}
-@pragma stage 3
-table tab_read_rnode_4 {
-    actions {
-        read_rnode_4;
-    }
-    default_action: read_rnode_4;
-    size: 1;
-}
-
-/*
-   update rnode (1-4)
-*/
-blackbox stateful_alu sa_update_rnode_1 {
-    reg: reg_rnode_1;
+blackbox stateful_alu sa_set_rset_1 {
+    reg: reg_rset_1;
     update_lo_1_value: meta.node;
 }
-blackbox stateful_alu sa_update_rnode_2 {
-    reg: reg_rnode_2;
+blackbox stateful_alu sa_set_rset_2 {
+    reg: reg_rset_2;
     update_lo_1_value: RNODE_NONE;
 }
-blackbox stateful_alu sa_update_rnode_3 {
-    reg: reg_rnode_3;
+blackbox stateful_alu sa_set_rset_3 {
+    reg: reg_rset_3;
     update_lo_1_value: RNODE_NONE;
 }
-blackbox stateful_alu sa_update_rnode_4 {
-    reg: reg_rnode_4;
+blackbox stateful_alu sa_set_rset_4 {
+    reg: reg_rset_4;
     update_lo_1_value: RNODE_NONE;
+}
+blackbox stateful_alu sa_install_rset_2 {
+    reg: reg_rset_2;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_install_rset_3 {
+    reg: reg_rset_3;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_install_rset_4 {
+    reg: reg_rset_4;
+    update_lo_1_value: meta.node;
 }
 
-action update_rnode_1() {
-    sa_update_rnode_1.execute_stateful_alu(meta.rkey_index);
+action get_rset_1() {
+    sa_get_rset_1.execute_stateful_alu(meta.rkey_index);
 }
-action update_rnode_2() {
-    sa_update_rnode_2.execute_stateful_alu(meta.rkey_index);
+action get_rset_2() {
+    sa_get_rset_2.execute_stateful_alu(meta.rkey_index);
 }
-action update_rnode_3() {
-    sa_update_rnode_3.execute_stateful_alu(meta.rkey_index);
+action get_rset_3() {
+    sa_get_rset_3.execute_stateful_alu(meta.rkey_index);
 }
-action update_rnode_4() {
-    sa_update_rnode_4.execute_stateful_alu(meta.rkey_index);
+action get_rset_4() {
+    sa_get_rset_4.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_1() {
+    sa_set_rset_1.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_2() {
+    sa_set_rset_2.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_3() {
+    sa_set_rset_3.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_4() {
+    sa_set_rset_4.execute_stateful_alu(meta.rkey_index);
+}
+action install_rset_2() {
+    sa_install_rset_2.execute_stateful_alu(meta.rkey_index);
+}
+action install_rset_3() {
+    sa_install_rset_3.execute_stateful_alu(meta.rkey_index);
+}
+action install_rset_4() {
+    sa_install_rset_4.execute_stateful_alu(meta.rkey_index);
 }
 
-@pragma stage 3
-table tab_update_rnode_1 {
+
+@pragma stage 4
+table tab_get_rset_1 {
     actions {
-        update_rnode_1;
+        get_rset_1;
     }
-    default_action: update_rnode_1;
+    default_action: get_rset_1;
     size: 1;
 }
-@pragma stage 3
-table tab_update_rnode_2 {
+@pragma stage 4
+table tab_get_rset_2 {
     actions {
-        update_rnode_2;
+        get_rset_2;
     }
-    default_action: update_rnode_2;
+    default_action: get_rset_2;
     size: 1;
 }
-@pragma stage 3
-table tab_update_rnode_3 {
+@pragma stage 4
+table tab_get_rset_3 {
     actions {
-        update_rnode_3;
+        get_rset_3;
     }
-    default_action: update_rnode_3;
+    default_action: get_rset_3;
     size: 1;
 }
-@pragma stage 3
-table tab_update_rnode_4 {
+@pragma stage 4
+table tab_get_rset_4 {
     actions {
-        update_rnode_4;
+        get_rset_4;
     }
-    default_action: update_rnode_4;
+    default_action: get_rset_4;
+    size: 1;
+}
+@pragma stage 4
+table tab_set_rset_1 {
+    actions {
+        set_rset_1;
+    }
+    default_action: set_rset_1;
+    size: 1;
+}
+@pragma stage 4
+table tab_set_rset_2 {
+    actions {
+        set_rset_2;
+    }
+    default_action: set_rset_2;
+    size: 1;
+}
+@pragma stage 4
+table tab_set_rset_3 {
+    actions {
+        set_rset_3;
+    }
+    default_action: set_rset_3;
+    size: 1;
+}
+@pragma stage 4
+table tab_set_rset_4 {
+    actions {
+        set_rset_4;
+    }
+    default_action: set_rset_4;
+    size: 1;
+}
+@pragma stage 4
+table tab_install_rset_2_a {
+    actions {
+        install_rset_2;
+    }
+    default_action: install_rset_2;
+    size: 1;
+}
+@pragma stage 4
+table tab_install_rset_2_b {
+    actions {
+        install_rset_2;
+    }
+    default_action: install_rset_2;
+    size: 1;
+}
+@pragma stage 4
+table tab_install_rset_3_a {
+    actions {
+        install_rset_3;
+    }
+    default_action: install_rset_3;
+    size: 1;
+}
+@pragma stage 4
+table tab_install_rset_3_b {
+    actions {
+        install_rset_3;
+    }
+    default_action: install_rset_3;
+    size: 1;
+}
+@pragma stage 4
+table tab_install_rset_4_a {
+    actions {
+        install_rset_4;
+    }
+    default_action: install_rset_4;
+    size: 1;
+}
+@pragma stage 4
+table tab_install_rset_4_b {
+    actions {
+        install_rset_4;
+    }
+    default_action: install_rset_4;
     size: 1;
 }
 
 /*
-   debug
-*/
-action debug() {
-    modify_field(pegasus.node, meta.node);
-    modify_field(pegasus.load, meta.load);
+   rkey version number
+ */
+blackbox stateful_alu sa_get_rkey_ver_next {
+    reg: reg_rkey_ver_next;
+    update_lo_1_value: register_lo + 1;
+    output_value: alu_lo;
+    output_dst: pegasus.ver;
+}
+blackbox stateful_alu sa_get_rkey_ver_curr {
+    reg: reg_rkey_ver_curr;
+    output_value: register_lo;
+    output_dst: pegasus.ver;
+}
+blackbox stateful_alu sa_compare_rkey_ver_curr {
+    reg: reg_rkey_ver_curr;
+    condition_lo: pegasus.ver == register_lo;
+    output_predicate: condition_lo;
+    output_value: combined_predicate;
+    output_dst: meta.ver_matched;
+}
+blackbox stateful_alu sa_set_rkey_ver_curr {
+    reg: reg_rkey_ver_curr;
+    condition_lo: pegasus.ver > register_lo;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: pegasus.ver;
+    output_predicate: condition_lo;
+    output_value: combined_predicate;
+    output_dst: meta.ver_matched;
 }
 
-table tab_debug {
+action get_rkey_ver_next() {
+    sa_get_rkey_ver_next.execute_stateful_alu(meta.rkey_index);
+}
+action get_rkey_ver_curr() {
+    sa_get_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
+}
+action compare_rkey_ver_curr() {
+    sa_compare_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
+}
+action set_rkey_ver_curr() {
+    sa_set_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
+}
+
+@pragma stage 1
+table tab_get_rkey_ver_next {
     actions {
-        debug;
+        get_rkey_ver_next;
     }
-    default_action: debug;
+    default_action: get_rkey_ver_next;
+    size: 1;
+}
+@pragma stage 1
+table tab_get_rkey_ver_curr {
+    actions {
+        get_rkey_ver_curr;
+    }
+    default_action: get_rkey_ver_curr;
+    size: 1;
+}
+@pragma stage 1
+table tab_compare_rkey_ver_curr_a {
+    actions {
+        compare_rkey_ver_curr;
+    }
+    default_action: compare_rkey_ver_curr;
+    size: 1;
+}
+@pragma stage 1
+table tab_compare_rkey_ver_curr_b {
+    actions {
+        compare_rkey_ver_curr;
+    }
+    default_action: compare_rkey_ver_curr;
+    size: 1;
+}
+@pragma stage 1
+table tab_set_rkey_ver_curr {
+    actions {
+        set_rkey_ver_curr;
+    }
+    default_action: set_rkey_ver_curr;
     size: 1;
 }
 
-control process_pegasus_reply {
-    apply(tab_update_node_load);
+/*
+   rw counter
+ */
+blackbox stateful_alu sa_get_rw_counter {
+    reg: reg_rw_counter;
+    condition_lo: register_lo >= RW_DEC;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo - RW_DEC;
+    output_predicate: condition_lo;
+    output_value: combined_predicate;
+    output_dst: meta.read_heavy;
+}
+blackbox stateful_alu sa_inc_rw_counter {
+    reg: reg_rw_counter;
+    condition_lo: register_lo < RW_MAX;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+}
+
+action get_rw_counter() {
+    sa_get_rw_counter.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rw_counter() {
+    sa_inc_rw_counter.execute_stateful_alu(meta.rkey_index);
+}
+
+@pragma stage 1
+table tab_get_rw_counter {
+    actions {
+        get_rw_counter;
+    }
+    default_action: get_rw_counter;
+    size: 1;
+}
+@pragma stage 1
+table tab_inc_rw_counter {
+    actions {
+        inc_rw_counter;
+    }
+    default_action: inc_rw_counter;
+    size: 1;
+}
+
+/*
+   rkey migration
+ */
+action rkey_migration() {
+    modify_field(pegasus.op, OP_MGR);
+    // we don't have min load information, let the server picks
+    // migration destination
+    modify_field(pegasus.node, RNODE_NONE);
+}
+
+table tab_rkey_migration {
+    actions {
+        rkey_migration;
+    }
+    default_action: rkey_migration;
+    size: 1;
+}
+
+/*
+   copy header
+ */
+action copy_pegasus_header() {
+    modify_field(meta.node, pegasus.node);
+    modify_field(meta.load, pegasus.load);
+}
+
+table tab_copy_pegasus_header_a {
+    actions {
+        copy_pegasus_header;
+    }
+    default_action: copy_pegasus_header;
+    size: 1;
+}
+table tab_copy_pegasus_header_b {
+    actions {
+        copy_pegasus_header;
+    }
+    default_action: copy_pegasus_header;
+    size: 1;
+}
+table tab_copy_pegasus_header_c {
+    actions {
+        copy_pegasus_header;
+    }
+    default_action: copy_pegasus_header;
+    size: 1;
+}
+
+/*
+   write_num_replicas
+ */
+action write_local_replicas() {
+    // Currently just replicate to all MAX_REPLICAS local nodes
+    modify_field(pegasus.debug_node, MAX_REPLICAS);
+}
+
+table tab_write_local_replicas {
+    actions {
+        write_local_replicas;
+    }
+    default_action : write_local_replicas;
+    size : 1;
+}
+
+control process_dec {
+    apply(tab_copy_pegasus_header_a);
+    apply(tab_dec_queue_len_a);
+    apply(tab_do_resubmit);
+}
+
+control process_resubmit_dec {
+    apply(tab_dummy);
+    apply(tab_dec_queue_len_b);
+    apply(tab_do_drop);
+}
+
+control process_mgr {
+    // Should never receive MGR message
+    apply(tab_do_drop);
+}
+
+control process_mgr_req {
     apply(tab_l2_forward);
 }
 
-control process_pegasus_request {
-    apply(tab_replicated_keys) {
-        hit {
-            if (pegasus.op == OP_GET) {
-                process_replicated_read();
-            } else {
-                process_replicated_write();
+control process_mgr_ack {
+    if (meta.rkey_index != RKEY_NONE) {
+        apply(tab_copy_pegasus_header_b);
+        apply(tab_compare_rkey_ver_curr_a);
+        if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_size_a);
+            if (meta.rset_size == 1) {
+                apply(tab_install_rset_2_a);
+            } else if (meta.rset_size == 2) {
+                apply(tab_install_rset_3_a);
+            } else if (meta.rset_size == 3) {
+                apply(tab_install_rset_4_a);
             }
         }
     }
+    apply(tab_do_drop);
+}
+
+control process_reply {
+    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
+        apply(tab_copy_pegasus_header_c);
+        apply(tab_set_rkey_ver_curr);
+        if (meta.ver_matched != 0) {
+            apply(tab_set_rset_size);
+            apply(tab_set_rset_1);
+            apply(tab_set_rset_2);
+            apply(tab_set_rset_3);
+            apply(tab_set_rset_4);
+            apply(tab_l2_forward);
+        } else {
+            apply(tab_do_resubmit);
+        }
+    } else {
+        apply(tab_l2_forward);
+    }
+}
+
+control process_resubmit_reply {
+    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
+        apply(tab_compare_rkey_ver_curr_b);
+        if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_size_b);
+            if (meta.rset_size == 1) {
+                apply(tab_install_rset_2_b);
+            } else if (meta.rset_size == 2) {
+                apply(tab_install_rset_3_b);
+            } else if (meta.rset_size == 3) {
+                apply(tab_install_rset_4_b);
+            }
+        }
+        apply(tab_l2_forward);
+    }
+}
+
+control process_request {
+    if (meta.rkey_index != RKEY_NONE) {
+        if (pegasus.op == OP_GET) {
+            process_replicated_read();
+        } else {
+            process_replicated_write();
+        }
+    }
+    apply(tab_inc_queue_len);
+    if (pegasus.op == OP_GET) {
+        if (meta.rset_size != MAX_REPLICAS and meta.overload != 0) {
+            apply(tab_rkey_migration);
+        }
+    }
     apply(tab_node_forward);
-    apply(tab_debug);
 }
 
 control process_replicated_read {
-    apply(tab_read_nrnodes);
+    apply(tab_get_rkey_ver_curr);
+    apply(tab_inc_rw_counter);
+    apply(tab_get_rset_size);
     apply(tab_access_rkey_read_counter);
-    if (meta.rnode_index == 0) {
-        apply(tab_read_rnode_1);
-    } else if (meta.rnode_index == 1) {
-        apply(tab_read_rnode_2);
-    } else if (meta.rnode_index == 2) {
-        apply(tab_read_rnode_3);
-    } else if (meta.rnode_index == 3) {
-        apply(tab_read_rnode_4);
+    if (meta.rset_index == 0) {
+        apply(tab_get_rset_1);
+    } else if (meta.rset_index == 1) {
+        apply(tab_get_rset_2);
+    } else if (meta.rset_index == 2) {
+        apply(tab_get_rset_3);
+    } else if (meta.rset_index == 3) {
+        apply(tab_get_rset_4);
     }
 }
 
 control process_replicated_write {
-    apply(tab_update_nrnodes);
+    apply(tab_get_rkey_ver_next);
+    apply(tab_get_rw_counter);
+    if (meta.read_heavy != 0) {
+        apply(tab_write_local_replicas);
+    }
     apply(tab_access_rkey_write_counter);
-    apply(tab_update_rnode_1);
-    apply(tab_update_rnode_2);
-    apply(tab_update_rnode_3);
-    apply(tab_update_rnode_4);
 }
 
 control ingress {
-    if (valid(pegasus)) {
-        if (pegasus.op == OP_REP) {
-            process_pegasus_reply();
+    if (0 == ig_intr_md.resubmit_flag) {
+        if (valid(pegasus)) {
+            if (pegasus.op == OP_DEC) {
+                process_dec();
+            } else if (pegasus.op == OP_MGR) {
+                process_mgr();
+            } else if (pegasus.op == OP_MGR_REQ) {
+                process_mgr_req();
+            } else {
+                apply(tab_replicated_keys);
+                if (pegasus.op == OP_REP_R or pegasus.op == OP_REP_W) {
+                    process_reply();
+                } else if (pegasus.op == OP_MGR_ACK) {
+                    process_mgr_ack();
+                } else {
+                    process_request();
+                }
+            }
         } else {
-            process_pegasus_request();
+            apply(tab_l2_forward);
         }
     } else {
-        apply(tab_l2_forward);
+        if (valid(pegasus)) {
+            if (pegasus.op == OP_DEC) {
+                process_resubmit_dec();
+            } else if (pegasus.op == OP_REP_W) {
+                process_resubmit_reply();
+            } else {
+                apply(tab_do_drop);
+            }
+        }
     }
 }
 
