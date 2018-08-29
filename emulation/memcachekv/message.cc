@@ -272,7 +272,9 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(load_t);
         *(ver_t*)ptr = 0;
         ptr += sizeof(ver_t);
+        *(node_t*)ptr = 0;
         ptr += sizeof(node_t);
+        *(load_t*)ptr = 0;
         ptr += sizeof(load_t);
         break;
     }
