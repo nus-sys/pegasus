@@ -1218,9 +1218,7 @@ table tab_debug {
 control process_reply {
     apply(tab_get_rkey_size);
     if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
-        // Check if the replicated write reply has a higher version number,
-        // if yes, update the key's version number, and store the result in
-        // meta.load (as a hack, we can't resubmit more fields...)
+        // Check if the replicated write reply has a higher version number
         apply(tab_copy_pegasus_header_a);
         apply(tab_set_rkey_ver_curr_a);
         if (meta.ver_matched != 0) {
