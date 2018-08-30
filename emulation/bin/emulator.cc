@@ -54,6 +54,7 @@ int main(int argc, char *argv[])
 
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
+    std::srand(unsigned(std::time(0)));
 
     while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:A:B:")) != -1) {
         switch (opt) {

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <functional>
 #include <set>
 #include "logger.h"
@@ -21,6 +22,11 @@ Server::Server(Transport *transport, Configuration *config, MessageCodec *codec,
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
     this->request_count = 0;
+    for (int i = 0; i < this->config->num_nodes; i++) {
+        if (i != this->node_id) {
+            this->mgr_candidates.push_back(i);
+        }
+    }
 }
 
 void
@@ -158,10 +164,11 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
             reply.value = "";
         }
         if (op.op_type == Operation::Type::MGR) {
-            // XXX currently migrate to all nodes
-            for (int i = 0; i < this->config->num_nodes; i++) {
-                if (i != this->node_id) {
-                    process_migration(op, reply.value, i);
+            if (op.num_replicas > 1) {
+                std::random_shuffle(this->mgr_candidates.begin(),
+                                    this->mgr_candidates.end());
+                for (int i = 0; i < op.num_replicas; i++) {
+                    process_migration(op, reply.value, this->mgr_candidates[i]);
                 }
             }
         }
@@ -175,13 +182,15 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
                 // Rkey has a new version, can clear the replica set
                 this->store[op.key].ver = op.ver;
                 this->replicated_keys[op.key].replicas.clear();
-                if (op.local_replicas > 1) {
-                    // replicate to local replicas
-                    // XXX currently send to everyone
-                    for (int i = 0; i < this->config->num_nodes; i++) {
-                        if (i != this->node_id) {
-                            process_migration(op, op.value, i);
-                        }
+                // Hack: switch should have multicast to replicas, but
+                // we have logical nodes on the same physical server, so
+                // need to send migration messages explicitly
+                // XXX currently send to num_replicas servers
+                if (op.num_replicas > 1) {
+                    std::random_shuffle(this->mgr_candidates.begin(),
+                                        this->mgr_candidates.end());
+                    for (int i = 0; i < op.num_replicas; i++) {
+                        process_migration(op, op.value, this->mgr_candidates[i]);
                     }
                 }
             }
