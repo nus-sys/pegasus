@@ -1159,7 +1159,7 @@ control process_request {
         }
     }
     apply(tab_inc_queue_len);
-    if (pegasus.op == OP_GET) {
+    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_GET) {
         if (meta.rset_size != MAX_REPLICAS and meta.overload != 0) {
             apply(tab_rkey_migration);
             apply(tab_write_num_replicas_a);
