@@ -691,233 +691,164 @@ table tab_check_overload_rkey_min_node {
 }
 
 /*
-   get/set rnode (1-4)
+   get/set rset (1-4)
 */
-blackbox stateful_alu sa_get_rnode_1 {
+blackbox stateful_alu sa_get_rset_1 {
     reg: reg_rset_1;
     output_value: register_lo;
     output_dst: meta.node;
 }
-blackbox stateful_alu sa_set_rnode_1 {
+blackbox stateful_alu sa_set_rset_1 {
     reg: reg_rset_1;
     update_lo_1_value: meta.node;
 }
-blackbox stateful_alu sa_get_rnode_2 {
+blackbox stateful_alu sa_get_rset_2 {
     reg: reg_rset_2;
     output_value: register_lo;
     output_dst: meta.node;
 }
-blackbox stateful_alu sa_set_rnode_2 {
-    reg: reg_rset_2;
-    update_lo_1_value: RNODE_NONE;
-}
-blackbox stateful_alu sa_install_rnode_2 {
+blackbox stateful_alu sa_install_rset_2 {
     reg: reg_rset_2;
     update_lo_1_value: meta.node;
 }
-blackbox stateful_alu sa_get_rnode_3 {
+blackbox stateful_alu sa_get_rset_3 {
     reg: reg_rset_3;
     output_value: register_lo;
     output_dst: meta.node;
 }
-blackbox stateful_alu sa_set_rnode_3 {
-    reg: reg_rset_3;
-    update_lo_1_value: RNODE_NONE;
-}
-blackbox stateful_alu sa_install_rnode_3 {
+blackbox stateful_alu sa_install_rset_3 {
     reg: reg_rset_3;
     update_lo_1_value: meta.node;
 }
-blackbox stateful_alu sa_get_rnode_4 {
+blackbox stateful_alu sa_get_rset_4 {
     reg: reg_rset_4;
     output_value: register_lo;
     output_dst: meta.node;
 }
-blackbox stateful_alu sa_set_rnode_4 {
-    reg: reg_rset_4;
-    update_lo_1_value: RNODE_NONE;
-}
-blackbox stateful_alu sa_install_rnode_4 {
+blackbox stateful_alu sa_install_rset_4 {
     reg: reg_rset_4;
     update_lo_1_value: meta.node;
 }
 
-action get_rnode_1() {
-    sa_get_rnode_1.execute_stateful_alu(meta.probe_rkey_index);
+action get_rset_1() {
+    sa_get_rset_1.execute_stateful_alu(meta.probe_rkey_index);
 }
-action set_rnode_1() {
-    sa_set_rnode_1.execute_stateful_alu(meta.rkey_index);
+action set_rset_1() {
+    sa_set_rset_1.execute_stateful_alu(meta.rkey_index);
 }
-action get_rnode_2() {
-    sa_get_rnode_2.execute_stateful_alu(meta.probe_rkey_index);
+action get_rset_2() {
+    sa_get_rset_2.execute_stateful_alu(meta.probe_rkey_index);
 }
-action set_rnode_2() {
-    sa_set_rnode_2.execute_stateful_alu(meta.rkey_index);
+action install_rset_2() {
+    sa_install_rset_2.execute_stateful_alu(meta.rkey_index);
 }
-action install_rnode_2() {
-    sa_install_rnode_2.execute_stateful_alu(meta.rkey_index);
+action get_rset_3() {
+    sa_get_rset_3.execute_stateful_alu(meta.probe_rkey_index);
 }
-action get_rnode_3() {
-    sa_get_rnode_3.execute_stateful_alu(meta.probe_rkey_index);
+action install_rset_3() {
+    sa_install_rset_3.execute_stateful_alu(meta.rkey_index);
 }
-action set_rnode_3() {
-    sa_set_rnode_3.execute_stateful_alu(meta.rkey_index);
+action get_rset_4() {
+    sa_get_rset_4.execute_stateful_alu(meta.probe_rkey_index);
 }
-action install_rnode_3() {
-    sa_install_rnode_3.execute_stateful_alu(meta.rkey_index);
-}
-action get_rnode_4() {
-    sa_get_rnode_4.execute_stateful_alu(meta.probe_rkey_index);
-}
-action set_rnode_4() {
-    sa_set_rnode_4.execute_stateful_alu(meta.rkey_index);
-}
-action install_rnode_4() {
-    sa_install_rnode_4.execute_stateful_alu(meta.rkey_index);
+action install_rset_4() {
+    sa_install_rset_4.execute_stateful_alu(meta.rkey_index);
 }
 
 @pragma stage 4
-table tab_get_rnode_1 {
+table tab_get_rset_1 {
     actions {
-        get_rnode_1;
+        get_rset_1;
     }
-    default_action: get_rnode_1;
+    default_action: get_rset_1;
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_1_a {
+table tab_set_rset_1_a {
     actions {
-        set_rnode_1;
+        set_rset_1;
     }
-    default_action: set_rnode_1;
+    default_action: set_rset_1;
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_1_b {
+table tab_set_rset_1_b {
     actions {
-        set_rnode_1;
+        set_rset_1;
     }
-    default_action: set_rnode_1;
+    default_action: set_rset_1;
     size: 1;
 }
 @pragma stage 4
-table tab_get_rnode_2 {
+table tab_get_rset_2 {
     actions {
-        get_rnode_2;
+        get_rset_2;
     }
-    default_action: get_rnode_2;
+    default_action: get_rset_2;
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_2_a {
+table tab_install_rset_2_a {
     actions {
-        set_rnode_2;
+        install_rset_2;
     }
-    default_action: set_rnode_2;
+    default_action: install_rset_2;
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_2_b {
+table tab_install_rset_2_b {
     actions {
-        set_rnode_2;
+        install_rset_2;
     }
-    default_action: set_rnode_2;
+    default_action: install_rset_2;
     size: 1;
 }
 @pragma stage 4
-table tab_install_rnode_2_a {
+table tab_get_rset_3 {
     actions {
-        install_rnode_2;
+        get_rset_3;
     }
-    default_action: install_rnode_2;
+    default_action: get_rset_3;
     size: 1;
 }
 @pragma stage 4
-table tab_install_rnode_2_b {
+table tab_install_rset_3_a {
     actions {
-        install_rnode_2;
+        install_rset_3;
     }
-    default_action: install_rnode_2;
+    default_action: install_rset_3;
     size: 1;
 }
 @pragma stage 4
-table tab_get_rnode_3 {
+table tab_install_rset_3_b {
     actions {
-        get_rnode_3;
+        install_rset_3;
     }
-    default_action: get_rnode_3;
+    default_action: install_rset_3;
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_3_a {
+table tab_get_rset_4 {
     actions {
-        set_rnode_3;
+        get_rset_4;
     }
-    default_action: set_rnode_3;
+    default_action: get_rset_4;
     size: 1;
 }
 @pragma stage 4
-table tab_set_rnode_3_b {
+table tab_install_rset_4_a {
     actions {
-        set_rnode_3;
+        install_rset_4;
     }
-    default_action: set_rnode_3;
+    default_action: install_rset_4;
     size: 1;
 }
 @pragma stage 4
-table tab_install_rnode_3_a {
+table tab_install_rset_4_b {
     actions {
-        install_rnode_3;
+        install_rset_4;
     }
-    default_action: install_rnode_3;
-    size: 1;
-}
-@pragma stage 4
-table tab_install_rnode_3_b {
-    actions {
-        install_rnode_3;
-    }
-    default_action: install_rnode_3;
-    size: 1;
-}
-@pragma stage 5
-table tab_get_rnode_4 {
-    actions {
-        get_rnode_4;
-    }
-    default_action: get_rnode_4;
-    size: 1;
-}
-@pragma stage 5
-table tab_set_rnode_4_a {
-    actions {
-        set_rnode_4;
-    }
-    default_action: set_rnode_4;
-    size: 1;
-}
-@pragma stage 5
-table tab_set_rnode_4_b {
-    actions {
-        set_rnode_4;
-    }
-    default_action: set_rnode_4;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rnode_4_a {
-    actions {
-        install_rnode_4;
-    }
-    default_action: install_rnode_4;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rnode_4_b {
-    actions {
-        install_rnode_4;
-    }
-    default_action: install_rnode_4;
+    default_action: install_rset_4;
     size: 1;
 }
 
@@ -1184,18 +1115,18 @@ table tab_copy_pegasus_header_c {
 }
 
 /*
-   write_num_replicas
+   write num replicas
  */
-action write_local_replicas() {
-    // Currently just replicate to all MAX_REPLICAS local nodes
-    modify_field(pegasus.debug_node, MAX_REPLICAS);
+action write_num_replicas() {
+    // Currently just replicate to MAX_REPLICAS - 1 nodes
+    modify_field(pegasus.debug_node, MAX_REPLICAS - 1);
 }
 
-table tab_write_local_replicas {
+table tab_write_num_replicas {
     actions {
-        write_local_replicas;
+        write_num_replicas;
     }
-    default_action : write_local_replicas;
+    default_action : write_num_replicas;
     size : 1;
 }
 
@@ -1224,10 +1155,7 @@ control process_reply {
         if (meta.ver_matched != 0) {
             apply(tab_set_rset_size_a);
             apply(tab_set_rkey_min_node_a);
-            apply(tab_set_rnode_1_a);
-            apply(tab_set_rnode_2_a);
-            apply(tab_set_rnode_3_a);
-            apply(tab_set_rnode_4_a);
+            apply(tab_set_rset_1_a);
             apply(tab_l2_forward);
         } else {
             apply(tab_do_resubmit);
@@ -1240,13 +1168,13 @@ control process_reply {
             apply(tab_get_rset_size_a);
             apply(tab_get_probe_rset_counter);
             if (meta.probe_rset_index == 0) {
-                apply(tab_get_rnode_1);
+                apply(tab_get_rset_1);
             } else if (meta.probe_rset_index == 1) {
-                apply(tab_get_rnode_2);
+                apply(tab_get_rset_2);
             } else if (meta.probe_rset_index == 2) {
-                apply(tab_get_rnode_3);
+                apply(tab_get_rset_3);
             } else if (meta.probe_rset_index == 3) {
-                apply(tab_get_rnode_4);
+                apply(tab_get_rset_4);
             }
             if (meta.node != RNODE_NONE) {
                 apply(tab_get_queue_len);
@@ -1281,10 +1209,7 @@ control process_mgr_ack {
         if (meta.ver_matched != 0) {
             apply(tab_set_rset_size_b);
             apply(tab_set_rkey_min_node_b);
-            apply(tab_set_rnode_1_b);
-            apply(tab_set_rnode_2_b);
-            apply(tab_set_rnode_3_b);
-            apply(tab_set_rnode_4_b);
+            apply(tab_set_rset_1_b);
             apply(tab_do_drop);
         } else {
             apply(tab_do_resubmit);
@@ -1324,11 +1249,11 @@ control process_resubmit_reply {
             if (meta.ver_matched != 0) {
                 apply(tab_inc_rset_size_b);
                 if (meta.rset_size == 1) {
-                    apply(tab_install_rnode_2_b);
+                    apply(tab_install_rset_2_b);
                 } else if (meta.rset_size == 2) {
-                    apply(tab_install_rnode_3_b);
+                    apply(tab_install_rset_3_b);
                 } else if (meta.rset_size == 3) {
-                    apply(tab_install_rnode_4_b);
+                    apply(tab_install_rset_4_b);
                 }
             }
         }
@@ -1354,11 +1279,11 @@ control process_resubmit_mgr_ack {
         if (meta.ver_matched != 0) {
             apply(tab_inc_rset_size_a);
             if (meta.rset_size == 1) {
-                apply(tab_install_rnode_2_a);
+                apply(tab_install_rset_2_a);
             } else if (meta.rset_size == 2) {
-                apply(tab_install_rnode_3_a);
+                apply(tab_install_rset_3_a);
             } else if (meta.rset_size == 3) {
-                apply(tab_install_rnode_4_a);
+                apply(tab_install_rset_4_a);
             }
         }
     }
@@ -1377,14 +1302,14 @@ control process_resubmit_request {
         } else {
             apply(tab_get_rkey_ver_next);
             apply(tab_get_rw_counter);
-            if (meta.read_heavy != 0) {
-                apply(tab_write_local_replicas);
-            }
         }
     }
     apply(tab_compare_min_node);
     if (meta.overload != 0) {
         apply(tab_rkey_migration);
+    }
+    if (meta.overload != 0 or meta.read_heavy != 0) {
+        apply(tab_write_num_replicas);
     }
     //apply(tab_debug);
     apply(tab_node_forward);
