@@ -39,8 +39,7 @@ KEYHASH_SIZE = 4
 LOAD_SIZE = 2
 
 MAX_NRKEYS = 8
-MAX_RSET_SIZE = 0x4
-DEFAULT_NUM_NODES = 4
+DEFAULT_NUM_NODES = 8
 HASH_MASK = DEFAULT_NUM_NODES - 1
 
 controller = None
@@ -143,16 +142,15 @@ class Controller(object):
         self.dev = 0
         self.dev_tgt = DevTarget_t(self.dev, hex_to_i16(0xFFFF))
 
-        self.write_reg_rset_fns = []
-        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_1)
-        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_2)
-        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_3)
-        self.write_reg_rset_fns.append(self.client.register_write_reg_rset_4)
         self.read_reg_rset_fns = []
         self.read_reg_rset_fns.append(self.client.register_read_reg_rset_1)
         self.read_reg_rset_fns.append(self.client.register_read_reg_rset_2)
         self.read_reg_rset_fns.append(self.client.register_read_reg_rset_3)
         self.read_reg_rset_fns.append(self.client.register_read_reg_rset_4)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_5)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_6)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_7)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_8)
 
         # keyhash -> ReplicatedKey (sorted in ascending load)
         self.replicated_keys = SortedDict(lambda x : self.replicated_keys[x].load)
@@ -226,13 +224,8 @@ class Controller(object):
         self.switch_lock.release()
 
     def add_rkey(self, keyhash, rkey_index, load):
-        for i in range(MAX_RSET_SIZE):
-            if i == 0:
-                node = int(keyhash) & HASH_MASK
-            else:
-                node = RNODE_NONE
-            self.write_reg_rset_fns[i](
-                self.sess_hdl, self.dev_tgt, rkey_index, node)
+        self.client.register_write_reg_rset_1(
+            self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) & HASH_MASK)
         self.client.register_write_reg_rset_size(
             self.sess_hdl, self.dev_tgt, rkey_index, 1)
         self.client.register_write_reg_rkey_ver_curr(
