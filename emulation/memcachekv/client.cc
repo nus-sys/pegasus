@@ -167,7 +167,7 @@ Client::run(int duration)
 }
 
 void
-Client::execute_op(const Operation &op)
+Client::execute_op(Operation &op)
 {
     PendingRequest pending_request;
     gettimeofday(&pending_request.start_time, nullptr);
@@ -180,11 +180,12 @@ Client::execute_op(const Operation &op)
     msg.type = MemcacheKVMessage::Type::REQUEST;
     msg.request.client_id = this->client_id;
     msg.request.req_id = this->req_id;
+    int node_id = this->config->key_to_node_id(op.key);
+    op.node_id = node_id;
     msg.request.op = op;
     this->codec->encode(msg_str, msg);
 
-    const NodeAddress& addr = this->config->key_to_address(op.key);
-    this->transport->send_message_to_addr(msg_str, addr);
+    this->transport->send_message_to_addr(msg_str, this->config->addresses[node_id]);
 
     this->req_id++;
     this->stats->report_issue();

@@ -267,7 +267,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         hash = hash & KEYHASH_MASK; // controller uses signed int
         convert_endian(ptr, &hash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
-        *(node_t*)ptr = 0;
+        *(node_t*)ptr = in.request.op.node_id;
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         *(ver_t*)ptr = 0;

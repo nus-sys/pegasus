@@ -16,8 +16,8 @@ Router::receive_message(const std::string &message, const sockaddr &src_addr)
             this->client_addresses[msg.request.client_id] = src_addr;
         }
         // Forward to mapped kv server
-        const NodeAddress& addr = this->config->key_to_address(msg.request.op.key);
-        this->transport->send_message_to_addr(message, addr);
+        int node_id = this->config->key_to_node_id(msg.request.op.key);
+        this->transport->send_message_to_addr(message, this->config->addresses[node_id]);
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {

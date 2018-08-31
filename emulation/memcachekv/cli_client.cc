@@ -32,11 +32,12 @@ CLIClient::run(int duration)
     msg.type = MemcacheKVMessage::Type::REQUEST;
     msg.request.client_id = 0;
     msg.request.req_id = 0;
+    int node_id = this->config->key_to_node_id(op.key);
+    this->op.node_id = node_id;
     msg.request.op = this->op;
     this->codec->encode(msg_str, msg);
 
-    const NodeAddress& addr = this->config->key_to_address(op.key);
-    this->transport->send_message_to_addr(msg_str, addr);
+    this->transport->send_message_to_addr(msg_str, this->config->addresses[node_id]);
 }
 
 } // namespace memcahcekv

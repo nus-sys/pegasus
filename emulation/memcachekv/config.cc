@@ -27,16 +27,14 @@ MemcacheKVConfig::MemcacheKVConfig(const char *file_path,
     this->mode = mode;
 }
 
-const NodeAddress&
-MemcacheKVConfig::key_to_address(const std::string &key)
+int
+MemcacheKVConfig::key_to_node_id(const std::string &key)
 {
     switch (this->mode) {
-    case STATIC: {
-        uint64_t hash = compute_keyhash(key);
-        return this->addresses[hash % this->num_nodes];
-    }
+    case STATIC:
     case ROUTER: {
-        return this->addresses[0];
+        uint64_t hash = compute_keyhash(key);
+        return (int)(hash % this->num_nodes);
     }
     default:
         panic("Unknown MemcacheKVConfig mode");
@@ -58,13 +56,13 @@ RouterConfig::RouterConfig(const char *file_path,
     this->mode = mode;
 }
 
-const NodeAddress&
-RouterConfig::key_to_address(const std::string &key)
+int
+RouterConfig::key_to_node_id(const std::string &key)
 {
     switch (this->mode) {
     case STATIC: {
         uint64_t hash = compute_keyhash(key);
-        return this->addresses[hash % this->num_nodes];
+        return (int)(hash % this->num_nodes);
     }
     default:
         panic("Unknown RouterConfig mode");

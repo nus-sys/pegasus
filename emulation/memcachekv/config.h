@@ -22,7 +22,7 @@ public:
                      NodeConfigMode mode);
     ~MemcacheKVConfig() {};
 
-    const NodeAddress& key_to_address(const std::string &key) override;
+    int key_to_node_id(const std::string &key) override;
 
 private:
     NodeConfigMode mode;
@@ -41,7 +41,7 @@ public:
                  RouterConfigMode mode);
     ~RouterConfig() {};
 
-    const NodeAddress& key_to_address(const std::string &key) override;
+    int key_to_node_id(const std::string &key) override;
 
 private:
     RouterConfigMode mode;

@@ -24,7 +24,7 @@ public:
     Configuration(const char *file_path);
     virtual ~Configuration() {};
 
-    virtual const NodeAddress& key_to_address(const std::string &key) = 0;
+    virtual int key_to_node_id(const std::string &key) = 0;
 
     int num_nodes;
     std::vector<NodeAddress> addresses;
