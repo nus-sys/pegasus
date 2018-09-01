@@ -165,8 +165,12 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         }
         if (op.op_type == Operation::Type::MGR) {
             if (op.num_replicas > 1) {
-                std::random_shuffle(this->mgr_candidates.begin(),
-                                    this->mgr_candidates.end());
+                if (op.num_replicas < this->config->num_nodes - 1) {
+                    // If we are migrating to all other servers, then
+                    // no need to shuffle
+                    std::random_shuffle(this->mgr_candidates.begin(),
+                                        this->mgr_candidates.end());
+                }
                 for (int i = 0; i < op.num_replicas; i++) {
                     process_migration(op, reply.value, this->mgr_candidates[i]);
                 }
@@ -187,8 +191,12 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
                 // need to send migration messages explicitly
                 // XXX currently send to num_replicas servers
                 if (op.num_replicas > 1) {
-                    std::random_shuffle(this->mgr_candidates.begin(),
-                                        this->mgr_candidates.end());
+                    if (op.num_replicas < this->config->num_nodes - 1) {
+                        // If we are migrating to all other servers, then
+                        // no need to shuffle
+                        std::random_shuffle(this->mgr_candidates.begin(),
+                                            this->mgr_candidates.end());
+                    }
                     for (int i = 0; i < op.num_replicas; i++) {
                         process_migration(op, op.value, this->mgr_candidates[i]);
                     }
