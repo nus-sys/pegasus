@@ -38,7 +38,7 @@ NKEYS_SIZE = 2
 KEYHASH_SIZE = 4
 LOAD_SIZE = 2
 
-MAX_NRKEYS = 16
+MAX_NRKEYS = 32
 DEFAULT_NUM_NODES = 16
 HASH_MASK = DEFAULT_NUM_NODES - 1
 
@@ -147,6 +147,18 @@ class Controller(object):
         self.read_reg_rset_fns.append(self.client.register_read_reg_rset_2)
         self.read_reg_rset_fns.append(self.client.register_read_reg_rset_3)
         self.read_reg_rset_fns.append(self.client.register_read_reg_rset_4)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_5)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_6)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_7)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_8)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_9)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_10)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_11)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_12)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_13)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_14)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_15)
+        self.read_reg_rset_fns.append(self.client.register_read_reg_rset_16)
 
         # keyhash -> ReplicatedKey (sorted in ascending load)
         self.replicated_keys = SortedDict(lambda x : self.replicated_keys[x].load)

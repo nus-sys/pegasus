@@ -10,8 +10,6 @@
 #define PROTO_UDP       0x11
 
 #define PEGASUS_ID      0x5047
-#define HASH_MASK       0x7 // Max 8 nodes
-#define MAX_REPLICAS    0x4
 
 #define OP_GET          0x0
 #define OP_PUT          0x1
@@ -29,6 +27,7 @@
 #define OVERLOAD        0xA
 #define RW_DEC          0x8
 #define RW_MAX          0x30
+#define MAX_REPLICAS    16
 
 header_type ethernet_t {
     fields {
@@ -170,6 +169,54 @@ register reg_rset_3 {
     instance_count: 32;
 }
 register reg_rset_4 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_5 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_6 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_7 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_8 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_9 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_10 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_11 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_12 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_13 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_14 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_15 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_16 {
     width: 8;
     instance_count: 32;
 }
@@ -363,7 +410,7 @@ action lookup_rkey(rkey_index) {
 }
 
 action set_default_dst_node() {
-    bit_and(meta.node, pegasus.keyhash, HASH_MASK);
+    bit_and(meta.node, pegasus.keyhash, 3);
     modify_field(meta.rkey_index, RKEY_NONE);
 }
 
@@ -505,7 +552,7 @@ action dec_queue_len() {
     add(meta.node, meta.node, 1);
 }
 
-@pragma stage 6
+@pragma stage 8
 table tab_get_queue_len {
     actions {
         get_queue_len;
@@ -513,7 +560,7 @@ table tab_get_queue_len {
     default_action: get_queue_len;
     size: 1;
 }
-@pragma stage 6
+@pragma stage 8
 table tab_inc_queue_len {
     actions {
         inc_queue_len;
@@ -521,7 +568,7 @@ table tab_inc_queue_len {
     default_action: inc_queue_len;
     size: 1;
 }
-@pragma stage 6
+@pragma stage 8
 table tab_dec_queue_len_a {
     actions {
         dec_queue_len;
@@ -529,7 +576,7 @@ table tab_dec_queue_len_a {
     default_action: dec_queue_len;
     size: 1;
 }
-@pragma stage 6
+@pragma stage 8
 table tab_dec_queue_len_b {
     actions {
         dec_queue_len;
@@ -729,6 +776,114 @@ blackbox stateful_alu sa_install_rset_4 {
     reg: reg_rset_4;
     update_lo_1_value: meta.node;
 }
+blackbox stateful_alu sa_get_rset_5 {
+    reg: reg_rset_5;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_5 {
+    reg: reg_rset_5;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_6 {
+    reg: reg_rset_6;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_6 {
+    reg: reg_rset_6;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_7 {
+    reg: reg_rset_7;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_7 {
+    reg: reg_rset_7;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_8 {
+    reg: reg_rset_8;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_8 {
+    reg: reg_rset_8;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_9 {
+    reg: reg_rset_9;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_9 {
+    reg: reg_rset_9;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_10 {
+    reg: reg_rset_10;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_10 {
+    reg: reg_rset_10;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_11 {
+    reg: reg_rset_11;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_11 {
+    reg: reg_rset_11;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_12 {
+    reg: reg_rset_12;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_12 {
+    reg: reg_rset_12;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_13 {
+    reg: reg_rset_13;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_13 {
+    reg: reg_rset_13;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_14 {
+    reg: reg_rset_14;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_14 {
+    reg: reg_rset_14;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_15 {
+    reg: reg_rset_15;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_15 {
+    reg: reg_rset_15;
+    update_lo_1_value: meta.node;
+}
+blackbox stateful_alu sa_get_rset_16 {
+    reg: reg_rset_16;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_16 {
+    reg: reg_rset_16;
+    update_lo_1_value: meta.node;
+}
 
 action get_rset_1() {
     sa_get_rset_1.execute_stateful_alu(meta.probe_rkey_index);
@@ -753,6 +908,78 @@ action get_rset_4() {
 }
 action install_rset_4() {
     sa_install_rset_4.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_5() {
+    sa_get_rset_5.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_5() {
+    sa_install_rset_5.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_6() {
+    sa_get_rset_6.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_6() {
+    sa_install_rset_6.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_7() {
+    sa_get_rset_7.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_7() {
+    sa_install_rset_7.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_8() {
+    sa_get_rset_8.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_8() {
+    sa_install_rset_8.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_9() {
+    sa_get_rset_9.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_9() {
+    sa_install_rset_9.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_10() {
+    sa_get_rset_10.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_10() {
+    sa_install_rset_10.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_11() {
+    sa_get_rset_11.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_11() {
+    sa_install_rset_11.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_12() {
+    sa_get_rset_12.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_12() {
+    sa_install_rset_12.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_13() {
+    sa_get_rset_13.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_13() {
+    sa_install_rset_13.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_14() {
+    sa_get_rset_14.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_14() {
+    sa_install_rset_14.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_15() {
+    sa_get_rset_15.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_15() {
+    sa_install_rset_15.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_16() {
+    sa_get_rset_16.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_16() {
+    sa_install_rset_16.execute_stateful_alu(meta.rkey_index);
 }
 
 @pragma stage 4
@@ -849,6 +1076,294 @@ table tab_install_rset_4_b {
         install_rset_4;
     }
     default_action: install_rset_4;
+    size: 1;
+}
+@pragma stage 5
+table tab_get_rset_5 {
+    actions {
+        get_rset_5;
+    }
+    default_action: get_rset_5;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_5_a {
+    actions {
+        install_rset_5;
+    }
+    default_action: install_rset_5;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_5_b {
+    actions {
+        install_rset_5;
+    }
+    default_action: install_rset_5;
+    size: 1;
+}
+@pragma stage 5
+table tab_get_rset_6 {
+    actions {
+        get_rset_6;
+    }
+    default_action: get_rset_6;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_6_a {
+    actions {
+        install_rset_6;
+    }
+    default_action: install_rset_6;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_6_b {
+    actions {
+        install_rset_6;
+    }
+    default_action: install_rset_6;
+    size: 1;
+}
+@pragma stage 5
+table tab_get_rset_7 {
+    actions {
+        get_rset_7;
+    }
+    default_action: get_rset_7;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_7_a {
+    actions {
+        install_rset_7;
+    }
+    default_action: install_rset_7;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_7_b {
+    actions {
+        install_rset_7;
+    }
+    default_action: install_rset_7;
+    size: 1;
+}
+@pragma stage 5
+table tab_get_rset_8 {
+    actions {
+        get_rset_8;
+    }
+    default_action: get_rset_8;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_8_a {
+    actions {
+        install_rset_8;
+    }
+    default_action: install_rset_8;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_8_b {
+    actions {
+        install_rset_8;
+    }
+    default_action: install_rset_8;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_9 {
+    actions {
+        get_rset_9;
+    }
+    default_action: get_rset_9;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_9_a {
+    actions {
+        install_rset_9;
+    }
+    default_action: install_rset_9;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_9_b {
+    actions {
+        install_rset_9;
+    }
+    default_action: install_rset_9;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_10 {
+    actions {
+        get_rset_10;
+    }
+    default_action: get_rset_10;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_10_a {
+    actions {
+        install_rset_10;
+    }
+    default_action: install_rset_10;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_10_b {
+    actions {
+        install_rset_10;
+    }
+    default_action: install_rset_10;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_11 {
+    actions {
+        get_rset_11;
+    }
+    default_action: get_rset_11;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_11_a {
+    actions {
+        install_rset_11;
+    }
+    default_action: install_rset_11;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_11_b {
+    actions {
+        install_rset_11;
+    }
+    default_action: install_rset_11;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_12 {
+    actions {
+        get_rset_12;
+    }
+    default_action: get_rset_12;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_12_a {
+    actions {
+        install_rset_12;
+    }
+    default_action: install_rset_12;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_12_b {
+    actions {
+        install_rset_12;
+    }
+    default_action: install_rset_12;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_13 {
+    actions {
+        get_rset_13;
+    }
+    default_action: get_rset_13;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_13_a {
+    actions {
+        install_rset_13;
+    }
+    default_action: install_rset_13;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_13_b {
+    actions {
+        install_rset_13;
+    }
+    default_action: install_rset_13;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_14 {
+    actions {
+        get_rset_14;
+    }
+    default_action: get_rset_14;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_14_a {
+    actions {
+        install_rset_14;
+    }
+    default_action: install_rset_14;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_14_b {
+    actions {
+        install_rset_14;
+    }
+    default_action: install_rset_14;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_15 {
+    actions {
+        get_rset_15;
+    }
+    default_action: get_rset_15;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_15_a {
+    actions {
+        install_rset_15;
+    }
+    default_action: install_rset_15;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_15_b {
+    actions {
+        install_rset_15;
+    }
+    default_action: install_rset_15;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_16 {
+    actions {
+        get_rset_16;
+    }
+    default_action: get_rset_16;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_16_a {
+    actions {
+        install_rset_16;
+    }
+    default_action: install_rset_16;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_16_b {
+    actions {
+        install_rset_16;
+    }
+    default_action: install_rset_16;
     size: 1;
 }
 
@@ -1113,6 +1628,13 @@ table tab_copy_pegasus_header_c {
     default_action: copy_pegasus_header;
     size: 1;
 }
+table tab_copy_pegasus_header_d {
+    actions {
+        copy_pegasus_header;
+    }
+    default_action: copy_pegasus_header;
+    size: 1;
+}
 
 /*
    write num replicas
@@ -1161,7 +1683,6 @@ control process_reply {
             apply(tab_do_resubmit);
         }
     } else {
-        apply(tab_set_rkey_none);
         // Probe rkey min node
         if (meta.rkey_size != 0) {
             apply(tab_get_probe_rkey_counter);
@@ -1175,6 +1696,30 @@ control process_reply {
                 apply(tab_get_rset_3);
             } else if (meta.probe_rset_index == 3) {
                 apply(tab_get_rset_4);
+            } else if (meta.probe_rset_index == 4) {
+                apply(tab_get_rset_5);
+            } else if (meta.probe_rset_index == 5) {
+                apply(tab_get_rset_6);
+            } else if (meta.probe_rset_index == 6) {
+                apply(tab_get_rset_7);
+            } else if (meta.probe_rset_index == 7) {
+                apply(tab_get_rset_8);
+            } else if (meta.probe_rset_index == 8) {
+                apply(tab_get_rset_9);
+            } else if (meta.probe_rset_index == 9) {
+                apply(tab_get_rset_10);
+            } else if (meta.probe_rset_index == 10) {
+                apply(tab_get_rset_11);
+            } else if (meta.probe_rset_index == 11) {
+                apply(tab_get_rset_12);
+            } else if (meta.probe_rset_index == 12) {
+                apply(tab_get_rset_13);
+            } else if (meta.probe_rset_index == 13) {
+                apply(tab_get_rset_14);
+            } else if (meta.probe_rset_index == 14) {
+                apply(tab_get_rset_15);
+            } else if (meta.probe_rset_index == 15) {
+                apply(tab_get_rset_16);
             }
             if (meta.node != RNODE_NONE) {
                 apply(tab_get_queue_len);
@@ -1183,6 +1728,7 @@ control process_reply {
             // Nothing to probe
             apply(tab_set_probe_none);
         }
+        apply(tab_set_rkey_none);
         apply(tab_do_resubmit);
     }
 }
@@ -1226,6 +1772,8 @@ control process_request {
         } else {
             process_replicated_write();
         }
+    } else {
+        apply(tab_copy_pegasus_header_d);
     }
     apply(tab_inc_queue_len);
     apply(tab_do_resubmit);
@@ -1254,6 +1802,30 @@ control process_resubmit_reply {
                     apply(tab_install_rset_3_b);
                 } else if (meta.rset_size == 3) {
                     apply(tab_install_rset_4_b);
+                } else if (meta.rset_size == 4) {
+                    apply(tab_install_rset_5_b);
+                } else if (meta.rset_size == 5) {
+                    apply(tab_install_rset_6_b);
+                } else if (meta.rset_size == 6) {
+                    apply(tab_install_rset_7_b);
+                } else if (meta.rset_size == 7) {
+                    apply(tab_install_rset_8_b);
+                } else if (meta.rset_size == 8) {
+                    apply(tab_install_rset_9_b);
+                } else if (meta.rset_size == 9) {
+                    apply(tab_install_rset_10_b);
+                } else if (meta.rset_size == 10) {
+                    apply(tab_install_rset_11_b);
+                } else if (meta.rset_size == 11) {
+                    apply(tab_install_rset_12_b);
+                } else if (meta.rset_size == 12) {
+                    apply(tab_install_rset_13_b);
+                } else if (meta.rset_size == 13) {
+                    apply(tab_install_rset_14_b);
+                } else if (meta.rset_size == 14) {
+                    apply(tab_install_rset_15_b);
+                } else if (meta.rset_size == 15) {
+                    apply(tab_install_rset_16_b);
                 }
             }
         }
@@ -1284,6 +1856,30 @@ control process_resubmit_mgr_ack {
                 apply(tab_install_rset_3_a);
             } else if (meta.rset_size == 3) {
                 apply(tab_install_rset_4_a);
+            } else if (meta.rset_size == 4) {
+                apply(tab_install_rset_5_a);
+            } else if (meta.rset_size == 5) {
+                apply(tab_install_rset_6_a);
+            } else if (meta.rset_size == 6) {
+                apply(tab_install_rset_7_a);
+            } else if (meta.rset_size == 7) {
+                apply(tab_install_rset_8_a);
+            } else if (meta.rset_size == 8) {
+                apply(tab_install_rset_9_a);
+            } else if (meta.rset_size == 9) {
+                apply(tab_install_rset_10_a);
+            } else if (meta.rset_size == 10) {
+                apply(tab_install_rset_11_a);
+            } else if (meta.rset_size == 11) {
+                apply(tab_install_rset_12_a);
+            } else if (meta.rset_size == 12) {
+                apply(tab_install_rset_13_a);
+            } else if (meta.rset_size == 13) {
+                apply(tab_install_rset_14_a);
+            } else if (meta.rset_size == 14) {
+                apply(tab_install_rset_15_a);
+            } else if (meta.rset_size == 15) {
+                apply(tab_install_rset_16_a);
             }
         }
     }
