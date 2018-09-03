@@ -90,14 +90,15 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     ptr += sizeof(keyhash_t);
     int node_id = *(node_t*)ptr;
     ptr += sizeof(node_t);
-    load_t load;
-    convert_endian(&load, ptr, sizeof(load_t));
+    load_t load_a;
+    convert_endian(&load_a, ptr, sizeof(load_t));
     ptr += sizeof(load_t);
     ver_t ver;
     convert_endian(&ver, ptr, sizeof(ver_t));
     ptr += sizeof(ver_t);
-    int num_replicas = *(node_t*)ptr;
     ptr += sizeof(node_t);
+    load_t load_b;
+    convert_endian(&load_b, ptr, sizeof(load_t));
     ptr += sizeof(load_t);
 
     switch (op_type) {
@@ -127,9 +128,9 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
             out.request.op.op_type = Operation::Type::MGR;
         }
         out.request.op.keyhash = keyhash;
-        out.request.op.node_id = node_id;
         out.request.op.ver = ver;
-        out.request.op.num_replicas = num_replicas;
+        out.request.op.read_load = load_a;
+        out.request.op.write_load = load_b;
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
         if (buf_size < REQUEST_BASE_SIZE + key_len) {
@@ -163,7 +164,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         }
         out.reply.keyhash = keyhash;
         out.reply.node_id = node_id;
-        out.reply.load = load;
+        out.reply.load = load_a;
         out.reply.ver = ver;
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);

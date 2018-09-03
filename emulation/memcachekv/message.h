@@ -23,16 +23,17 @@ struct Operation {
         MGR
     };
     Operation()
-        : op_type(Type::GET), keyhash(0), node_id(0), ver(0), key(""), value("") {};
+        : op_type(Type::GET), keyhash(0), ver(0), node_id(0), read_load(0), write_load(0), key(""), value("") {};
     Operation(const proto::Operation &op)
         : op_type(static_cast<Operation::Type>(op.op_type())),
         key(op.key()), value(op.value()) {};
 
     Type op_type;
     keyhash_t keyhash;
-    int node_id;
     ver_t ver;
-    int num_replicas; // Number of replicas (for migration)
+    int node_id;
+    load_t read_load;
+    load_t write_load;
 
     std::string key;
     std::string value;

@@ -22,11 +22,6 @@ Server::Server(Transport *transport, Configuration *config, MessageCodec *codec,
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
     this->request_count = 0;
-    for (int i = 0; i < this->config->num_nodes; i++) {
-        if (i != this->node_id) {
-            this->mgr_candidates.push_back(i);
-        }
-    }
 }
 
 void
@@ -164,17 +159,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
             reply.value = "";
         }
         if (op.op_type == Operation::Type::MGR) {
-            if (op.num_replicas > 1) {
-                if (op.num_replicas < this->config->num_nodes - 1) {
-                    // If we are migrating to all other servers, then
-                    // no need to shuffle
-                    std::random_shuffle(this->mgr_candidates.begin(),
-                                        this->mgr_candidates.end());
-                }
-                for (int i = 0; i < op.num_replicas; i++) {
-                    process_migration(op, reply.value, this->mgr_candidates[i]);
-                }
-            }
+            migrate_kv(op, reply.value);
         }
         break;
     }
@@ -190,17 +175,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
                 // we have logical nodes on the same physical server, so
                 // need to send migration messages explicitly
                 // XXX currently send to num_replicas servers
-                if (op.num_replicas > 1) {
-                    if (op.num_replicas < this->config->num_nodes - 1) {
-                        // If we are migrating to all other servers, then
-                        // no need to shuffle
-                        std::random_shuffle(this->mgr_candidates.begin(),
-                                            this->mgr_candidates.end());
-                    }
-                    for (int i = 0; i < op.num_replicas; i++) {
-                        process_migration(op, op.value, this->mgr_candidates[i]);
-                    }
-                }
+                migrate_kv(op, op.value);
             }
         }
         reply.result = Result::OK;
@@ -222,9 +197,41 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
 }
 
 void
-Server::process_migration(const Operation &op,
-                          const string &value,
-                          int dst)
+Server::migrate_kv(const Operation &op,
+                   const string &value)
+{
+    int num_nodes = 0;
+    float read_ratio = float(op.read_load) / (op.read_load + op.write_load);
+    if (read_ratio < 0.88) {
+        num_nodes = 0;
+    } else if (read_ratio < 0.95) {
+        num_nodes = 1;
+    } else if (read_ratio < 0.98) {
+        num_nodes = 2;
+    } else if (read_ratio < 0.995) {
+        num_nodes = 4;
+    } else {
+        num_nodes = this->config->num_nodes - 1;
+    }
+    for (int i = 0; i < num_nodes; i++) {
+        int dst = this->node_id;
+        if (num_nodes == this->config->num_nodes - 1) {
+            // Migrate to all other nodes
+            dst = i >= this->node_id ? i + 1 : i;
+        } else {
+            // Pick a random node
+            while (dst == this->node_id) {
+                dst = rand() % this->config->num_nodes;
+            }
+        }
+        migrate_kv_to(op, value, dst);
+    }
+}
+
+void
+Server::migrate_kv_to(const Operation &op,
+                      const string &value,
+                      int dst)
 {
     // Only send migration request if:
     // 1. not to itself

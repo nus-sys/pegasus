@@ -31,9 +31,11 @@ private:
                             const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
-    void process_migration(const Operation &op,
-                           const std::string &value,
-                           int dst);
+    void migrate_kv(const Operation &op,
+                    const std::string &value);
+    void migrate_kv_to(const Operation &op,
+                       const std::string &value,
+                       int dst);
     void process_migration_request(const MigrationRequest &request);
     void update_rate(const Operation &op);
     load_t calculate_load();
@@ -71,9 +73,6 @@ private:
     std::unordered_map<keyhash_t, unsigned int> key_count;
     std::unordered_map<keyhash_t, unsigned int> hk_report;
     std::mutex hk_mutex;
-
-    /* Migration target generator */
-    std::vector<int> mgr_candidates;
 };
 
 } // namespace memcachekv
