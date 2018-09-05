@@ -420,6 +420,8 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
     switch (in.type) {
     case ControllerMessage::Type::RESET_REQ:
         *(nnodes_t*)ptr = in.reset_req.num_nodes;
+        ptr += sizeof(nnodes_t);
+        *(nrkeys_t*)ptr = in.reset_req.num_rkeys;
         break;
     case ControllerMessage::Type::RESET_REPLY:
         *(ack_t*)ptr = static_cast<ack_t>(in.reset_reply.ack);
@@ -464,6 +466,8 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
         }
         out.type = ControllerMessage::Type::RESET_REQ;
         out.reset_req.num_nodes = *(nnodes_t*)ptr;
+        ptr += sizeof(nnodes_t);
+        out.reset_req.num_rkeys = *(nrkeys_t*)ptr;
         break;
     case TYPE_RESET_REPLY:
         if (buf_size < RESET_REPLY_SIZE) {

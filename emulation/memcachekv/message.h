@@ -201,6 +201,7 @@ enum class Ack {
 
 struct ControllerResetRequest {
     int num_nodes;
+    int num_rkeys;
 };
 
 struct ControllerResetReply {
@@ -247,7 +248,7 @@ private:
      * IDENTIFIER (16) + type (8) + message
      *
      * Reset request:
-     * num_nodes (16)
+     * num_nodes (16) + num_rkeys (16)
      *
      * Reset reply:
      * ack (8)
@@ -258,6 +259,7 @@ private:
     typedef uint16_t identifier_t;
     typedef uint8_t type_t;
     typedef uint16_t nnodes_t;
+    typedef uint16_t nrkeys_t;
     typedef uint8_t ack_t;
     typedef uint8_t node_t;
     typedef uint16_t nkeys_t;
@@ -274,7 +276,7 @@ private:
     static const ack_t ACK_FAILED   = 1;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(type_t);
-    static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(nnodes_t);
+    static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(nnodes_t) + sizeof(nrkeys_t);
     static const size_t RESET_REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
     static const size_t HK_REPORT_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nkeys_t);
 };

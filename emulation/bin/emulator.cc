@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, app_core = -1, transport_core = -1, dscp = -1, dec_interval = 1000, n_dec = 1;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, app_core = -1, transport_core = -1, dscp = -1, dec_interval = 1000, n_dec = 1, num_rkeys = 32;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
     std::vector<std::string> keys;
@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, sigterm_handler);
     std::srand(unsigned(std::time(0)));
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:A:B:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:A:B:C:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -201,6 +201,14 @@ int main(int argc, char *argv[])
             }
             break;
         }
+        case 'C': {
+            num_rkeys = stoi(std::string(optarg));
+            if (num_rkeys < 0) {
+                printf("num_rkeys should be >= 0\n");
+                exit(1);
+            }
+            break;
+        }
         default:
             printf("Unknown argument %s\n", argv[optind]);
             break;
@@ -301,6 +309,7 @@ int main(int argc, char *argv[])
         memcachekv::ControllerMessage msg;
         msg.type = memcachekv::ControllerMessage::Type::RESET_REQ;
         msg.reset_req.num_nodes = num_nodes;
+        msg.reset_req.num_rkeys = num_rkeys;
         app = new memcachekv::Controller(&transport, &node_config, msg);
         transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);
