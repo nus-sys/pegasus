@@ -1,63 +1,22 @@
-#define TOR_SER_RATE_LIMIT 35000
-
 header_type tor_ser_md_t {
     fields {
-        fail:       1;
         index:      17;
         exist:      1;
         is_valid:   1;
+        ethernet_addr: 48;
+        ipv4_addr: 32;
+        udp_port: 16;
     }
 }
 metadata tor_ser_md_t tor_ser_md;
-
-action tor_ser_fail_act() {
-    modify_field (tor_ser_md.fail, 1);
-    drop();
-}
-@pragma stage 1
-table tor_ser_fail {
-    reads {
-        dcnc.tor_id: exact;
-    }
-    actions {
-        tor_ser_fail_act;
-    }
-}
-
-@pragma stage 2
-register tor_ser_load_reg {
-    width: 32;
-    instance_count: 128;
-}
-blackbox stateful_alu tor_ser_load_alu {
-    reg: tor_ser_load_reg;
-    condition_lo: register_lo < TOR_SER_RATE_LIMIT;
-    
-    update_lo_1_predicate: condition_lo;
-    update_lo_1_value: register_lo + 1;
-    
-    output_value: register_lo;
-    output_dst: dcnc.tor_load;
-}
-action tor_ser_load_act () {
-    tor_ser_load_alu.execute_stateful_alu (dcnc.tor_id);
-}
-@pragma stage 2
-table tor_ser_load {
-    actions {
-        tor_ser_load_act;
-    }
-    default_action: tor_ser_load_act;
-}
 
 action tor_ser_cache_check_act(index) {
     modify_field(tor_ser_md.index, index);
     modify_field(tor_ser_md.exist, 1);
 }
-@pragma stage 3
+@pragma stage 1
 table tor_ser_cache_check {
     reads {
-        dcnc.tor_id: exact;
         dcnc.key: exact;
     }
     actions {
@@ -66,7 +25,21 @@ table tor_ser_cache_check {
     size : 131072;
 }
 
-@pragma stage 4
+action tor_ser_copy_header_act() {
+    modify_field(tor_ser_md.ethernet_addr, ethernet.srcAddr);
+    modify_field(tor_ser_md.ipv4_addr, ipv4.srcAddr);
+    modify_field(tor_ser_md.udp_port, udp.srcPort);
+}
+@pragma stage 1
+table tor_ser_copy_header {
+    actions {
+        tor_ser_copy_header_act;
+    }
+    default_action: tor_ser_copy_header_act;
+    size : 1;
+}
+
+@pragma stage 2
 register tor_ser_valid_reg {
     width: 1;
     instance_count: 131072;
@@ -79,7 +52,7 @@ blackbox stateful_alu tor_ser_valid_check_alu {
 action tor_ser_valid_check_act () {
     tor_ser_valid_check_alu.execute_stateful_alu (tor_ser_md.index);
 }
-@pragma stage 4
+@pragma stage 2
 table tor_ser_valid_check {
     actions {
         tor_ser_valid_check_act;
@@ -93,7 +66,7 @@ blackbox stateful_alu tor_ser_valid_clear_alu {
 action tor_ser_valid_clear_act () {
     tor_ser_valid_clear_alu.execute_stateful_alu (tor_ser_md.index);
 }
-@pragma stage 4
+@pragma stage 2
 table tor_ser_valid_clear {
     actions {
         tor_ser_valid_clear_act;
@@ -109,7 +82,7 @@ blackbox stateful_alu tor_ser_valid_set_alu {
 action tor_ser_valid_set_act () {
     tor_ser_valid_set_alu.execute_stateful_alu (tor_ser_md.index);
 }
-@pragma stage 4
+@pragma stage 2
 table tor_ser_valid_set {
     actions {
         tor_ser_valid_set_act;
@@ -117,7 +90,7 @@ table tor_ser_valid_set {
     default_action: tor_ser_valid_set_act;
 }
 
-@pragma stage 5
+@pragma stage 3
 register tor_ser_value_reg {
     width: 32;
     instance_count: 131072;
@@ -129,8 +102,17 @@ blackbox stateful_alu tor_ser_value_read_alu {
 }
 action tor_ser_value_read_act () {
     tor_ser_value_read_alu.execute_stateful_alu (tor_ser_md.index);
+    // Exchange src addresses with dst addresses
+    modify_field(ethernet.srcAddr, ethernet.dstAddr);
+    modify_field(ethernet.dstAddr, tor_ser_md.ethernet_addr);
+    modify_field(ipv4.srcAddr, ipv4.dstAddr);
+    modify_field(ipv4.dstAddr, tor_ser_md.ipv4_addr);
+    modify_field(udp.srcPort, udp.dstPort);
+    modify_field(udp.dstPort, tor_ser_md.udp_port);
+    // Set op
+    modify_field (dcnc.op, DCNC_READ_REPLY);
 }
-@pragma stage 5
+@pragma stage 3
 table tor_ser_value_read {
     actions {
         tor_ser_value_read_act;
@@ -144,7 +126,7 @@ blackbox stateful_alu tor_ser_value_update_alu {
 action tor_ser_value_update_act () {
     tor_ser_value_update_alu.execute_stateful_alu (tor_ser_md.index);
 }
-@pragma stage 5
+@pragma stage 3
 table tor_ser_value_update {
     actions {
         tor_ser_value_update_act;
@@ -152,28 +134,21 @@ table tor_ser_value_update {
     default_action: tor_ser_value_update_act;
 }
 
-action tor_ser_route_to_spine() {
-    modify_field(ig_intr_md_for_tm.ucast_egress_port, PORT_TOR_SER_TO_SPINE);
+action _drop() {
+    drop();
 }
-action tor_ser_route_to_server() {
-    modify_field(ig_intr_md_for_tm.ucast_egress_port, PORT_TOR_SER_TO_SERVER);
-}
-action tor_ser_route_read_request_hit() {
-    modify_field (dcnc.op, DCNC_READ_REPLY);
-    modify_field (ipv4.dstAddr, ipv4.srcAddr);
-    modify_field(ig_intr_md_for_tm.ucast_egress_port, PORT_TOR_SER_TO_SPINE);
+action l2_forward(port) {
+    modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
 }
 
-@pragma stage 5
-table tor_ser_route {
+table tor_ser_route_l2 {
     reads {
-        dcnc.op: exact;
-        tor_ser_md.is_valid: exact;
+        ethernet.dstAddr: exact;
     }
     actions {
-        tor_ser_route_to_spine;
-        tor_ser_route_to_server;
-        tor_ser_route_read_request_hit;
+        l2_forward;
+        _drop;
     }
-    default_action: tor_ser_route_to_server;
+    default_action: _drop;
+    size: 1024;
 }

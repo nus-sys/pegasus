@@ -60,22 +60,19 @@ parser parse_tcp {
 
 parser parse_udp {
     extract (udp);
-    return select (latest.dstPort) {
-        DCNC_PORT: parse_dcnc;
-        default:    ingress;
+    return parse_apphdr;
+}
+
+parser parse_apphdr {
+    extract(apphdr);
+    return select(latest.id) {
+        DCNC_ID: parse_dcnc;
+        default: ingress;
     }
 }
 
 parser parse_dcnc {
     extract (dcnc);
-    return select (latest.op) {
-        DCNC_HOT_READ_REQUEST:  parse_dcnc_load;
-        default:                ingress;
-    }
-}
-
-parser parse_dcnc_load {
-    extract (dcnc_load);
     return ingress;
 }
 

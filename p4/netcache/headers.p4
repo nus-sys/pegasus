@@ -57,31 +57,21 @@ header_type udp_t {
 }
 header udp_t udp;
 
+header_type apphdr_t {
+    fields {
+        id : 16;
+    }
+}
+
+header apphdr_t apphdr;
+
 header_type dcnc_t {
     fields {
         op:             8;
-        key:            32;
-        cache_id:       16;
-        spine_padding:  7;
-        spine_id:       9;
-        spine_load:     32;
-        tor_padding:    7;
-        tor_id:         9;
-        tor_load:       32;
+        key:            48;
         value:          DCNC_VALUE_WIDTH;
     }
 }
 header dcnc_t dcnc;
-
-header_type dcnc_load_t {
-    fields {
-        load_1 : 32;
-        load_2 : 32;
-        load_3 : 32;
-        load_4 : 32;
-    }
-}
-header dcnc_load_t dcnc_load;
-
 
 #endif
