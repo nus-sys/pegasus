@@ -24,8 +24,6 @@
 #define RKEY_NONE       0x7F
 
 #define OVERLOAD        0xA
-#define RW_DEC          0x8
-#define RW_MAX          0x30
 #define NNODES          16
 #define MAX_REPLICAS    16
 
@@ -100,7 +98,6 @@ header_type metadata_t {
         load : 16;
         overload : 1;
         ver_matched : 1;
-        read_heavy : 1;
     }
 }
 
@@ -128,15 +125,18 @@ register reg_rkey_ver_curr {
     width: 32;
     instance_count: 32;
 }
-register reg_rkey_read_counter {
+/*
+   round-robin counter
+*/
+register reg_rr_read_counter {
     // per key counter
     width: 8;
     instance_count: 32;
 }
-register reg_rkey_write_counter {
+register reg_rr_write_counter {
     // one global counter
     width: 8;
-    instance_count: 32;
+    instance_count: 1;
 }
 register reg_rkey_size {
     width: 8;
@@ -213,8 +213,12 @@ register reg_rset_16 {
 /*
    Read/Write ratio counter
  */
-register reg_rw_counter {
-    width: 8;
+register reg_rkey_read_counter {
+    width: 16;
+    instance_count: 32;
+}
+register reg_rkey_write_counter {
+    width: 16;
     instance_count: 32;
 }
 /*************************************************************************
@@ -474,10 +478,10 @@ table tab_replicated_keys {
 }
 
 /*
-   access rkey read/write counter
+   access round-robin read/write counter
  */
-blackbox stateful_alu sa_access_rkey_read_counter {
-    reg: reg_rkey_read_counter;
+blackbox stateful_alu sa_access_rr_read_counter {
+    reg: reg_rr_read_counter;
     condition_lo: register_lo >= meta.rset_size - 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: 0;
@@ -486,8 +490,8 @@ blackbox stateful_alu sa_access_rkey_read_counter {
     output_value: alu_lo;
     output_dst: meta.rset_index;
 }
-blackbox stateful_alu sa_access_rkey_write_counter {
-    reg: reg_rkey_write_counter;
+blackbox stateful_alu sa_access_rr_write_counter {
+    reg: reg_rr_write_counter;
     condition_lo: register_lo >= NNODES - 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: 0;
@@ -497,27 +501,27 @@ blackbox stateful_alu sa_access_rkey_write_counter {
     output_dst: meta.node;
 }
 
-action access_rkey_read_counter() {
-    sa_access_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
+action access_rr_read_counter() {
+    sa_access_rr_read_counter.execute_stateful_alu(meta.rkey_index);
 }
-action access_rkey_write_counter() {
-    sa_access_rkey_write_counter.execute_stateful_alu(0);
+action access_rr_write_counter() {
+    sa_access_rr_write_counter.execute_stateful_alu(0);
 }
 
 @pragma stage 3
-table tab_access_rkey_read_counter {
+table tab_access_rr_read_counter {
     actions {
-        access_rkey_read_counter;
+        access_rr_read_counter;
     }
-    default_action: access_rkey_read_counter;
+    default_action: access_rr_read_counter;
     size: 1;
 }
 @pragma stage 3
-table tab_access_rkey_write_counter {
+table tab_access_rr_write_counter {
     actions {
-        access_rkey_write_counter;
+        access_rr_write_counter;
     }
-    default_action: access_rkey_write_counter;
+    default_action: access_rr_write_counter;
     size: 1;
 }
 
@@ -1296,43 +1300,51 @@ table tab_set_rkey_ver_curr {
 /*
    rw counter
  */
-blackbox stateful_alu sa_get_rw_counter {
-    reg: reg_rw_counter;
-    condition_lo: register_lo >= RW_DEC;
-    update_lo_1_predicate: condition_lo;
-    update_lo_1_value: register_lo - RW_DEC;
-    output_predicate: condition_lo;
-    output_value: combined_predicate;
-    output_dst: meta.read_heavy;
+blackbox stateful_alu sa_get_rkey_read_counter {
+    reg: reg_rkey_read_counter;
+    output_value: register_lo;
+    output_dst: pegasus.load;
 }
-blackbox stateful_alu sa_inc_rw_counter {
-    reg: reg_rw_counter;
-    condition_lo: register_lo < RW_MAX;
-    update_lo_1_predicate: condition_lo;
+blackbox stateful_alu sa_inc_rkey_read_counter {
+    reg: reg_rkey_read_counter;
     update_lo_1_value: register_lo + 1;
 }
-
-action get_rw_counter() {
-    sa_get_rw_counter.execute_stateful_alu(meta.rkey_index);
+blackbox stateful_alu sa_inc_rkey_write_counter {
+    reg: reg_rkey_write_counter;
+    update_lo_1_value: register_lo + 1;
+    output_value: alu_lo;
+    output_dst: pegasus.debug_load;
 }
-action inc_rw_counter() {
-    sa_inc_rw_counter.execute_stateful_alu(meta.rkey_index);
+
+action get_rkey_read_counter() {
+    sa_get_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rkey_read_counter() {
+    sa_inc_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rkey_write_counter() {
+    sa_inc_rkey_write_counter.execute_stateful_alu(meta.rkey_index);
 }
 
-@pragma stage 1
-table tab_get_rw_counter {
+table tab_get_rkey_read_counter {
     actions {
-        get_rw_counter;
+        get_rkey_read_counter;
     }
-    default_action: get_rw_counter;
+    default_action: get_rkey_read_counter;
     size: 1;
 }
-@pragma stage 1
-table tab_inc_rw_counter {
+table tab_inc_rkey_read_counter {
     actions {
-        inc_rw_counter;
+        inc_rkey_read_counter;
     }
-    default_action: inc_rw_counter;
+    default_action: inc_rkey_read_counter;
+    size: 1;
+}
+table tab_inc_rkey_write_counter {
+    actions {
+        inc_rkey_write_counter;
+    }
+    default_action: inc_rkey_write_counter;
     size: 1;
 }
 
@@ -1396,14 +1408,7 @@ action write_num_replicas() {
     modify_field(pegasus.debug_node, MAX_REPLICAS - 1);
 }
 
-table tab_write_num_replicas_a {
-    actions {
-        write_num_replicas;
-    }
-    default_action : write_num_replicas;
-    size : 1;
-}
-table tab_write_num_replicas_b {
+table tab_write_num_replicas {
     actions {
         write_num_replicas;
     }
@@ -1542,20 +1547,22 @@ control process_request {
         apply(tab_copy_pegasus_header_d);
     }
     apply(tab_inc_queue_len);
+    /*
     if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_GET) {
         if (meta.rset_size != MAX_REPLICAS and meta.overload != 0) {
             apply(tab_rkey_migration);
-            apply(tab_write_num_replicas_a);
+            apply(tab_write_num_replicas);
         }
     }
+    */
     apply(tab_node_forward);
 }
 
 control process_replicated_read {
     apply(tab_get_rkey_ver_curr);
-    apply(tab_inc_rw_counter);
+    apply(tab_inc_rkey_read_counter);
     apply(tab_get_rset_size);
-    apply(tab_access_rkey_read_counter);
+    apply(tab_access_rr_read_counter);
     if (meta.rset_index == 0) {
         apply(tab_get_rset_1);
     } else if (meta.rset_index == 1) {
@@ -1593,11 +1600,9 @@ control process_replicated_read {
 
 control process_replicated_write {
     apply(tab_get_rkey_ver_next);
-    apply(tab_get_rw_counter);
-    if (meta.read_heavy != 0) {
-        apply(tab_write_num_replicas_b);
-    }
-    apply(tab_access_rkey_write_counter);
+    apply(tab_get_rkey_read_counter);
+    apply(tab_inc_rkey_write_counter);
+    apply(tab_access_rr_write_counter);
 }
 
 control ingress {
