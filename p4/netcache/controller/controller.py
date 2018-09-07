@@ -16,6 +16,13 @@
 Thrift PD interface basic tests
 """
 
+import argparse
+import json
+import time
+import socket
+import signal
+import os
+
 from res_pd_rpc.ttypes import *
 from ptf.thriftutils import *
 from netcache.p4_pd_rpc.ttypes import *
@@ -32,8 +39,10 @@ DCNC_WRITE_REQUEST             = 2
 DCNC_READ_REPLY                = 3
 DCNC_WRITE_REPLY               = 4
 
-dev_id = 0
-dev_tgt = DevTarget_t(dev_id, hex_to_i16(0xFFFF))
+def signal_handler(signum, frame):
+    print "Received INT/TERM signal...Exiting"
+    controller.stop()
+    os._exit(1)
 
 class Controller(object):
     def __init__(self, thrift_server):
@@ -43,7 +52,7 @@ class Controller(object):
         conn_mgr_protocol = TMultiplexedProtocol.TMultiplexedProtocol(bprotocol, "conn_mgr")
         self.conn_mgr = conn_mgr_pd_rpc.conn_mgr.Client(conn_mgr_protocol)
         p4_protocol = TMultiplexedProtocol.TMultiplexedProtocol(bprotocol, "netcache")
-        self.client = pegasus.p4_pd_rpc.pegasus.Client(p4_protocol)
+        self.client = netcache.p4_pd_rpc.netcache.Client(p4_protocol)
         self.transport.open()
 
         self.sess_hdl = self.conn_mgr.client_init()
@@ -51,24 +60,18 @@ class Controller(object):
         self.dev_tgt = DevTarget_t(self.dev, hex_to_i16(0xFFFF))
 
     def add_key(self, key, index):
+        print "adding key", key, "index", index
         self.client.tor_ser_cache_check_table_add_with_tor_ser_cache_check_act(
             self.sess_hdl, self.dev_tgt,
             netcache_tor_ser_cache_check_match_spec_t(
                 dcnc_key = key),
             netcache_tor_ser_cache_check_act_action_spec_t(
                 action_index = index))
-        return hdl
 
     def install_table_entries(self, tables):
         # add keys
-        foo = open("tor_ser_keys.txt")
-        foo.readline()
-        self.tor_ser_count = 0
-        for line in foo.readlines():
-            key = line.strip()
-            self.add_key(key, self.tor_ser_count)
-            self.tor_ser_count += 1
-        foo.close()
+        for (key, index) in tables["cache_check"].items():
+            self.add_key(key, index)
         # add l2 forwarding rules
         for (mac, port) in tables["tab_l2_forward"].items():
             self.client.tor_ser_route_l2_table_add_with_l2_forward(
