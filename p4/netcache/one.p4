@@ -19,14 +19,14 @@ control ingress {
             else if (dcnc.op == DCNC_WRITE_REQUEST) {
                 apply (tor_ser_valid_clear);
             }
-            else if (dcnc.op == DCNC_WRITE_REPLY) {
+            else if (dcnc.op == DCNC_WRITE_REPLY or dcnc.op == DCNC_READ_REPLY) {
                 apply (tor_ser_valid_set);
             }
             if (tor_ser_md.is_valid == 1) {
                 if (dcnc.op == DCNC_READ_REQUEST) {
                     apply (tor_ser_value_read);
                 }
-                else if (dcnc.op == DCNC_WRITE_REPLY) {
+                else if (dcnc.op == DCNC_WRITE_REPLY or dcnc.op == DCNC_READ_REPLY) {
                     apply (tor_ser_value_update);
                 }
             }

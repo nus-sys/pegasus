@@ -110,7 +110,7 @@ action tor_ser_value_read_act () {
     modify_field(udp.srcPort, udp.dstPort);
     modify_field(udp.dstPort, tor_ser_md.udp_port);
     // Set op
-    modify_field (dcnc.op, DCNC_READ_REPLY);
+    modify_field (dcnc.op, DCNC_CACHE_HIT);
 }
 @pragma stage 3
 table tor_ser_value_read {
