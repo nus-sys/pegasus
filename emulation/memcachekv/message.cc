@@ -393,6 +393,225 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
 }
 
 bool
+NetcacheCodec::decode(const std::string &in, MemcacheKVMessage &out)
+{
+    const char *buf = in.data();
+    const char *ptr = buf;
+    size_t buf_size = in.size();
+
+    if (buf_size < PACKET_BASE_SIZE) {
+        return false;
+    }
+    if (*(identifier_t*)ptr != NETCACHE) {
+        return false;
+    }
+    ptr += sizeof(identifier_t);
+    op_type_t op_type = *(op_type_t*)ptr;
+    ptr += sizeof(op_type_t);
+    ptr += KEY_SIZE;
+    string cached_value = string(ptr, VALUE_SIZE);
+    ptr += VALUE_SIZE;
+
+    switch (op_type) {
+    case OP_READ:
+    case OP_WRITE: {
+        if (buf_size < REQUEST_BASE_SIZE) {
+            return false;
+        }
+        out.type = MemcacheKVMessage::Type::REQUEST;
+        out.request.client_id = *(client_id_t*)ptr;
+        ptr += sizeof(client_id_t);
+        out.request.req_id = *(req_id_t*)ptr;
+        ptr += sizeof(req_id_t);
+        out.request.op.op_type = static_cast<Operation::Type>(*(op_type_t*)ptr);
+        ptr += sizeof(op_type_t);
+        key_len_t key_len = *(key_len_t*)ptr;
+        ptr += sizeof(key_len_t);
+        if (buf_size < REQUEST_BASE_SIZE + key_len) {
+            return false;
+        }
+        out.request.op.key = string(ptr, key_len);
+        ptr += key_len;
+        if (out.request.op.op_type == Operation::Type::PUT) {
+            if (buf_size < REQUEST_BASE_SIZE + key_len + sizeof(value_len_t)) {
+                return false;
+            }
+            value_len_t value_len = *(value_len_t*)ptr;
+            ptr += sizeof(value_len_t);
+            if (buf_size < REQUEST_BASE_SIZE + key_len + sizeof(value_len_t) + value_len) {
+                return false;
+            }
+            out.request.op.value = string(ptr, value_len);
+        }
+        break;
+    }
+    case OP_REP_R:
+    case OP_REP_W: {
+        if (buf_size < REPLY_BASE_SIZE) {
+            return false;
+        }
+        out.type = MemcacheKVMessage::Type::REPLY;
+        if (op_type == OP_REP_R) {
+            out.reply.type = MemcacheKVReply::Type::READ;
+        } else {
+            out.reply.type = MemcacheKVReply::Type::WRITE;
+        }
+        out.reply.client_id = *(client_id_t*)ptr;
+        ptr += sizeof(client_id_t);
+        out.reply.req_id = *(req_id_t*)ptr;
+        ptr += sizeof(req_id_t);
+        out.reply.result = static_cast<Result>(*(result_t*)ptr);
+        ptr += sizeof(result_t);
+        value_len_t value_len = *(value_len_t*)ptr;
+        ptr += sizeof(value_len_t);
+        if (buf_size < REPLY_BASE_SIZE + value_len) {
+            return false;
+        }
+        out.reply.value = string(ptr, value_len);
+        break;
+    }
+    case OP_CACHE_HIT: {
+        if (buf_size < REQUEST_BASE_SIZE) {
+            return false;
+        }
+        out.type = MemcacheKVMessage::Type::REPLY;
+        out.reply.type = MemcacheKVReply::Type::READ;
+        out.reply.client_id = *(client_id_t*)ptr;
+        ptr += sizeof(client_id_t);
+        out.reply.req_id = *(req_id_t*)ptr;
+        ptr += sizeof(req_id_t);
+        out.reply.result = Result::OK;
+        out.reply.value = cached_value;
+        break;
+    }
+    default:
+        return false;
+    }
+    return true;
+}
+
+bool
+NetcacheCodec::encode(std::string &out, const MemcacheKVMessage &in)
+{
+    // First determine buffer size
+    size_t buf_size;
+    switch (in.type) {
+    case MemcacheKVMessage::Type::REQUEST: {
+        buf_size = REQUEST_BASE_SIZE + in.request.op.key.size();
+        if (in.request.op.op_type == Operation::Type::PUT) {
+            buf_size += sizeof(value_len_t) + in.request.op.value.size();
+        }
+        break;
+    }
+    case MemcacheKVMessage::Type::REPLY: {
+        buf_size = REPLY_BASE_SIZE + in.reply.value.size();
+        break;
+    }
+    default:
+        return false;
+    }
+
+    char *buf = new char[buf_size];
+    char *ptr = buf;
+    // App header
+    *(identifier_t*)ptr = NETCACHE;
+    ptr += sizeof(identifier_t);
+    switch (in.type) {
+    case MemcacheKVMessage::Type::REQUEST: {
+        switch (in.request.op.op_type) {
+        case Operation::Type::GET:
+            *(op_type_t*)ptr = OP_READ;
+            break;
+        case Operation::Type::PUT:
+        case Operation::Type::DEL:
+            *(op_type_t*)ptr = OP_WRITE;
+            break;
+        default:
+            return false;
+        }
+        ptr += sizeof(op_type_t);
+        if (in.request.op.key.size() > KEY_SIZE) {
+            return false;
+        }
+        memset(ptr, 0, KEY_SIZE);
+        memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
+        ptr += KEY_SIZE;
+        ptr += VALUE_SIZE;
+        break;
+    }
+    case MemcacheKVMessage::Type::REPLY: {
+        switch (in.reply.type) {
+        case MemcacheKVReply::Type::READ:
+            *(op_type_t*)ptr = OP_REP_R;
+            break;
+        case MemcacheKVReply::Type::WRITE:
+            *(op_type_t*)ptr = OP_REP_W;
+            break;
+        default:
+            return false;
+        }
+        ptr += sizeof(op_type_t);
+        if (in.reply.key.size() > KEY_SIZE) {
+            return false;
+        }
+        memset(ptr, 0, KEY_SIZE);
+        memcpy(ptr, in.reply.key.data(), in.reply.key.size());
+        ptr += KEY_SIZE;
+        memset(ptr, 0, VALUE_SIZE);
+        memcpy(ptr, in.reply.value.data(), in.reply.value.size());
+        ptr += VALUE_SIZE;
+        break;
+    }
+    default:
+        return false;
+    }
+
+    // Payload
+    switch (in.type) {
+    case MemcacheKVMessage::Type::REQUEST: {
+        *(client_id_t*)ptr = (client_id_t)in.request.client_id;
+        ptr += sizeof(client_id_t);
+        *(req_id_t*)ptr = (req_id_t)in.request.req_id;
+        ptr += sizeof(req_id_t);
+        *(op_type_t*)ptr = static_cast<op_type_t>(in.request.op.op_type);
+        ptr += sizeof(op_type_t);
+        *(key_len_t*)ptr = (key_len_t)in.request.op.key.size();
+        ptr += sizeof(key_len_t);
+        memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
+        ptr += in.request.op.key.size();
+        if (in.request.op.op_type == Operation::Type::PUT) {
+            *(value_len_t*)ptr = (value_len_t)in.request.op.value.size();
+            ptr += sizeof(value_len_t);
+            memcpy(ptr, in.request.op.value.data(), in.request.op.value.size());
+            ptr += in.request.op.value.size();
+        }
+        break;
+    }
+    case MemcacheKVMessage::Type::REPLY: {
+        *(client_id_t*)ptr = (client_id_t)in.reply.client_id;
+        ptr += sizeof(client_id_t);
+        *(req_id_t*)ptr = (req_id_t)in.reply.req_id;
+        ptr += sizeof(req_id_t);
+        *(result_t *)ptr = (result_t)in.reply.result;
+        ptr += sizeof(result_t);
+        *(value_len_t *)ptr = (value_len_t)in.reply.value.size();
+        ptr += sizeof(value_len_t);
+        if (in.reply.value.size() > 0) {
+            memcpy(ptr, in.reply.value.data(), in.reply.value.size());
+            ptr += in.reply.value.size();
+        }
+        break;
+    }
+    default:
+        return false;
+    }
+
+    out = string(buf, buf_size);
+    delete[] buf;
+    return true;
+}
+
+bool
 ControllerCodec::encode(std::string &out, const ControllerMessage &in)
 {
     size_t buf_size;

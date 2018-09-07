@@ -151,6 +151,8 @@ int main(int argc, char *argv[])
                 node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
             } else if (strcmp(optarg, "router") == 0) {
                 node_config_mode = memcachekv::MemcacheKVConfig::ROUTER;
+            } else if (strcmp(optarg, "netcache") == 0) {
+                node_config_mode = memcachekv::MemcacheKVConfig::NETCACHE;
             } else {
                 printf("Unknown node config mode %s\n", optarg);
                 exit(1);
@@ -245,8 +247,10 @@ int main(int argc, char *argv[])
     case WIRE: {
         if (node_config_mode == memcachekv::MemcacheKVConfig::ROUTER) {
             codec = new memcachekv::WireCodec(true);
-        } else {
+        } else if (node_config_mode == memcachekv::MemcacheKVConfig::STATIC) {
             codec = new memcachekv::WireCodec(false);
+        } else if (node_config_mode == memcachekv::MemcacheKVConfig::NETCACHE) {
+            codec = new memcachekv::NetcacheCodec();
         }
         break;
     }
@@ -294,7 +298,8 @@ int main(int argc, char *argv[])
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
-        app = new memcachekv::Server(&transport, &node_config, codec, ctrl_codec, node_id, proc_latency);
+        std::string default_value = std::string(value_len, 'v');
+        app = new memcachekv::Server(&transport, &node_config, codec, ctrl_codec, node_id, proc_latency, default_value);
         transport.register_node(app, &node_config, node_id);
         node = new Node(node_id, &transport, app, false, app_core, transport_core);
         break;

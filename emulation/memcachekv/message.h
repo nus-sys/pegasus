@@ -63,7 +63,7 @@ struct MemcacheKVReply {
         WRITE
     };
     MemcacheKVReply()
-        : type(Type::READ), keyhash(0), node_id(0), load(0), ver(0),
+        : type(Type::READ), keyhash(0), key(""), node_id(0), load(0), ver(0),
         client_id(0), req_id(0), result(Result::OK), value("") {};
     MemcacheKVReply(const proto::MemcacheKVReply &reply)
         : node_id(reply.node_id()),
@@ -74,6 +74,7 @@ struct MemcacheKVReply {
 
     Type type;
     keyhash_t keyhash;
+    std::string key;
     int node_id;
     load_t load;
     ver_t ver;
@@ -189,6 +190,50 @@ private:
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
     static const size_t MGR_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
     static const size_t MGR_ACK_BASE_SIZE = PACKET_BASE_SIZE;
+};
+
+/*
+ * Netcache codec
+ */
+class NetcacheCodec : public MessageCodec {
+public:
+    NetcacheCodec() {};
+    ~NetcacheCodec() {};
+
+    bool decode(const std::string &in, MemcacheKVMessage &out) override;
+    bool encode(std::string &out, const MemcacheKVMessage &in) override;
+
+private:
+    /* Wire format:
+     * identifier (16) + op_type (8) + key (48) + value (32) + message
+     *
+     * Request format:
+     * client_id (32) + req_id (32) + op_type (8) + key_len (16) + key (+ value_len(16) + value)
+     *
+     * Reply format:
+     * client_id (32) + req_id (32) + result (8) + value_len(16) + value
+     *
+     */
+    typedef uint16_t identifier_t;
+    typedef uint8_t op_type_t;
+    typedef uint32_t client_id_t;
+    typedef uint32_t req_id_t;
+    typedef uint16_t key_len_t;
+    typedef uint8_t result_t;
+    typedef uint16_t value_len_t;
+    static const size_t KEY_SIZE        = 6;
+    static const size_t VALUE_SIZE      = 4;
+
+    static const identifier_t NETCACHE  = 0x5039;
+    static const op_type_t OP_READ      = 0x1;
+    static const op_type_t OP_WRITE     = 0x2;
+    static const op_type_t OP_REP_R     = 0x3;
+    static const op_type_t OP_REP_W     = 0x4;
+    static const op_type_t OP_CACHE_HIT = 0x5;
+
+    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + KEY_SIZE + VALUE_SIZE;
+    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(op_type_t) + sizeof(key_len_t);
+    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
 };
 
 /*

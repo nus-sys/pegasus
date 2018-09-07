@@ -32,7 +32,8 @@ MemcacheKVConfig::key_to_node_id(const std::string &key)
 {
     switch (this->mode) {
     case STATIC:
-    case ROUTER: {
+    case ROUTER:
+    case NETCACHE: {
         uint64_t hash = compute_keyhash(key);
         return (int)(hash % this->num_nodes);
     }

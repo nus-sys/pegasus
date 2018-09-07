@@ -12,7 +12,8 @@ class MemcacheKVConfig : public Configuration {
 public:
     enum NodeConfigMode {
         STATIC = 1,
-        ROUTER = 2
+        ROUTER = 2,
+        NETCACHE = 3
     };
 
     MemcacheKVConfig(const std::vector<NodeAddress> &addresses,

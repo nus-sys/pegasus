@@ -11,13 +11,14 @@ using std::string;
 namespace memcachekv {
 
 Server::Server(Transport *transport, Configuration *config, MessageCodec *codec,
-       ControllerCodec *ctrl_codec, int node_id, int proc_latency)
+       ControllerCodec *ctrl_codec, int node_id, int proc_latency, string default_value)
     : transport(transport),
     config(config),
     codec(codec),
     ctrl_codec(ctrl_codec),
     node_id(node_id),
-    proc_latency(proc_latency)
+    proc_latency(proc_latency),
+    default_value(default_value)
 {
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
@@ -143,6 +144,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
 {
     //printf("Received request type %u keyhash %u ver %u key %s\n", op.op_type, op.keyhash, op.ver, op.key.c_str());
 
+    reply.key = op.key;
     reply.keyhash = op.keyhash;
     reply.ver = op.ver;
     switch (op.op_type) {
@@ -156,7 +158,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         } else {
             // Key not found
             reply.result = Result::NOT_FOUND;
-            reply.value = "";
+            reply.value = this->default_value;
         }
         if (op.op_type == Operation::Type::MGR) {
             migrate_kv(op, reply.value);
@@ -179,7 +181,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
             }
         }
         reply.result = Result::OK;
-        reply.value = "";
+        reply.value = op.value; // for netcache
         break;
     }
     case Operation::Type::DEL: {
