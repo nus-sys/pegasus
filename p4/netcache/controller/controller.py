@@ -68,10 +68,14 @@ class Controller(object):
             netcache_tor_ser_cache_check_act_action_spec_t(
                 action_index = index))
 
-    def install_table_entries(self, tables):
+    def install_table_entries(self, tables, nkeys):
         # add keys
+        i = 0
         for (key, index) in tables["cache_check"].items():
+            if i >= nkeys:
+                break
             self.add_key(key, index)
+            i += 1
         # add l2 forwarding rules
         for (mac, port) in tables["tab_l2_forward"].items():
             self.client.tor_ser_route_l2_table_add_with_l2_forward(
@@ -88,6 +92,10 @@ def main():
     parser.add_argument("--config",
                         required=True,
                         help="configuration (JSON) file")
+    parser.add_argument("--nkeys",
+                        type=int,
+                        default=0,
+                        help="number of cached keys to install")
     args = parser.parse_args()
     with open(args.config) as fp:
         tables = json.load(fp)
@@ -96,7 +104,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     controller = Controller("oyster")
-    controller.install_table_entries(tables)
+    controller.install_table_entries(tables, args.nkeys)
 
 
 if __name__ == "__main__":
