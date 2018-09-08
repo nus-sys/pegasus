@@ -12,9 +12,9 @@ from scapy.all import ByteField, ShortField, IntField, BitField
 
 client_mac = "3c:fd:fe:9e:7d:20"
 server_mac = "3c:fd:fe:9e:5d:00"
-client_iface = "ens2f0"
-client_ip = socket.gethostbyname("10.0.1.10")
-server_ip = socket.gethostbyname("10.0.1.6")
+client_iface = "enp3s0"
+client_ip = socket.gethostbyname("10.200.1.13")
+server_ip = socket.gethostbyname("10.200.1.19")
 
 class Pegasus(Packet):
     name = "PEGASUS"
