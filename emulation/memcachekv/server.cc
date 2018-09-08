@@ -147,6 +147,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     reply.key = op.key;
     reply.keyhash = op.keyhash;
     reply.ver = op.ver;
+    //reply.load = calculate_load();
     switch (op.op_type) {
     case Operation::Type::GET:
     case Operation::Type::MGR: {
