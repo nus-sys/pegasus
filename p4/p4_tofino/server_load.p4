@@ -8,15 +8,24 @@
 
 #define ETHERTYPE_IPV4  0x800
 #define PROTO_UDP       0x11
+
 #define PEGASUS_ID      0x5047
-#define HASH_MASK       0x3 // Max 4 nodes
-#define MAX_REPLICAS    0x4
+
 #define OP_GET          0x0
 #define OP_PUT          0x1
 #define OP_DEL          0x2
-#define OP_REP          0x3
-#define AVG_LOAD_SHIFT  0x2
+#define OP_REP_R        0x3
+#define OP_REP_W        0x4
+#define OP_MGR          0x5
+#define OP_MGR_REQ      0x6
+#define OP_MGR_ACK      0x7
+#define OP_DEC          0xF
+
 #define RNODE_NONE      0x7F
+#define RKEY_NONE       0x7F
+
+#define OVERLOAD        0xA
+#define MAX_REPLICAS    16
 
 header_type ethernet_t {
     fields {
@@ -72,6 +81,9 @@ header_type pegasus_t {
         keyhash : 32;
         node : 8;
         load : 16;
+        ver : 32;
+        debug_node : 8;
+        debug_load : 16;
     }
 }
 
@@ -79,21 +91,14 @@ header pegasus_t pegasus;
 
 header_type metadata_t {
     fields {
-        // Node load stats
-        total_node_load : 16;
-        min_node : 8;
-        min_node_load : 16;
-        // Replica nodes
-        rkey_index : 32;
-        rnode_1 : 8;
-        rnode_2 : 8;
-        rnode_3 : 8;
-        rnode_4 : 8;
-        min_rload : 16;
-        // Temporary variables
-        tmp_node : 8;
-        tmp_node_1 : 8;
-        tmp_load : 16;
+        rkey_size : 8;
+        rset_size : 8;
+        rkey_index : 8;
+        probe_rkey_index : 8;
+        probe_rset_index : 8;
+        node : 8;
+        load : 16;
+        ver_matched : 1;
     }
 }
 
@@ -102,69 +107,147 @@ metadata metadata_t meta;
 /*************************************************************************
 *********************** STATEFUL MEMORY  *********************************
 *************************************************************************/
-/*
-   We need n sets of node load registers, where n is the
-   max number of replicas.
-*/
-register reg_node_load_1 {
-    width: 16;
-    instance_count: 32;
-}
-register reg_node_load_2 {
-    width: 16;
-    instance_count: 32;
-}
-register reg_node_load_3 {
-    width: 16;
-    instance_count: 32;
-}
-register reg_node_load_4 {
-    width: 16;
-    instance_count: 32;
-}
-/*
-   We need these id registers to find the node (among replicas)
-   with the lowest load. register_hi is the id, and register_lo
-   stores the node load. (We can't use reg_node_load again because
-   each stateful alu can only output one field)
-*/
-register reg_node_id_1 {
-    width: 64;
-    instance_count: 32;
-}
-register reg_node_id_2 {
-    width: 64;
-    instance_count: 32;
-}
-register reg_node_id_3 {
-    width: 64;
-    instance_count: 32;
-}
-register reg_node_id_4 {
-    width: 64;
-    instance_count: 32;
-}
 
-register reg_min_node_load {
-    // register_hi holds min_node, and register_lo holds min_node_load.
+/*
+   Load on each node
+ */
+register reg_node_load {
+    width: 16;
+    instance_count: 32;
+}
+/*
+   Global least loaded node
+ */
+register reg_min_node {
     width: 64;
     instance_count: 1;
 }
-register reg_rnode_1 {
+/*
+   Least loaded node for each rkey
+ */
+register reg_rkey_min_node {
+    width: 64;
+    instance_count: 32;
+}
+/*
+   rkey version number
+*/
+register reg_rkey_ver_next {
+    width: 32;
+    instance_count: 32;
+}
+register reg_rkey_ver_curr {
+    width: 32;
+    instance_count: 32;
+}
+/*
+   rkey replication set
+ */
+register reg_rkey_size {
+    width: 8;
+    instance_count: 1;
+}
+register reg_rset_size {
     width: 8;
     instance_count: 32;
 }
-register reg_rnode_2 {
+register reg_rset_1 {
     width: 8;
     instance_count: 32;
 }
-register reg_rnode_3 {
+register reg_rset_2 {
     width: 8;
     instance_count: 32;
 }
-register reg_rnode_4 {
+register reg_rset_3 {
     width: 8;
     instance_count: 32;
+}
+register reg_rset_4 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_5 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_6 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_7 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_8 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_9 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_10 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_11 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_12 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_13 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_14 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_15 {
+    width: 8;
+    instance_count: 32;
+}
+register reg_rset_16 {
+    width: 8;
+    instance_count: 32;
+}
+/*
+   Probe rkey counter
+*/
+register reg_probe_rkey_counter {
+    width: 8;
+    instance_count: 1;
+}
+/*
+   Probe rset counter
+ */
+register reg_probe_rset_counter {
+    width: 8;
+    instance_count: 32;
+}
+/*
+   Read/Write ratio counter
+ */
+register reg_rkey_read_counter {
+    width: 16;
+    instance_count: 32;
+}
+register reg_rkey_write_counter {
+    width: 16;
+    instance_count: 32;
+}
+/*************************************************************************
+*********************** RESUBMIT  ****************************************
+*************************************************************************/
+field_list resubmit_fields {
+    meta.rkey_index;
+    meta.probe_rkey_index;
+    meta.node;
+    meta.load;
 }
 /*************************************************************************
 *********************** CHECKSUM *****************************************
@@ -277,10 +360,9 @@ action node_forward(mac_addr, ip_addr, udp_addr, port) {
     modify_field(ig_intr_md_for_tm.ucast_egress_port, port);
 }
 
-@pragma stage 7
 table tab_node_forward {
     reads {
-        meta.tmp_node: exact;
+        meta.node: exact;
     }
     actions {
         node_forward;
@@ -290,194 +372,45 @@ table tab_node_forward {
 }
 
 /*
-   copy header
+   drop
  */
-action copy_pegasus_header() {
-    modify_field(meta.tmp_node, pegasus.node);
-    modify_field(meta.tmp_load, pegasus.load);
+action do_drop() {
+    _drop();
 }
 
-table tab_copy_pegasus_header {
+table tab_do_drop {
     actions {
-        copy_pegasus_header;
+        do_drop;
     }
-    default_action: copy_pegasus_header;
+    default_action: do_drop;
     size: 1;
 }
 
 /*
-   update min node load
-*/
-blackbox stateful_alu sa_update_min_node_load {
-    reg: reg_min_node_load;
-    condition_lo: pegasus.load < register_lo;
-    condition_hi: pegasus.node == register_hi;
-    update_lo_1_predicate: condition_lo or condition_hi;
-    update_lo_1_value: pegasus.load;
-    update_hi_1_predicate: condition_lo or condition_hi;
-    update_hi_1_value: pegasus.node;
+   resubmit
+ */
+action do_resubmit() {
+    resubmit(resubmit_fields);
 }
 
-action update_min_node_load() {
-    sa_update_min_node_load.execute_stateful_alu(0);
-}
-
-table tab_update_min_node_load {
+table tab_do_resubmit {
     actions {
-        update_min_node_load;
+        do_resubmit;
     }
-    default_action: update_min_node_load;
-    size: 1;
-}
-
-/*
-   update node load (1-4)
-*/
-blackbox stateful_alu sa_update_node_load_1 {
-    reg: reg_node_load_1;
-    update_lo_1_value: meta.tmp_load;
-}
-blackbox stateful_alu sa_update_node_load_2 {
-    reg: reg_node_load_2;
-    update_lo_1_value: meta.tmp_load;
-}
-blackbox stateful_alu sa_update_node_load_3 {
-    reg: reg_node_load_3;
-    update_lo_1_value: meta.tmp_load;
-}
-blackbox stateful_alu sa_update_node_load_4 {
-    reg: reg_node_load_4;
-    update_lo_1_value: meta.tmp_load;
-}
-
-action update_node_load_1() {
-    sa_update_node_load_1.execute_stateful_alu(meta.tmp_node);
-}
-action update_node_load_2() {
-    sa_update_node_load_2.execute_stateful_alu(meta.tmp_node);
-}
-action update_node_load_3() {
-    sa_update_node_load_3.execute_stateful_alu(meta.tmp_node);
-}
-action update_node_load_4() {
-    sa_update_node_load_4.execute_stateful_alu(meta.tmp_node);
-}
-
-@pragma stage 2
-table tab_update_node_load_1 {
-    actions {
-        update_node_load_1;
-    }
-    default_action: update_node_load_1;
-    size: 1;
-}
-@pragma stage 3
-table tab_update_node_load_2 {
-    actions {
-        update_node_load_2;
-    }
-    default_action: update_node_load_2;
-    size: 1;
-}
-@pragma stage 4
-table tab_update_node_load_3 {
-    actions {
-        update_node_load_3;
-    }
-    default_action: update_node_load_3;
-    size: 1;
-}
-@pragma stage 5
-table tab_update_node_load_4 {
-    actions {
-        update_node_load_4;
-    }
-    default_action: update_node_load_4;
-    size: 1;
-}
-
-/*
-   update node id (1-4)
-*/
-blackbox stateful_alu sa_update_node_id_1 {
-    reg: reg_node_id_1;
-    update_lo_1_value: meta.tmp_load;
-}
-blackbox stateful_alu sa_update_node_id_2 {
-    reg: reg_node_id_2;
-    update_lo_1_value: meta.tmp_load;
-}
-blackbox stateful_alu sa_update_node_id_3 {
-    reg: reg_node_id_3;
-    update_lo_1_value: meta.tmp_load;
-}
-blackbox stateful_alu sa_update_node_id_4 {
-    reg: reg_node_id_4;
-    update_lo_1_value: meta.tmp_load;
-}
-
-action update_node_id_1() {
-    sa_update_node_id_1.execute_stateful_alu(meta.tmp_node);
-}
-action update_node_id_2() {
-    sa_update_node_id_2.execute_stateful_alu(meta.tmp_node);
-}
-action update_node_id_3() {
-    sa_update_node_id_3.execute_stateful_alu(meta.tmp_node);
-}
-action update_node_id_4() {
-    sa_update_node_id_4.execute_stateful_alu(meta.tmp_node);
-}
-
-@pragma stage 2
-table tab_update_node_id_1 {
-    actions {
-        update_node_id_1;
-    }
-    default_action: update_node_id_1;
-    size: 1;
-}
-@pragma stage 3
-table tab_update_node_id_2 {
-    actions {
-        update_node_id_2;
-    }
-    default_action: update_node_id_2;
-    size: 1;
-}
-@pragma stage 4
-table tab_update_node_id_3 {
-    actions {
-        update_node_id_3;
-    }
-    default_action: update_node_id_3;
-    size: 1;
-}
-@pragma stage 5
-table tab_update_node_id_4 {
-    actions {
-        update_node_id_4;
-    }
-    default_action: update_node_id_4;
+    default_action: do_resubmit;
     size: 1;
 }
 
 /*
    replicated keys
 */
-blackbox stateful_alu sa_extract_min_node_load {
-    reg: reg_min_node_load;
-    output_value: register_hi;
-    output_dst: meta.tmp_node;
-}
-
 action lookup_rkey(rkey_index) {
-    sa_extract_min_node_load.execute_stateful_alu(0);
     modify_field(meta.rkey_index, rkey_index);
 }
 
 action set_default_dst_node() {
-    bit_and(meta.tmp_node, pegasus.keyhash, HASH_MASK);
+    bit_and(meta.node, pegasus.keyhash, 3);
+    modify_field(meta.rkey_index, RKEY_NONE);
 }
 
 @pragma stage 0
@@ -494,504 +427,1394 @@ table tab_replicated_keys {
 }
 
 /*
-   extract rnode (1-4)
-*/
-blackbox stateful_alu sa_extract_rnode_1 {
-    reg: reg_rnode_1;
-    output_value: register_lo;
-    output_dst: meta.rnode_1;
+   rkey version number
+ */
+blackbox stateful_alu sa_get_rkey_ver_next {
+    reg: reg_rkey_ver_next;
+    update_lo_1_value: register_lo + 1;
+    output_value: alu_lo;
+    output_dst: pegasus.ver;
 }
-blackbox stateful_alu sa_extract_rnode_2 {
-    reg: reg_rnode_2;
+blackbox stateful_alu sa_get_rkey_ver_curr {
+    reg: reg_rkey_ver_curr;
     output_value: register_lo;
-    output_dst: meta.rnode_2;
+    output_dst: pegasus.ver;
 }
-blackbox stateful_alu sa_extract_rnode_3 {
-    reg: reg_rnode_3;
-    output_value: register_lo;
-    output_dst: meta.rnode_3;
+blackbox stateful_alu sa_compare_rkey_ver_curr {
+    reg: reg_rkey_ver_curr;
+    condition_lo: pegasus.ver == register_lo;
+    output_predicate: condition_lo;
+    output_value: combined_predicate;
+    output_dst: meta.ver_matched;
 }
-blackbox stateful_alu sa_extract_rnode_4 {
-    reg: reg_rnode_4;
-    output_value: register_lo;
-    output_dst: meta.rnode_4;
+blackbox stateful_alu sa_set_rkey_ver_curr {
+    reg: reg_rkey_ver_curr;
+    condition_lo: pegasus.ver > register_lo;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: pegasus.ver;
+    output_predicate: condition_lo;
+    output_value: combined_predicate;
+    output_dst: meta.ver_matched;
 }
 
-action extract_rnode_1() {
-    sa_extract_rnode_1.execute_stateful_alu(meta.rkey_index);
+action get_rkey_ver_next() {
+    sa_get_rkey_ver_next.execute_stateful_alu(meta.rkey_index);
 }
-action extract_rnode_2() {
-    sa_extract_rnode_2.execute_stateful_alu(meta.rkey_index);
+action get_rkey_ver_curr() {
+    sa_get_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
 }
-action extract_rnode_3() {
-    sa_extract_rnode_3.execute_stateful_alu(meta.rkey_index);
+action compare_rkey_ver_curr() {
+    sa_compare_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
 }
-action extract_rnode_4() {
-    sa_extract_rnode_4.execute_stateful_alu(meta.rkey_index);
+action set_rkey_ver_curr() {
+    sa_set_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
 }
 
-table tab_extract_rnode_1 {
+@pragma stage 1
+table tab_get_rkey_ver_next {
     actions {
-        extract_rnode_1;
+        get_rkey_ver_next;
     }
-    default_action: extract_rnode_1;
+    default_action: get_rkey_ver_next;
     size: 1;
 }
-table tab_extract_rnode_2 {
+@pragma stage 1
+table tab_get_rkey_ver_curr {
     actions {
-        extract_rnode_2;
+        get_rkey_ver_curr;
     }
-    default_action: extract_rnode_2;
+    default_action: get_rkey_ver_curr;
     size: 1;
 }
-table tab_extract_rnode_3 {
+@pragma stage 1
+table tab_compare_rkey_ver_curr_a {
     actions {
-        extract_rnode_3;
+        compare_rkey_ver_curr;
     }
-    default_action: extract_rnode_3;
+    default_action: compare_rkey_ver_curr;
     size: 1;
 }
-table tab_extract_rnode_4 {
+@pragma stage 1
+table tab_compare_rkey_ver_curr_b {
     actions {
-        extract_rnode_4;
+        compare_rkey_ver_curr;
     }
-    default_action: extract_rnode_4;
+    default_action: compare_rkey_ver_curr;
+    size: 1;
+}
+@pragma stage 1
+table tab_set_rkey_ver_curr_a {
+    actions {
+        set_rkey_ver_curr;
+    }
+    default_action: set_rkey_ver_curr;
+    size: 1;
+}
+@pragma stage 1
+table tab_set_rkey_ver_curr_b {
+    actions {
+        set_rkey_ver_curr;
+    }
+    default_action: set_rkey_ver_curr;
     size: 1;
 }
 
 /*
-   find min rnode (1-4)
-*/
-blackbox stateful_alu sa_find_min_rnode_1 {
-    reg: reg_node_load_1;
+   get/update node load, and check overload
+ */
+blackbox stateful_alu sa_get_node_load {
+    reg: reg_node_load;
     output_value: register_lo;
-    output_dst: meta.min_rload;
+    output_dst: meta.load;
 }
-blackbox stateful_alu sa_find_min_rnode_2 {
-    reg: reg_node_load_2;
-    condition_lo: register_lo < meta.min_rload;
-    output_predicate: condition_lo;
-    output_value: register_lo;
-    output_dst: meta.tmp_load;
-}
-blackbox stateful_alu sa_find_min_rnode_3_a {
-    reg: reg_node_load_3;
-    condition_lo: register_lo < meta.min_rload;
-    output_predicate: condition_lo;
-    output_value: register_lo;
-    output_dst: meta.tmp_load;
-}
-blackbox stateful_alu sa_find_min_rnode_3_b {
-    reg: reg_node_load_3;
-    condition_lo: register_lo < meta.tmp_load;
-    output_predicate: condition_lo;
-    output_value: register_lo;
-    output_dst: meta.tmp_load;
-}
-blackbox stateful_alu sa_find_min_rnode_4_a {
-    reg: reg_node_load_4;
-    condition_lo: register_lo < meta.min_rload;
-    output_predicate: condition_lo;
-    output_value: register_lo;
-    output_dst: meta.tmp_load;
-}
-blackbox stateful_alu sa_find_min_rnode_4_b {
-    reg: reg_node_load_4;
-    condition_lo: register_lo < meta.tmp_load;
-    output_predicate: condition_lo;
-    output_value: register_lo;
-    output_dst: meta.tmp_load;
+blackbox stateful_alu sa_update_node_load {
+    reg: reg_node_load;
+    update_lo_1_value: pegasus.load;
 }
 
-action find_min_rnode_1() {
-    sa_find_min_rnode_1.execute_stateful_alu(meta.rnode_1);
+action get_node_load() {
+    sa_get_node_load.execute_stateful_alu(meta.node);
 }
-action find_min_rnode_2() {
-    sa_find_min_rnode_2.execute_stateful_alu(meta.rnode_2);
-}
-action find_min_rnode_3_a() {
-    sa_find_min_rnode_3_a.execute_stateful_alu(meta.rnode_3);
-}
-action find_min_rnode_3_b() {
-    sa_find_min_rnode_3_b.execute_stateful_alu(meta.rnode_3);
-}
-action find_min_rnode_4_a() {
-    sa_find_min_rnode_4_a.execute_stateful_alu(meta.rnode_4);
-}
-action find_min_rnode_4_b() {
-    sa_find_min_rnode_4_b.execute_stateful_alu(meta.rnode_4);
+action update_node_load() {
+    sa_update_node_load.execute_stateful_alu(pegasus.node);
 }
 
-@pragma stage 2
-table tab_find_min_rnode_1 {
+@pragma stage 9
+table tab_get_node_load {
     actions {
-        find_min_rnode_1;
+        get_node_load;
     }
-    default_action: find_min_rnode_1;
+    default_action: get_node_load;
+    size: 1;
+}
+@pragma stage 9
+table tab_update_node_load {
+    actions {
+        update_node_load;
+    }
+    default_action: update_node_load;
+    size: 1;
+}
+
+/*
+   dummies
+ */
+blackbox stateful_alu sa_dummy {
+    reg: reg_rkey_ver_curr;
+}
+
+action dummy() {
+    sa_dummy.execute_stateful_alu(0);
+}
+
+@pragma stage 1
+table tab_dummy {
+    actions {
+        dummy;
+    }
+    default_action: dummy;
+    size: 1;
+}
+
+/*
+   get/set/compare min node
+ */
+blackbox stateful_alu sa_get_min_node {
+    reg: reg_min_node;
+    output_value: register_hi;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_compare_min_node {
+    reg: reg_min_node;
+    condition_lo: pegasus.load < register_lo;
+    condition_hi: pegasus.node == register_hi;
+    update_lo_1_predicate: condition_lo or condition_hi;
+    update_lo_1_value: pegasus.load;
+    update_hi_1_predicate: condition_lo;
+    update_hi_1_value: pegasus.node;
+}
+
+action get_min_node() {
+    sa_get_min_node.execute_stateful_alu(0);
+}
+action compare_min_node() {
+    sa_compare_min_node.execute_stateful_alu(0);
+}
+
+@pragma stage 10
+table tab_get_min_node_a {
+    actions {
+        get_min_node;
+    }
+    default_action: get_min_node;
+    size: 1;
+}
+@pragma stage 10
+table tab_get_min_node_b {
+    actions {
+        get_min_node;
+    }
+    default_action: get_min_node;
+    size: 1;
+}
+@pragma stage 10
+table tab_compare_min_node {
+    actions {
+        compare_min_node;
+    }
+    default_action: compare_min_node;
+    size: 1;
+}
+
+/*
+   get/set rkey min node
+ */
+blackbox stateful_alu sa_get_rkey_min_node {
+    reg: reg_rkey_min_node;
+    output_value: register_hi;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_set_rkey_min_node {
+    reg: reg_rkey_min_node;
+     // okay to set 0...will be updated by subsequent packets
+    update_lo_1_value: 0;
+    update_hi_1_value: meta.node;
+}
+blackbox stateful_alu sa_compare_rkey_min_node {
+    reg: reg_rkey_min_node;
+    condition_lo: meta.load < register_lo;
+    condition_hi: meta.node == register_hi;
+    update_lo_1_predicate: condition_lo or condition_hi;
+    update_lo_1_value: meta.load;
+    update_hi_1_predicate: condition_lo or condition_hi;
+    update_hi_1_value: meta.node;
+}
+
+action get_rkey_min_node() {
+    sa_get_rkey_min_node.execute_stateful_alu(meta.rkey_index);
+}
+action set_rkey_min_node() {
+    sa_set_rkey_min_node.execute_stateful_alu(meta.rkey_index);
+}
+action compare_rkey_min_node() {
+    sa_compare_rkey_min_node.execute_stateful_alu(meta.probe_rkey_index);
+}
+
+@pragma stage 10
+table tab_get_rkey_min_node {
+    actions {
+        get_rkey_min_node;
+    }
+    default_action: get_rkey_min_node;
+    size: 1;
+}
+@pragma stage 10
+table tab_set_rkey_min_node_a {
+    actions {
+        set_rkey_min_node;
+    }
+    default_action: set_rkey_min_node;
+    size: 1;
+}
+@pragma stage 10
+table tab_set_rkey_min_node_b {
+    actions {
+        set_rkey_min_node;
+    }
+    default_action: set_rkey_min_node;
+    size: 1;
+}
+@pragma stage 10
+table tab_compare_rkey_min_node {
+    actions {
+        compare_rkey_min_node;
+    }
+    default_action: compare_rkey_min_node;
+    size: 1;
+}
+
+/*
+   get/set rset (1-4)
+*/
+blackbox stateful_alu sa_get_rset_1 {
+    reg: reg_rset_1;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_set_rset_1 {
+    reg: reg_rset_1;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_2 {
+    reg: reg_rset_2;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_2 {
+    reg: reg_rset_2;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_3 {
+    reg: reg_rset_3;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_3 {
+    reg: reg_rset_3;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_4 {
+    reg: reg_rset_4;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_4 {
+    reg: reg_rset_4;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_5 {
+    reg: reg_rset_5;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_5 {
+    reg: reg_rset_5;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_6 {
+    reg: reg_rset_6;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_6 {
+    reg: reg_rset_6;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_7 {
+    reg: reg_rset_7;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_7 {
+    reg: reg_rset_7;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_8 {
+    reg: reg_rset_8;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_8 {
+    reg: reg_rset_8;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_9 {
+    reg: reg_rset_9;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_9 {
+    reg: reg_rset_9;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_10 {
+    reg: reg_rset_10;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_10 {
+    reg: reg_rset_10;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_11 {
+    reg: reg_rset_11;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_11 {
+    reg: reg_rset_11;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_12 {
+    reg: reg_rset_12;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_12 {
+    reg: reg_rset_12;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_13 {
+    reg: reg_rset_13;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_13 {
+    reg: reg_rset_13;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_14 {
+    reg: reg_rset_14;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_14 {
+    reg: reg_rset_14;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_15 {
+    reg: reg_rset_15;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_15 {
+    reg: reg_rset_15;
+    update_lo_1_value: pegasus.node;
+}
+blackbox stateful_alu sa_get_rset_16 {
+    reg: reg_rset_16;
+    output_value: register_lo;
+    output_dst: meta.node;
+}
+blackbox stateful_alu sa_install_rset_16 {
+    reg: reg_rset_16;
+    update_lo_1_value: pegasus.node;
+}
+
+action get_rset_1() {
+    sa_get_rset_1.execute_stateful_alu(meta.probe_rkey_index);
+}
+action set_rset_1() {
+    sa_set_rset_1.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_2() {
+    sa_get_rset_2.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_2() {
+    sa_install_rset_2.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_3() {
+    sa_get_rset_3.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_3() {
+    sa_install_rset_3.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_4() {
+    sa_get_rset_4.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_4() {
+    sa_install_rset_4.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_5() {
+    sa_get_rset_5.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_5() {
+    sa_install_rset_5.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_6() {
+    sa_get_rset_6.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_6() {
+    sa_install_rset_6.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_7() {
+    sa_get_rset_7.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_7() {
+    sa_install_rset_7.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_8() {
+    sa_get_rset_8.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_8() {
+    sa_install_rset_8.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_9() {
+    sa_get_rset_9.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_9() {
+    sa_install_rset_9.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_10() {
+    sa_get_rset_10.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_10() {
+    sa_install_rset_10.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_11() {
+    sa_get_rset_11.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_11() {
+    sa_install_rset_11.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_12() {
+    sa_get_rset_12.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_12() {
+    sa_install_rset_12.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_13() {
+    sa_get_rset_13.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_13() {
+    sa_install_rset_13.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_14() {
+    sa_get_rset_14.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_14() {
+    sa_install_rset_14.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_15() {
+    sa_get_rset_15.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_15() {
+    sa_install_rset_15.execute_stateful_alu(meta.rkey_index);
+}
+action get_rset_16() {
+    sa_get_rset_16.execute_stateful_alu(meta.probe_rkey_index);
+}
+action install_rset_16() {
+    sa_install_rset_16.execute_stateful_alu(meta.rkey_index);
+}
+
+@pragma stage 5
+table tab_get_rset_1 {
+    actions {
+        get_rset_1;
+    }
+    default_action: get_rset_1;
+    size: 1;
+}
+@pragma stage 5
+table tab_set_rset_1_a {
+    actions {
+        set_rset_1;
+    }
+    default_action: set_rset_1;
+    size: 1;
+}
+@pragma stage 5
+table tab_set_rset_1_b {
+    actions {
+        set_rset_1;
+    }
+    default_action: set_rset_1;
+    size: 1;
+}
+@pragma stage 5
+table tab_get_rset_2 {
+    actions {
+        get_rset_2;
+    }
+    default_action: get_rset_2;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_2_a {
+    actions {
+        install_rset_2;
+    }
+    default_action: install_rset_2;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_2_b {
+    actions {
+        install_rset_2;
+    }
+    default_action: install_rset_2;
+    size: 1;
+}
+@pragma stage 5
+table tab_get_rset_3 {
+    actions {
+        get_rset_3;
+    }
+    default_action: get_rset_3;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_3_a {
+    actions {
+        install_rset_3;
+    }
+    default_action: install_rset_3;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_3_b {
+    actions {
+        install_rset_3;
+    }
+    default_action: install_rset_3;
+    size: 1;
+}
+@pragma stage 5
+table tab_get_rset_4 {
+    actions {
+        get_rset_4;
+    }
+    default_action: get_rset_4;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_4_a {
+    actions {
+        install_rset_4;
+    }
+    default_action: install_rset_4;
+    size: 1;
+}
+@pragma stage 5
+table tab_install_rset_4_b {
+    actions {
+        install_rset_4;
+    }
+    default_action: install_rset_4;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_5 {
+    actions {
+        get_rset_5;
+    }
+    default_action: get_rset_5;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_5_a {
+    actions {
+        install_rset_5;
+    }
+    default_action: install_rset_5;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_5_b {
+    actions {
+        install_rset_5;
+    }
+    default_action: install_rset_5;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_6 {
+    actions {
+        get_rset_6;
+    }
+    default_action: get_rset_6;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_6_a {
+    actions {
+        install_rset_6;
+    }
+    default_action: install_rset_6;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_6_b {
+    actions {
+        install_rset_6;
+    }
+    default_action: install_rset_6;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_7 {
+    actions {
+        get_rset_7;
+    }
+    default_action: get_rset_7;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_7_a {
+    actions {
+        install_rset_7;
+    }
+    default_action: install_rset_7;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_7_b {
+    actions {
+        install_rset_7;
+    }
+    default_action: install_rset_7;
+    size: 1;
+}
+@pragma stage 6
+table tab_get_rset_8 {
+    actions {
+        get_rset_8;
+    }
+    default_action: get_rset_8;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_8_a {
+    actions {
+        install_rset_8;
+    }
+    default_action: install_rset_8;
+    size: 1;
+}
+@pragma stage 6
+table tab_install_rset_8_b {
+    actions {
+        install_rset_8;
+    }
+    default_action: install_rset_8;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_9 {
+    actions {
+        get_rset_9;
+    }
+    default_action: get_rset_9;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_9_a {
+    actions {
+        install_rset_9;
+    }
+    default_action: install_rset_9;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_9_b {
+    actions {
+        install_rset_9;
+    }
+    default_action: install_rset_9;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_10 {
+    actions {
+        get_rset_10;
+    }
+    default_action: get_rset_10;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_10_a {
+    actions {
+        install_rset_10;
+    }
+    default_action: install_rset_10;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_10_b {
+    actions {
+        install_rset_10;
+    }
+    default_action: install_rset_10;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_11 {
+    actions {
+        get_rset_11;
+    }
+    default_action: get_rset_11;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_11_a {
+    actions {
+        install_rset_11;
+    }
+    default_action: install_rset_11;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_11_b {
+    actions {
+        install_rset_11;
+    }
+    default_action: install_rset_11;
+    size: 1;
+}
+@pragma stage 7
+table tab_get_rset_12 {
+    actions {
+        get_rset_12;
+    }
+    default_action: get_rset_12;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_12_a {
+    actions {
+        install_rset_12;
+    }
+    default_action: install_rset_12;
+    size: 1;
+}
+@pragma stage 7
+table tab_install_rset_12_b {
+    actions {
+        install_rset_12;
+    }
+    default_action: install_rset_12;
+    size: 1;
+}
+@pragma stage 8
+table tab_get_rset_13 {
+    actions {
+        get_rset_13;
+    }
+    default_action: get_rset_13;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_13_a {
+    actions {
+        install_rset_13;
+    }
+    default_action: install_rset_13;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_13_b {
+    actions {
+        install_rset_13;
+    }
+    default_action: install_rset_13;
+    size: 1;
+}
+@pragma stage 8
+table tab_get_rset_14 {
+    actions {
+        get_rset_14;
+    }
+    default_action: get_rset_14;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_14_a {
+    actions {
+        install_rset_14;
+    }
+    default_action: install_rset_14;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_14_b {
+    actions {
+        install_rset_14;
+    }
+    default_action: install_rset_14;
+    size: 1;
+}
+@pragma stage 8
+table tab_get_rset_15 {
+    actions {
+        get_rset_15;
+    }
+    default_action: get_rset_15;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_15_a {
+    actions {
+        install_rset_15;
+    }
+    default_action: install_rset_15;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_15_b {
+    actions {
+        install_rset_15;
+    }
+    default_action: install_rset_15;
+    size: 1;
+}
+@pragma stage 8
+table tab_get_rset_16 {
+    actions {
+        get_rset_16;
+    }
+    default_action: get_rset_16;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_16_a {
+    actions {
+        install_rset_16;
+    }
+    default_action: install_rset_16;
+    size: 1;
+}
+@pragma stage 8
+table tab_install_rset_16_b {
+    actions {
+        install_rset_16;
+    }
+    default_action: install_rset_16;
+    size: 1;
+}
+
+/*
+   get/set rkey/rset size
+*/
+blackbox stateful_alu sa_get_rkey_size {
+    reg: reg_rkey_size;
+    output_value: register_lo;
+    output_dst: meta.rkey_size;
+}
+blackbox stateful_alu sa_get_rset_size {
+    reg: reg_rset_size;
+    output_value: register_lo;
+    output_dst: meta.rset_size;
+}
+blackbox stateful_alu sa_set_rset_size {
+    reg: reg_rset_size;
+    update_lo_1_value: 1;
+}
+blackbox stateful_alu sa_inc_rset_size {
+    reg: reg_rset_size;
+    condition_lo: register_lo < MAX_REPLICAS;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+    output_value: register_lo;
+    output_dst: meta.rset_size;
+}
+
+action get_rkey_size() {
+    sa_get_rkey_size.execute_stateful_alu(0);
+}
+action get_rset_size_a() {
+    // for probing
+    sa_get_rset_size.execute_stateful_alu(meta.probe_rkey_index);
+}
+action get_rset_size_b() {
+    // for replicated read
+    sa_get_rset_size.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_size() {
+    sa_set_rset_size.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rset_size() {
+    sa_inc_rset_size.execute_stateful_alu(meta.rkey_index);
+}
+
+@pragma stage 0
+table tab_get_rkey_size {
+    actions {
+        get_rkey_size;
+    }
+    default_action: get_rkey_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_get_rset_size_a {
+    // for probing
+    actions {
+        get_rset_size_a;
+    }
+    default_action: get_rset_size_a;
+    size: 1;
+}
+@pragma stage 2
+table tab_get_rset_size_b {
+    // for replicated read
+    actions {
+        get_rset_size_b;
+    }
+    default_action: get_rset_size_b;
+    size: 1;
+}
+@pragma stage 2
+table tab_set_rset_size_a {
+    actions {
+        set_rset_size;
+    }
+    default_action: set_rset_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_set_rset_size_b {
+    actions {
+        set_rset_size;
+    }
+    default_action: set_rset_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_size_a {
+    actions {
+        inc_rset_size;
+    }
+    default_action: inc_rset_size;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_size_b {
+    actions {
+        inc_rset_size;
+    }
+    default_action: inc_rset_size;
+    size: 1;
+}
+
+/*
+   get probe rkey/rset counter
+ */
+blackbox stateful_alu sa_get_probe_rkey_counter {
+    reg: reg_probe_rkey_counter;
+    condition_lo: register_lo + 1 >= meta.rkey_size;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: 0;
+    update_lo_2_predicate: not condition_lo;
+    update_lo_2_value: register_lo + 1;
+    output_value: alu_lo;
+    output_dst: meta.probe_rkey_index;
+}
+blackbox stateful_alu sa_get_probe_rset_counter {
+    reg: reg_probe_rset_counter;
+    condition_lo: register_lo + 1 >= meta.rset_size;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: 0;
+    update_lo_2_predicate: not condition_lo;
+    update_lo_2_value: register_lo + 1;
+    output_value: alu_lo;
+    output_dst: meta.probe_rset_index;
+}
+
+action get_probe_rkey_counter() {
+    sa_get_probe_rkey_counter.execute_stateful_alu(0);
+}
+action get_probe_rset_counter() {
+    sa_get_probe_rset_counter.execute_stateful_alu(meta.probe_rkey_index);
+}
+
+@pragma stage 1
+table tab_get_probe_rkey_counter {
+    actions {
+        get_probe_rkey_counter;
+    }
+    default_action: get_probe_rkey_counter;
     size: 1;
 }
 @pragma stage 3
-table tab_find_min_rnode_2 {
+table tab_get_probe_rset_counter {
     actions {
-        find_min_rnode_2;
+        get_probe_rset_counter;
     }
-    default_action: find_min_rnode_2;
-    size: 1;
-}
-@pragma stage 4
-table tab_find_min_rnode_3_a {
-    actions {
-        find_min_rnode_3_a;
-    }
-    default_action: find_min_rnode_3_a;
-    size: 1;
-}
-@pragma stage 4
-table tab_find_min_rnode_3_b {
-    actions {
-        find_min_rnode_3_b;
-    }
-    default_action: find_min_rnode_3_b;
-    size: 1;
-}
-@pragma stage 5
-table tab_find_min_rnode_4_a {
-    actions {
-        find_min_rnode_4_a;
-    }
-    default_action: find_min_rnode_4_a;
-    size: 1;
-}
-@pragma stage 5
-table tab_find_min_rnode_4_b {
-    actions {
-        find_min_rnode_4_b;
-    }
-    default_action: find_min_rnode_4_b;
+    default_action: get_probe_rset_counter;
     size: 1;
 }
 
 /*
-   find min rnode id (1-4)
-*/
-blackbox stateful_alu sa_find_min_rnode_id_1 {
-    reg: reg_node_id_1;
-    output_value: register_hi;
-    output_dst: meta.tmp_node;
-}
-blackbox stateful_alu sa_find_min_rnode_id_2 {
-    reg: reg_node_id_2;
-    condition_lo: register_lo < meta.min_rload;
-    output_predicate: condition_lo;
-    output_value: register_hi;
-    output_dst: meta.tmp_node_1;
-}
-blackbox stateful_alu sa_find_min_rnode_id_3_a {
-    reg: reg_node_id_3;
-    condition_lo: register_lo < meta.min_rload;
-    output_predicate: condition_lo;
-    output_value: register_hi;
-    output_dst: meta.tmp_node_1;
-}
-blackbox stateful_alu sa_find_min_rnode_id_3_b {
-    reg: reg_node_id_3;
-    condition_lo: register_lo < meta.tmp_load;
-    output_predicate: condition_lo;
-    output_value: register_hi;
-    output_dst: meta.tmp_node_1;
-}
-blackbox stateful_alu sa_find_min_rnode_id_4_a {
-    reg: reg_node_id_4;
-    condition_lo: register_lo < meta.min_rload;
-    output_predicate: condition_lo;
-    output_value: register_hi;
-    output_dst: meta.tmp_node_1;
-}
-blackbox stateful_alu sa_find_min_rnode_id_4_b {
-    reg: reg_node_id_4;
-    condition_lo: register_lo < meta.tmp_load;
-    output_predicate: condition_lo;
-    output_value: register_hi;
-    output_dst: meta.tmp_node_1;
+   set rkey none
+ */
+action set_rkey_none() {
+    modify_field(meta.rkey_index, RKEY_NONE);
 }
 
-action find_min_rnode_id_1() {
-    sa_find_min_rnode_id_1.execute_stateful_alu(meta.rnode_1);
-}
-action find_min_rnode_id_2() {
-    sa_find_min_rnode_id_2.execute_stateful_alu(meta.rnode_2);
-}
-action find_min_rnode_id_3_a() {
-    sa_find_min_rnode_id_3_a.execute_stateful_alu(meta.rnode_3);
-}
-action find_min_rnode_id_3_b() {
-    sa_find_min_rnode_id_3_b.execute_stateful_alu(meta.rnode_3);
-}
-action find_min_rnode_id_4_a() {
-    sa_find_min_rnode_id_4_a.execute_stateful_alu(meta.rnode_4);
-}
-action find_min_rnode_id_4_b() {
-    sa_find_min_rnode_id_4_b.execute_stateful_alu(meta.rnode_4);
-}
-
-@pragma stage 2
-table tab_find_min_rnode_id_1 {
+table tab_set_rkey_none {
     actions {
-        find_min_rnode_id_1;
+        set_rkey_none;
     }
-    default_action: find_min_rnode_id_1;
-    size: 1;
-}
-@pragma stage 3
-table tab_find_min_rnode_id_2 {
-    actions {
-        find_min_rnode_id_2;
-    }
-    default_action: find_min_rnode_id_2;
-    size: 1;
-}
-@pragma stage 4
-table tab_find_min_rnode_id_3_a {
-    actions {
-        find_min_rnode_id_3_a;
-    }
-    default_action: find_min_rnode_id_3_a;
-    size: 1;
-}
-@pragma stage 4
-table tab_find_min_rnode_id_3_b {
-    actions {
-        find_min_rnode_id_3_b;
-    }
-    default_action: find_min_rnode_id_3_b;
-    size: 1;
-}
-@pragma stage 5
-table tab_find_min_rnode_id_4_a {
-    actions {
-        find_min_rnode_id_4_a;
-    }
-    default_action: find_min_rnode_id_4_a;
-    size: 1;
-}
-@pragma stage 5
-table tab_find_min_rnode_id_4_b {
-    actions {
-        find_min_rnode_id_4_b;
-    }
-    default_action: find_min_rnode_id_4_b;
+    default_action: set_rkey_none;
     size: 1;
 }
 
 /*
-   copy load node (3-4)
-*/
-action copy_load_node() {
-    modify_field(meta.min_rload, meta.tmp_load);
-    modify_field(meta.tmp_node, meta.tmp_node_1);
+   rw counter
+ */
+blackbox stateful_alu sa_get_rkey_read_counter {
+    reg: reg_rkey_read_counter;
+    output_value: register_lo;
+    output_dst: pegasus.load;
+}
+blackbox stateful_alu sa_inc_rkey_read_counter {
+    reg: reg_rkey_read_counter;
+    update_lo_1_value: register_lo + 1;
+}
+blackbox stateful_alu sa_inc_rkey_write_counter {
+    reg: reg_rkey_write_counter;
+    update_lo_1_value: register_lo + 1;
+    output_value: alu_lo;
+    output_dst: pegasus.debug_load;
 }
 
-table tab_copy_load_node_3 {
-    actions {
-        copy_load_node;
-    }
-    default_action: copy_load_node;
-    size: 1;
+action get_rkey_read_counter() {
+    sa_get_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rkey_read_counter() {
+    sa_inc_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rkey_write_counter() {
+    sa_inc_rkey_write_counter.execute_stateful_alu(meta.rkey_index);
 }
 
-table tab_copy_load_node_4 {
+table tab_get_rkey_read_counter {
     actions {
-        copy_load_node;
+        get_rkey_read_counter;
     }
-    default_action: copy_load_node;
+    default_action: get_rkey_read_counter;
     size: 1;
 }
-
-table tab_copy_load_node_last {
+table tab_inc_rkey_read_counter {
     actions {
-        copy_load_node;
+        inc_rkey_read_counter;
     }
-    default_action: copy_load_node;
+    default_action: inc_rkey_read_counter;
     size: 1;
 }
-
-/*
-   update rnode (1-4)
-*/
-blackbox stateful_alu sa_update_rnode_1 {
-    reg: reg_rnode_1;
-    update_lo_1_value: meta.tmp_node;
-}
-blackbox stateful_alu sa_update_rnode_2 {
-    reg: reg_rnode_2;
-    update_lo_1_value: RNODE_NONE;
-}
-blackbox stateful_alu sa_update_rnode_3 {
-    reg: reg_rnode_3;
-    update_lo_1_value: RNODE_NONE;
-}
-blackbox stateful_alu sa_update_rnode_4 {
-    reg: reg_rnode_4;
-    update_lo_1_value: RNODE_NONE;
-}
-
-action update_rnode_1() {
-    sa_update_rnode_1.execute_stateful_alu(meta.rkey_index);
-}
-action update_rnode_2() {
-    sa_update_rnode_2.execute_stateful_alu(meta.rkey_index);
-}
-action update_rnode_3() {
-    sa_update_rnode_3.execute_stateful_alu(meta.rkey_index);
-}
-action update_rnode_4() {
-    sa_update_rnode_4.execute_stateful_alu(meta.rkey_index);
-}
-
-table tab_update_rnode_1 {
+table tab_inc_rkey_write_counter {
     actions {
-        update_rnode_1;
+        inc_rkey_write_counter;
     }
-    default_action: update_rnode_1;
-    size: 1;
-}
-table tab_update_rnode_2 {
-    actions {
-        update_rnode_2;
-    }
-    default_action: update_rnode_2;
-    size: 1;
-}
-table tab_update_rnode_3 {
-    actions {
-        update_rnode_3;
-    }
-    default_action: update_rnode_3;
-    size: 1;
-}
-table tab_update_rnode_4 {
-    actions {
-        update_rnode_4;
-    }
-    default_action: update_rnode_4;
+    default_action: inc_rkey_write_counter;
     size: 1;
 }
 
 /*
-   debug
-*/
-action debug() {
-    modify_field(pegasus.node, meta.tmp_node);
-    modify_field(pegasus.load, meta.tmp_load);
+   copy header
+ */
+action copy_pegasus_header() {
+    modify_field(meta.node, pegasus.node);
+    modify_field(meta.load, pegasus.load);
 }
 
-table tab_debug {
+table tab_copy_pegasus_header_a {
     actions {
-        debug;
+        copy_pegasus_header;
     }
-    default_action: debug;
+    default_action: copy_pegasus_header;
+    size: 1;
+}
+table tab_copy_pegasus_header_b {
+    actions {
+        copy_pegasus_header;
+    }
+    default_action: copy_pegasus_header;
+    size: 1;
+}
+table tab_copy_pegasus_header_c {
+    actions {
+        copy_pegasus_header;
+    }
+    default_action: copy_pegasus_header;
     size: 1;
 }
 
-control process_pegasus_reply {
-    // stage 0
-    apply(tab_copy_pegasus_header);
-    apply(tab_update_min_node_load);
-    // stage 2
-    apply(tab_update_node_load_1);
-    apply(tab_update_node_id_1);
-    // stage 3
-    apply(tab_update_node_load_2);
-    apply(tab_update_node_id_2);
-    // stage 4
-    apply(tab_update_node_load_3);
-    apply(tab_update_node_id_3);
-    // stage 5
-    apply(tab_update_node_load_4);
-    apply(tab_update_node_id_4);
-    // stage ?
+control process_dec {
+    apply(tab_do_drop);
+}
+
+control process_mgr {
+    // Should never receive MGR message
+    apply(tab_do_drop);
+}
+
+control process_mgr_req {
     apply(tab_l2_forward);
 }
 
-control process_pegasus_request {
-    // stage 0
-    apply(tab_replicated_keys) {
-        hit {
-            if (pegasus.op == OP_GET) {
-                // stage 1-6
-                process_replicated_read();
-            } else {
-                // stage 1
-                process_replicated_write();
+control process_mgr_ack {
+    if (meta.rkey_index != RKEY_NONE) {
+        apply(tab_copy_pegasus_header_a);
+        apply(tab_set_rkey_ver_curr_a);
+        if (meta.ver_matched != 0) {
+            // Higher version number
+            apply(tab_set_rset_size_a);
+            apply(tab_set_rset_1_a);
+            apply(tab_set_rkey_min_node_a);
+            apply(tab_do_drop);
+        } else {
+            apply(tab_do_resubmit);
+        }
+    } else {
+        apply(tab_do_drop);
+    }
+}
+
+control process_resubmit_mgr_ack {
+    if (meta.rkey_index != RKEY_NONE) {
+        apply(tab_compare_rkey_ver_curr_a);
+        if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_size_a);
+            if (meta.rset_size == 1) {
+                apply(tab_install_rset_2_a);
+            } else if (meta.rset_size == 2) {
+                apply(tab_install_rset_3_a);
+            } else if (meta.rset_size == 3) {
+                apply(tab_install_rset_4_a);
+            } else if (meta.rset_size == 4) {
+                apply(tab_install_rset_5_a);
+            } else if (meta.rset_size == 5) {
+                apply(tab_install_rset_6_a);
+            } else if (meta.rset_size == 6) {
+                apply(tab_install_rset_7_a);
+            } else if (meta.rset_size == 7) {
+                apply(tab_install_rset_8_a);
+            } else if (meta.rset_size == 8) {
+                apply(tab_install_rset_9_a);
+            } else if (meta.rset_size == 9) {
+                apply(tab_install_rset_10_a);
+            } else if (meta.rset_size == 10) {
+                apply(tab_install_rset_11_a);
+            } else if (meta.rset_size == 11) {
+                apply(tab_install_rset_12_a);
+            } else if (meta.rset_size == 12) {
+                apply(tab_install_rset_13_a);
+            } else if (meta.rset_size == 13) {
+                apply(tab_install_rset_14_a);
+            } else if (meta.rset_size == 14) {
+                apply(tab_install_rset_15_a);
+            } else if (meta.rset_size == 15) {
+                apply(tab_install_rset_16_a);
             }
         }
     }
-    // stage 7
+    apply(tab_do_drop);
+}
+
+control process_request {
+    if (meta.rkey_index != RKEY_NONE) {
+        if (pegasus.op == OP_GET) {
+            process_replicated_read();
+        } else {
+            process_replicated_write();
+        }
+    } else {
+        apply(tab_copy_pegasus_header_b);
+    }
     apply(tab_node_forward);
-    apply(tab_debug);
 }
 
 control process_replicated_read {
-    // stage 1
-    apply(tab_extract_rnode_1);
-    apply(tab_extract_rnode_2);
-    apply(tab_extract_rnode_3);
-    apply(tab_extract_rnode_4);
-    // stage 2
-    if (meta.rnode_1 != RNODE_NONE) {
-        apply(tab_find_min_rnode_id_1);
-        apply(tab_find_min_rnode_1);
-    }
-    // stage 3
-    if (meta.rnode_2 != RNODE_NONE) {
-        apply(tab_find_min_rnode_id_2);
-        apply(tab_find_min_rnode_2);
-    }
-    // stage 4
-    if (meta.rnode_3 != RNODE_NONE) {
-        if (meta.tmp_load == 0) {
-            apply(tab_find_min_rnode_id_3_a);
-            apply(tab_find_min_rnode_3_a);
-        } else {
-            apply(tab_copy_load_node_3);
-            apply(tab_find_min_rnode_id_3_b);
-            apply(tab_find_min_rnode_3_b);
-        }
-    }
-    // stage 5
-    if (meta.rnode_4 != RNODE_NONE) {
-        if (meta.tmp_load == 0) {
-            apply(tab_find_min_rnode_id_4_a);
-            apply(tab_find_min_rnode_4_a);
-        } else {
-            apply(tab_copy_load_node_4);
-            apply(tab_find_min_rnode_id_4_b);
-            apply(tab_find_min_rnode_4_b);
-        }
-    }
-    // stage 6
-    if (meta.tmp_load != 0) {
-        apply(tab_copy_load_node_last);
+    apply(tab_get_rkey_ver_curr);
+    apply(tab_inc_rkey_read_counter);
+    apply(tab_get_rset_size_b);
+    if (meta.rset_size != MAX_REPLICAS) {
+        apply(tab_get_rkey_min_node);
+    } else {
+        apply(tab_get_min_node_a);
     }
 }
 
 control process_replicated_write {
-    // stage 1
-    apply(tab_update_rnode_1);
-    apply(tab_update_rnode_2);
-    apply(tab_update_rnode_3);
-    apply(tab_update_rnode_4);
+    apply(tab_get_rkey_ver_next);
+    apply(tab_get_rkey_read_counter);
+    apply(tab_inc_rkey_write_counter);
+    apply(tab_get_min_node_b);
+}
+
+control process_reply {
+    apply(tab_get_rkey_size);
+    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
+        // For replicated write replies, check if version number higher
+        apply(tab_copy_pegasus_header_c);
+        apply(tab_set_rkey_ver_curr_b);
+        if (meta.ver_matched != 0) {
+            // Higher version number
+            apply(tab_set_rset_size_b);
+            apply(tab_set_rset_1_b);
+            apply(tab_set_rkey_min_node_b);
+            // Don't check equal version number on resubmit
+            apply(tab_set_rkey_none);
+        }
+    } else {
+        // For all other replies, probe rkey min node
+        // Probe rkey min node
+        if (meta.rkey_size != 0) {
+            apply(tab_get_probe_rkey_counter);
+            apply(tab_get_rset_size_a);
+            apply(tab_get_probe_rset_counter);
+            if (meta.probe_rset_index == 0) {
+                apply(tab_get_rset_1);
+            } else if (meta.probe_rset_index == 1) {
+                apply(tab_get_rset_2);
+            } else if (meta.probe_rset_index == 2) {
+                apply(tab_get_rset_3);
+            } else if (meta.probe_rset_index == 3) {
+                apply(tab_get_rset_4);
+            } else if (meta.probe_rset_index == 4) {
+                apply(tab_get_rset_5);
+            } else if (meta.probe_rset_index == 5) {
+                apply(tab_get_rset_6);
+            } else if (meta.probe_rset_index == 6) {
+                apply(tab_get_rset_7);
+            } else if (meta.probe_rset_index == 7) {
+                apply(tab_get_rset_8);
+            } else if (meta.probe_rset_index == 8) {
+                apply(tab_get_rset_9);
+            } else if (meta.probe_rset_index == 9) {
+                apply(tab_get_rset_10);
+            } else if (meta.probe_rset_index == 10) {
+                apply(tab_get_rset_11);
+            } else if (meta.probe_rset_index == 11) {
+                apply(tab_get_rset_12);
+            } else if (meta.probe_rset_index == 12) {
+                apply(tab_get_rset_13);
+            } else if (meta.probe_rset_index == 13) {
+                apply(tab_get_rset_14);
+            } else if (meta.probe_rset_index == 14) {
+                apply(tab_get_rset_15);
+            } else if (meta.probe_rset_index == 15) {
+                apply(tab_get_rset_16);
+            }
+            if (meta.node != RNODE_NONE) {
+                apply(tab_get_node_load);
+                apply(tab_compare_rkey_min_node);
+            }
+        }
+    }
+    // Check min node
+    apply(tab_compare_min_node);
+    // Update node load on the resubmit path
+    // (can't do it here because we've already used node load
+    apply(tab_do_resubmit);
+}
+
+control process_resubmit_reply {
+    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
+        // For replicated write replies, check if version number equal
+        apply(tab_compare_rkey_ver_curr_b);
+        if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_size_b);
+            if (meta.rset_size == 1) {
+                apply(tab_install_rset_2_b);
+            } else if (meta.rset_size == 2) {
+                apply(tab_install_rset_3_b);
+            } else if (meta.rset_size == 3) {
+                apply(tab_install_rset_4_b);
+            } else if (meta.rset_size == 4) {
+                apply(tab_install_rset_5_b);
+            } else if (meta.rset_size == 5) {
+                apply(tab_install_rset_6_b);
+            } else if (meta.rset_size == 6) {
+                apply(tab_install_rset_7_b);
+            } else if (meta.rset_size == 7) {
+                apply(tab_install_rset_8_b);
+            } else if (meta.rset_size == 8) {
+                apply(tab_install_rset_9_b);
+            } else if (meta.rset_size == 9) {
+                apply(tab_install_rset_10_b);
+            } else if (meta.rset_size == 10) {
+                apply(tab_install_rset_11_b);
+            } else if (meta.rset_size == 11) {
+                apply(tab_install_rset_12_b);
+            } else if (meta.rset_size == 12) {
+                apply(tab_install_rset_13_b);
+            } else if (meta.rset_size == 13) {
+                apply(tab_install_rset_14_b);
+            } else if (meta.rset_size == 14) {
+                apply(tab_install_rset_15_b);
+            } else if (meta.rset_size == 15) {
+                apply(tab_install_rset_16_b);
+            }
+        }
+    }
+    apply(tab_update_node_load);
+    apply(tab_l2_forward);
 }
 
 control ingress {
-    if (valid(pegasus)) {
-        if (pegasus.op == OP_REP) {
-            process_pegasus_reply();
+    if (0 == ig_intr_md.resubmit_flag) {
+        if (valid(pegasus)) {
+            if (pegasus.op == OP_DEC) {
+                process_dec();
+            } else if (pegasus.op == OP_MGR) {
+                process_mgr();
+            } else if (pegasus.op == OP_MGR_REQ) {
+                process_mgr_req();
+            } else {
+                apply(tab_replicated_keys);
+                if (pegasus.op == OP_REP_R or pegasus.op == OP_REP_W) {
+                    process_reply();
+                } else if (pegasus.op == OP_MGR_ACK) {
+                    process_mgr_ack();
+                } else {
+                    process_request();
+                }
+            }
         } else {
-            process_pegasus_request();
+            apply(tab_l2_forward);
         }
     } else {
-        apply(tab_l2_forward);
+        if (valid(pegasus)) {
+            if (pegasus.op == OP_REP_R or pegasus.op == OP_REP_W) {
+                process_resubmit_reply();
+            } else if (pegasus.op == OP_MGR_ACK) {
+                process_resubmit_mgr_ack();
+            } else {
+                apply(tab_do_drop);
+            }
+        }
     }
 }
 
