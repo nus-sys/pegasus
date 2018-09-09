@@ -7,14 +7,18 @@ using std::string;
 
 namespace memcachekv {
 
-KVWorkloadGenerator::KVWorkloadGenerator(const std::vector<std::string> *keys,
+KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
                                          int value_len,
                                          float get_ratio,
                                          float put_ratio,
                                          int mean_interval,
                                          float alpha,
-                                         KeyType key_type)
-    : keys(keys), get_ratio(get_ratio), put_ratio(put_ratio), key_type(key_type)
+                                         KeyType key_type,
+                                         DynamismType d_type,
+                                         int d_interval,
+                                         int d_nkeys)
+    : keys(keys), get_ratio(get_ratio), put_ratio(put_ratio), key_type(key_type),
+    d_type(d_type), d_interval(d_interval), d_nkeys(d_nkeys)
 {
     this->value = string(value_len, 'v');
     if (key_type == ZIPF) {
@@ -36,6 +40,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(const std::vector<std::string> *keys,
     struct timeval time;
     gettimeofday(&time, nullptr);
     this->generator.seed(time.tv_sec * 1000000 + time.tv_usec);
+    this->last_interval = time;
 }
 
 int
@@ -78,6 +83,15 @@ KVWorkloadGenerator::next_op_type()
 NextOperation
 KVWorkloadGenerator::next_operation()
 {
+    if (this->d_type != DynamismType::NONE) {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        if (latency(this->last_interval, tv) >= this->d_interval) {
+            this->last_interval = tv;
+            change_keys();
+        }
+    }
+
     Operation op;
     switch (this->key_type) {
     case UNIFORM: {
@@ -98,6 +112,32 @@ KVWorkloadGenerator::next_operation()
     }
 
     return NextOperation(this->poisson_dist(this->generator), op);
+}
+
+void
+KVWorkloadGenerator::change_keys()
+{
+    switch (this->d_type) {
+    case DynamismType::HOTIN: {
+        for (int i = 0; i < this->d_nkeys; i++) {
+            this->keys->push_front(this->keys->back());
+            this->keys->pop_back();
+        }
+        break;
+    }
+    case DynamismType::RANDOM: {
+        for (int i = 0; i < this->d_nkeys; i++) {
+            int k1 = rand() % 10000;
+            int k2 = rand() % this->keys->size();
+            std::string tmp = this->keys->at(k1);
+            this->keys->at(k1) = this->keys->at(k2);
+            this->keys->at(k2) = tmp;
+        }
+        break;
+    }
+    default:
+        panic("Unknown dynamism type");
+    }
 }
 
 Client::Client(Transport *transport,

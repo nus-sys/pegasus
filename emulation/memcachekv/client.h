@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <deque>
 #include <sys/time.h>
 #include <unordered_map>
 #include <random>
@@ -26,32 +27,47 @@ enum KeyType {
     ZIPF
 };
 
+enum DynamismType {
+    NONE,
+    HOTIN,
+    RANDOM
+};
+
 class KVWorkloadGenerator {
 public:
-    KVWorkloadGenerator(const std::vector<std::string> *keys,
+    KVWorkloadGenerator(std::deque<std::string> *keys,
                         int value_len,
                         float get_ratio,
                         float put_ratio,
                         int mean_interval,
                         float alpha,
-                        KeyType key_type);
+                        KeyType key_type,
+                        DynamismType d_type,
+                        int d_interval,
+                        int d_nkeys);
     ~KVWorkloadGenerator() {};
 
     NextOperation next_operation();
 private:
     int next_zipf_key_index();
     Operation::Type next_op_type();
+    void change_keys();
 
-    const std::vector<std::string> *keys;
+    std::deque<std::string> *keys;
     float get_ratio;
     float put_ratio;
     KeyType key_type;
+    DynamismType d_type;
+    int d_interval;
+    int d_nkeys;
+
     std::string value;
     std::vector<float> zipfs;
     std::default_random_engine generator;
     std::uniform_real_distribution<float> unif_real_dist;
     std::uniform_int_distribution<int> unif_int_dist;
     std::poisson_distribution<int> poisson_dist;
+    struct timeval last_interval;
 };
 
 struct PendingRequest {
