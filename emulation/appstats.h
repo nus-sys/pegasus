@@ -4,11 +4,12 @@
 #include <sys/time.h>
 #include <fstream>
 #include <map>
+#include <vector>
 
 class Stats {
 public:
     Stats();
-    Stats(const char *stats_file);
+    Stats(const char *stats_file, int interval, const char *interval_file = nullptr);
     virtual ~Stats();
 
     void report_issue();
@@ -25,9 +26,13 @@ protected:
     std::ofstream file_stream;
 
 private:
+    int interval;
+    std::string interval_file;
     struct timeval start_time;
     struct timeval end_time;
+    struct timeval last_interval;
     std::map<int, uint64_t> latencies; /* sorted latency */
+    std::vector<std::map<int, uint64_t> > interval_latencies;
 };
 
 #endif /* __APP_STATS_H__ */

@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, key_len = 64, nkeys = 1, duration = 1, app_core = -1, transport_core = -1;
+    int value_len = 256, key_len = 64, nkeys = 1, duration = 1, app_core = -1, transport_core = -1, interval = 0;
     const char *config_file_path = nullptr, *stats_file_path = nullptr;
     CodecMode codec_mode = WIRE;
 
@@ -123,7 +123,7 @@ int main(int argc, char *argv[])
 
     switch (mode) {
     case CLIENT: {
-        stats = new Stats(stats_file_path);
+        stats = new Stats(stats_file_path, interval);
         app = new memcachekv::MigrationClient(&transport, &node_config, codec, stats, nkeys, key_len, value_len);
         transport.register_node(app, &node_config, -1);
         node = new Node(-1, &transport, app, true, app_core, transport_core);

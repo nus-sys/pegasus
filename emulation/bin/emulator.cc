@@ -43,9 +43,9 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, app_core = -1, transport_core = -1, dscp = -1, dec_interval = 1000, n_dec = 1, num_rkeys = 32;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, app_core = -1, transport_core = -1, dscp = -1, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
-    const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr;
+    const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
     std::vector<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, sigterm_handler);
     std::srand(unsigned(std::time(0)));
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:A:B:C:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:A:B:C:D:E:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -211,6 +211,19 @@ int main(int argc, char *argv[])
             }
             break;
         }
+        case 'D': {
+            interval = stoi(std::string(optarg));
+            interval *= 1000000;
+            if (interval < 0) {
+                printf("interval should be >= 0\n");
+                exit(1);
+            }
+            break;
+        }
+        case 'E': {
+            interval_file_path = optarg;
+            break;
+        }
         default:
             printf("Unknown argument %s\n", argv[optind]);
             break;
@@ -279,7 +292,7 @@ int main(int argc, char *argv[])
             printf("client requires argument '-e <client id>'\n");
             exit(1);
         }
-        stats = new memcachekv::MemcacheKVStats(stats_file_path);
+        stats = new memcachekv::MemcacheKVStats(stats_file_path, interval, interval_file_path);
         gen = new memcachekv::KVWorkloadGenerator(&keys,
                                                   value_len,
                                                   get_ratio,

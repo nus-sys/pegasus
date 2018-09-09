@@ -11,8 +11,8 @@ class MemcacheKVStats : public Stats {
 public:
     MemcacheKVStats()
         : Stats(), cache_hits(0), cache_misses(0) {};
-    MemcacheKVStats(const char* stats_file)
-        : Stats(stats_file), cache_hits(0), cache_misses(0) {};
+    MemcacheKVStats(const char* stats_file, int interval, const char *interval_file = nullptr)
+        : Stats(stats_file, interval, interval_file), cache_hits(0), cache_misses(0) {};
     ~MemcacheKVStats() {};
 
     void report_op(Operation::Type op_type, int latency, bool hit);
