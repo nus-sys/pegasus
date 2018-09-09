@@ -22,6 +22,7 @@
 
 #define RNODE_NONE      0x7F
 #define RKEY_NONE       0x7F
+#define MAX_RKEY_RATE   0x7FFF
 
 #define OVERLOAD        0xA
 #define NNODES          16
@@ -123,6 +124,13 @@ register reg_rkey_ver_next {
 }
 register reg_rkey_ver_curr {
     width: 32;
+    instance_count: 32;
+}
+/*
+   rkey access rate counter
+ */
+register reg_rkey_rate_counter {
+    width: 16;
     instance_count: 32;
 }
 /*
@@ -475,6 +483,27 @@ table tab_replicated_keys {
     }
     default_action: set_default_dst_node;
     size: 32;
+}
+
+/*
+   inc rkey rate counter
+ */
+blackbox stateful_alu sa_inc_rkey_rate_counter {
+    reg: reg_rkey_rate_counter;
+    condition_lo: register_lo < MAX_RKEY_RATE;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+}
+action inc_rkey_rate_counter() {
+    sa_inc_rkey_rate_counter.execute_stateful_alu(meta.rkey_index);
+}
+@pragma stage 1
+table tab_inc_rkey_rate_counter {
+    actions {
+        inc_rkey_rate_counter;
+    }
+    default_action: inc_rkey_rate_counter;
+    size: 1;
 }
 
 /*
@@ -1538,6 +1567,7 @@ control process_resubmit_reply {
 
 control process_request {
     if (meta.rkey_index != RKEY_NONE) {
+        apply(tab_inc_rkey_rate_counter);
         if (pegasus.op == OP_GET) {
             process_replicated_read();
         } else {
@@ -1562,39 +1592,43 @@ control process_replicated_read {
     apply(tab_get_rkey_ver_curr);
     apply(tab_inc_rkey_read_counter);
     apply(tab_get_rset_size);
-    apply(tab_access_rr_read_counter);
-    if (meta.rset_index == 0) {
-        apply(tab_get_rset_1);
-    } else if (meta.rset_index == 1) {
-        apply(tab_get_rset_2);
-    } else if (meta.rset_index == 2) {
-        apply(tab_get_rset_3);
-    } else if (meta.rset_index == 3) {
-        apply(tab_get_rset_4);
-    } else if (meta.rset_index == 4) {
-        apply(tab_get_rset_5);
-    } else if (meta.rset_index == 5) {
-        apply(tab_get_rset_6);
-    } else if (meta.rset_index == 6) {
-        apply(tab_get_rset_7);
-    } else if (meta.rset_index == 7) {
-        apply(tab_get_rset_8);
-    } else if (meta.rset_index == 8) {
-        apply(tab_get_rset_9);
-    } else if (meta.rset_index == 9) {
-        apply(tab_get_rset_10);
-    } else if (meta.rset_index == 10) {
-        apply(tab_get_rset_11);
-    } else if (meta.rset_index == 11) {
-        apply(tab_get_rset_12);
-    } else if (meta.rset_index == 12) {
-        apply(tab_get_rset_13);
-    } else if (meta.rset_index == 13) {
-        apply(tab_get_rset_14);
-    } else if (meta.rset_index == 14) {
-        apply(tab_get_rset_15);
-    } else if (meta.rset_index == 15) {
-        apply(tab_get_rset_16);
+    if (meta.rset_size != MAX_REPLICAS) {
+        apply(tab_access_rr_read_counter);
+        if (meta.rset_index == 0) {
+            apply(tab_get_rset_1);
+        } else if (meta.rset_index == 1) {
+            apply(tab_get_rset_2);
+        } else if (meta.rset_index == 2) {
+            apply(tab_get_rset_3);
+        } else if (meta.rset_index == 3) {
+            apply(tab_get_rset_4);
+        } else if (meta.rset_index == 4) {
+            apply(tab_get_rset_5);
+        } else if (meta.rset_index == 5) {
+            apply(tab_get_rset_6);
+        } else if (meta.rset_index == 6) {
+            apply(tab_get_rset_7);
+        } else if (meta.rset_index == 7) {
+            apply(tab_get_rset_8);
+        } else if (meta.rset_index == 8) {
+            apply(tab_get_rset_9);
+        } else if (meta.rset_index == 9) {
+            apply(tab_get_rset_10);
+        } else if (meta.rset_index == 10) {
+            apply(tab_get_rset_11);
+        } else if (meta.rset_index == 11) {
+            apply(tab_get_rset_12);
+        } else if (meta.rset_index == 12) {
+            apply(tab_get_rset_13);
+        } else if (meta.rset_index == 13) {
+            apply(tab_get_rset_14);
+        } else if (meta.rset_index == 14) {
+            apply(tab_get_rset_15);
+        } else if (meta.rset_index == 15) {
+            apply(tab_get_rset_16);
+        }
+    } else {
+        apply(tab_access_rr_write_counter);
     }
 }
 

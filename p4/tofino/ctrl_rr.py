@@ -41,6 +41,7 @@ LOAD_SIZE = 2
 MAX_NRKEYS = 32
 DEFAULT_NUM_NODES = 16
 HASH_MASK = DEFAULT_NUM_NODES - 1
+RKEY_LOAD_FACTOR = 0.05
 
 controller = None
 
@@ -225,14 +226,12 @@ class Controller(object):
 
     def reset_node_load(self):
         self.switch_lock.acquire()
-        for i in range(self.num_nodes):
-            self.client.register_write_reg_queue_len(
-                self.sess_hdl, self.dev_tgt, i, 0)
-        for i in range(MAX_NRKEYS):
-            self.client.register_write_reg_rkey_read_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
-            self.client.register_write_reg_rkey_write_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
+        self.client.register_reset_all_reg_queue_len(
+            self.sess_hdl, self.dev_tgt)
+        self.client.register_reset_all_reg_rkey_read_counter(
+            self.sess_hdl, self.dev_tgt)
+        self.client.register_reset_all_reg_rkey_write_counter(
+            self.sess_hdl, self.dev_tgt)
         self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
@@ -275,14 +274,14 @@ class Controller(object):
                     self.replicated_keys[report.keyhash].load = report.load
             else:
                 if len(self.replicated_keys) < MAX_NRKEYS:
-                    print "Adding key", report.keyhash, "to rkeys, load", report.load, ", size now:", len(self.replicated_keys)
+                    #print "Adding key", report.keyhash, "to rkeys, load", report.load, ", size now:", len(self.replicated_keys)
                     self.add_rkey(report.keyhash, len(self.replicated_keys), report.load)
                     switch_update = True
                 else:
                     (target_keyhash, target_rkey) = self.replicated_keys.peekitem(0)
                     if report.load > target_rkey.load:
                         # Replace the least loaded key in rkeys
-                        print "Replacing key", target_keyhash, "load", target_rkey.load, " with key", report.keyhash, "load", report.load
+                        #print "Replacing key", target_keyhash, "load", target_rkey.load, " with key", report.keyhash, "load", report.load
                         self.client.tab_replicated_keys_table_delete_by_match_spec(
                             self.sess_hdl, self.dev_tgt,
                             pegasus_tab_replicated_keys_match_spec_t(
@@ -299,12 +298,20 @@ class Controller(object):
         self.switch_lock.release()
 
     def periodic_update(self):
+        flags = pegasus_register_flags_t(read_hw_sync=True)
         self.switch_lock.acquire()
-        for i in range(MAX_NRKEYS):
-            self.client.register_write_reg_rkey_read_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
-            self.client.register_write_reg_rkey_write_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
+        self.client.register_reset_all_reg_rkey_read_counter(
+            self.sess_hdl, self.dev_tgt)
+        self.client.register_reset_all_reg_rkey_write_counter(
+            self.sess_hdl, self.dev_tgt)
+        # Read rkey load
+        for rkey in self.replicated_keys.values():
+            read_value = self.client.register_read_reg_rkey_rate_counter(
+                self.sess_hdl, self.dev_tgt, rkey.index, flags)
+            rkey.load = int(read_value[1] * RKEY_LOAD_FACTOR)
+        # Reset rkey load
+        self.client.register_reset_all_reg_rkey_rate_counter(
+            self.sess_hdl, self.dev_tgt)
         self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
@@ -322,6 +329,7 @@ class Controller(object):
             read_value = self.client.register_read_reg_rset_size(
                 self.sess_hdl, self.dev_tgt, rkey.index, flags)
             rset_size = int(read_value[1])
+            print "rkey load", rkey.load
             print "rset size", rset_size
             read_value = self.client.register_read_reg_rkey_ver_curr(
                 self.sess_hdl, self.dev_tgt, rkey.index, flags)
