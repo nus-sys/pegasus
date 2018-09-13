@@ -39,7 +39,7 @@ KEYHASH_SIZE = 4
 LOAD_SIZE = 2
 
 MAX_NRKEYS = 32
-DEFAULT_NUM_NODES = 16
+DEFAULT_NUM_NODES = 32
 HASH_MASK = DEFAULT_NUM_NODES - 1
 RKEY_LOAD_FACTOR = 0.05
 
@@ -236,15 +236,13 @@ class Controller(object):
         self.switch_lock.release()
 
     def add_rkey(self, keyhash, rkey_index, load):
-        #self.client.register_write_reg_rset_1(
-        #    self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) & HASH_MASK)
-
         # Hack: replicate on all nodes when adding rkey
-        for i in range(DEFAULT_NUM_NODES):
-            self.write_reg_rset_fns[i](
-                self.sess_hdl, self.dev_tgt, rkey_index, i)
-        self.client.register_write_reg_rset_size(
+        self.client.register_write_reg_rset_num_ack(
             self.sess_hdl, self.dev_tgt, rkey_index, DEFAULT_NUM_NODES)
+        self.client.register_write_reg_rset_1(
+            self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) & HASH_MASK)
+        self.client.register_write_reg_rset_size(
+            self.sess_hdl, self.dev_tgt, rkey_index, 1)
         self.client.register_write_reg_rkey_ver_curr(
             self.sess_hdl, self.dev_tgt, rkey_index, 0)
         self.client.register_write_reg_rkey_ver_next(
