@@ -25,7 +25,7 @@
 #define MAX_RKEY_RATE   0x7FFF
 
 #define OVERLOAD        0xA
-#define NNODES          16
+#define NNODES          32
 #define MAX_REPLICAS    16
 
 header_type ethernet_t {
@@ -93,6 +93,7 @@ header pegasus_t pegasus;
 header_type metadata_t {
     fields {
         rkey_index : 32;
+        rset_num_ack : 8;
         rset_size : 8;
         rset_index: 8;
         node : 8;
@@ -146,9 +147,9 @@ register reg_rr_write_counter {
     width: 8;
     instance_count: 1;
 }
-register reg_rkey_size {
+register reg_rset_num_ack {
     width: 8;
-    instance_count: 1;
+    instance_count: 32;
 }
 register reg_rset_size {
     width: 8;
@@ -356,7 +357,7 @@ table tab_node_forward {
         node_forward;
         _drop;
     }
-    size: 32;
+    size: 1024;
 }
 
 /*
@@ -551,6 +552,68 @@ table tab_access_rr_write_counter {
         access_rr_write_counter;
     }
     default_action: access_rr_write_counter;
+    size: 1;
+}
+
+/*
+   get/set/inc rset_num_ack
+ */
+blackbox stateful_alu sa_get_rset_num_ack {
+    reg: reg_rset_num_ack;
+    output_value: register_lo;
+    output_dst: meta.rset_num_ack;
+}
+blackbox stateful_alu sa_set_rset_num_ack {
+    reg: reg_rset_num_ack;
+    update_lo_1_value: 1;
+}
+blackbox stateful_alu sa_inc_rset_num_ack {
+    reg: reg_rset_num_ack;
+    condition_lo: register_lo < NNODES;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+}
+
+action get_rset_num_ack() {
+    sa_get_rset_num_ack.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_num_ack() {
+    sa_set_rset_num_ack.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rset_num_ack() {
+    sa_inc_rset_num_ack.execute_stateful_alu(meta.rkey_index);
+}
+
+@pragma stage 2
+table tab_get_rset_num_ack {
+    actions {
+        get_rset_num_ack;
+    }
+    default_action: get_rset_num_ack;
+    size: 1;
+}
+@pragma stage 2
+table tab_set_rset_num_ack {
+    actions {
+        set_rset_num_ack;
+    }
+    default_action: set_rset_num_ack;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_num_ack_a {
+    actions {
+        inc_rset_num_ack;
+    }
+    default_action: inc_rset_num_ack;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_num_ack_b {
+    actions {
+        inc_rset_num_ack;
+    }
+    default_action: inc_rset_num_ack;
     size: 1;
 }
 
@@ -1471,6 +1534,7 @@ control process_mgr_ack {
         apply(tab_copy_pegasus_header_b);
         apply(tab_compare_rkey_ver_curr_a);
         if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_num_ack_a);
             apply(tab_inc_rset_size_a);
             if (meta.rset_size == 1) {
                 apply(tab_install_rset_2_a);
@@ -1513,6 +1577,7 @@ control process_reply {
         apply(tab_copy_pegasus_header_c);
         apply(tab_set_rkey_ver_curr);
         if (meta.ver_matched != 0) {
+            apply(tab_set_rset_num_ack);
             apply(tab_set_rset_size);
             apply(tab_set_rset_1);
             apply(tab_l2_forward);
@@ -1528,6 +1593,7 @@ control process_resubmit_reply {
     if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
         apply(tab_compare_rkey_ver_curr_b);
         if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_num_ack_b);
             apply(tab_inc_rset_size_b);
             if (meta.rset_size == 1) {
                 apply(tab_install_rset_2_b);
@@ -1591,8 +1657,9 @@ control process_request {
 control process_replicated_read {
     apply(tab_get_rkey_ver_curr);
     apply(tab_inc_rkey_read_counter);
+    apply(tab_get_rset_num_ack);
     apply(tab_get_rset_size);
-    if (meta.rset_size != MAX_REPLICAS) {
+    if (meta.rset_num_ack != NNODES) {
         apply(tab_access_rr_read_counter);
         if (meta.rset_index == 0) {
             apply(tab_get_rset_1);
