@@ -101,6 +101,7 @@ Stats::dump()
     printf("99%% Latency: %d\n", nn_latency);
 
     if (this->file_stream.is_open()) {
+        this->file_stream << this->completed_ops << " " << this->issued_ops << std::endl;
         for (auto latency : this->latencies) {
             this->file_stream << latency.first << " " << latency.second << std::endl;
         }
