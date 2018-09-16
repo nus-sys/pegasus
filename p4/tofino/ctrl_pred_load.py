@@ -24,7 +24,7 @@ from thrift.protocol import TMultiplexedProtocol
 RNODE_NONE = 0x7F
 BUF_SIZE = 4096
 
-CTRL_ADDR = ("10.100.1.6", 24680)
+CTRL_ADDR = ("10.100.1.8", 24680)
 
 IDENTIFIER = 0xDEAC
 IDENTIFIER_SIZE = 2
@@ -39,7 +39,7 @@ KEYHASH_SIZE = 4
 LOAD_SIZE = 2
 
 MAX_NRKEYS = 32
-DEFAULT_NUM_NODES = 16
+DEFAULT_NUM_NODES = 32
 HASH_MASK = DEFAULT_NUM_NODES - 1
 
 controller = None
@@ -227,27 +227,23 @@ class Controller(object):
 
     def reset_node_load(self):
         self.switch_lock.acquire()
-        for i in range(self.num_nodes):
-            self.client.register_write_reg_queue_len(
-                self.sess_hdl, self.dev_tgt, i, 0)
-        for i in range(MAX_NRKEYS):
-            self.client.register_write_reg_rkey_read_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
-            self.client.register_write_reg_rkey_write_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
+        self.client.register_reset_all_reg_queue_len(
+            self.sess_hdl, self.dev_tgt)
+        self.client.register_reset_all_reg_rkey_read_counter(
+            self.sess_hdl, self.dev_tgt)
+        self.client.register_reset_all_reg_rkey_write_counter(
+            self.sess_hdl, self.dev_tgt)
         self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
     def add_rkey(self, keyhash, rkey_index, load):
-        #self.client.register_write_reg_rset_1(
-        #    self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) & HASH_MASK)
-
         # Hack: replicate on all nodes when adding rkey
-        for i in range(DEFAULT_NUM_NODES):
-            self.write_reg_rset_fns[i](
-                self.sess_hdl, self.dev_tgt, rkey_index, i)
-        self.client.register_write_reg_rset_size(
+        self.client.register_write_reg_rset_num_ack(
             self.sess_hdl, self.dev_tgt, rkey_index, DEFAULT_NUM_NODES)
+        self.client.register_write_reg_rset_1(
+            self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) & HASH_MASK)
+        self.client.register_write_reg_rset_size(
+            self.sess_hdl, self.dev_tgt, rkey_index, 1)
         self.client.register_write_reg_rkey_min_node(
             self.sess_hdl, self.dev_tgt, rkey_index,
             pegasus_reg_rkey_min_node_value_t(f0 = int(keyhash) & HASH_MASK, f1 = 0))
@@ -307,11 +303,10 @@ class Controller(object):
 
     def periodic_update(self):
         self.switch_lock.acquire()
-        for i in range(MAX_NRKEYS):
-            self.client.register_write_reg_rkey_read_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
-            self.client.register_write_reg_rkey_write_counter(
-                self.sess_hdl, self.dev_tgt, i, 0)
+        self.client.register_reset_all_reg_rkey_read_counter(
+            self.sess_hdl, self.dev_tgt)
+        self.client.register_reset_all_reg_rkey_write_counter(
+            self.sess_hdl, self.dev_tgt)
         self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
@@ -338,6 +333,16 @@ class Controller(object):
                     self.sess_hdl, self.dev_tgt, rkey.index, flags)
                 node = read_value[1]
                 print "rnode", node
+        self.conn_mgr.complete_operations(self.sess_hdl)
+        self.switch_lock.release()
+
+    def print_debug(self):
+        flags = pegasus_register_flags_t(read_hw_sync=True)
+        self.switch_lock.acquire()
+        for i in range(self.num_nodes):
+            read_value = self.client.register_read_reg_queue_len(
+                self.sess_hdl, self.dev_tgt, i, flags)
+            print "node", i, "load", read_value[1]
         self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
