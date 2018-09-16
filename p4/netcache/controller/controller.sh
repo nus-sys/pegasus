@@ -7,4 +7,4 @@ fi
 
 export PYTHONPATH=$SDE_INSTALL/lib/python2.7/site-packages/tofino/:$SDE_INSTALL/lib/python2.7/site-packages/tofinopd/:$PYTHONPATH
 
-python $(dirname $0)/controller.py --config $1 --nkeys $2
+python $(dirname $0)/controller.py --config $1 --kfile $2 --nkeys $3
