@@ -25,6 +25,7 @@
 #define RKEY_NONE       0x7F
 
 #define OVERLOAD        0xA
+#define NNODES          32
 #define MAX_REPLICAS    16
 
 header_type ethernet_t {
@@ -94,6 +95,7 @@ header_type metadata_t {
         rkey_size : 8;
         rset_size : 8;
         rkey_index : 8;
+        rset_num_ack : 8;
         probe_rkey_index : 8;
         probe_rset_index : 8;
         node : 8;
@@ -146,6 +148,10 @@ register reg_rkey_ver_curr {
 register reg_rkey_size {
     width: 8;
     instance_count: 1;
+}
+register reg_rset_num_ack {
+    width: 8;
+    instance_count: 32;
 }
 register reg_rset_size {
     width: 8;
@@ -368,7 +374,7 @@ table tab_node_forward {
         node_forward;
         _drop;
     }
-    size: 32;
+    size: 1024;
 }
 
 /*
@@ -1324,6 +1330,76 @@ table tab_install_rset_16_b {
 }
 
 /*
+   get/set/inc rset_num_ack
+ */
+blackbox stateful_alu sa_get_rset_num_ack {
+    reg: reg_rset_num_ack;
+    output_value: register_lo;
+    output_dst: meta.rset_num_ack;
+}
+blackbox stateful_alu sa_set_rset_num_ack {
+    reg: reg_rset_num_ack;
+    update_lo_1_value: 1;
+}
+blackbox stateful_alu sa_inc_rset_num_ack {
+    reg: reg_rset_num_ack;
+    condition_lo: register_lo < NNODES;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+}
+
+action get_rset_num_ack() {
+    sa_get_rset_num_ack.execute_stateful_alu(meta.rkey_index);
+}
+action set_rset_num_ack() {
+    sa_set_rset_num_ack.execute_stateful_alu(meta.rkey_index);
+}
+action inc_rset_num_ack() {
+    sa_inc_rset_num_ack.execute_stateful_alu(meta.rkey_index);
+}
+
+@pragma stage 2
+table tab_get_rset_num_ack {
+    actions {
+        get_rset_num_ack;
+    }
+    default_action: get_rset_num_ack;
+    size: 1;
+}
+@pragma stage 2
+table tab_set_rset_num_ack_a {
+    actions {
+        set_rset_num_ack;
+    }
+    default_action: set_rset_num_ack;
+    size: 1;
+}
+@pragma stage 2
+table tab_set_rset_num_ack_b {
+    actions {
+        set_rset_num_ack;
+    }
+    default_action: set_rset_num_ack;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_num_ack_a {
+    actions {
+        inc_rset_num_ack;
+    }
+    default_action: inc_rset_num_ack;
+    size: 1;
+}
+@pragma stage 2
+table tab_inc_rset_num_ack_b {
+    actions {
+        inc_rset_num_ack;
+    }
+    default_action: inc_rset_num_ack;
+    size: 1;
+}
+
+/*
    get/set rkey/rset size
 */
 blackbox stateful_alu sa_get_rkey_size {
@@ -1589,6 +1665,7 @@ control process_mgr_ack {
         apply(tab_set_rkey_ver_curr_a);
         if (meta.ver_matched != 0) {
             // Higher version number
+            apply(tab_set_rset_num_ack_a);
             apply(tab_set_rset_size_a);
             apply(tab_set_rset_1_a);
             apply(tab_set_rkey_min_node_a);
@@ -1605,6 +1682,7 @@ control process_resubmit_mgr_ack {
     if (meta.rkey_index != RKEY_NONE) {
         apply(tab_compare_rkey_ver_curr_a);
         if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_num_ack_a);
             apply(tab_inc_rset_size_a);
             if (meta.rset_size == 1) {
                 apply(tab_install_rset_2_a);
@@ -1658,8 +1736,10 @@ control process_request {
 control process_replicated_read {
     apply(tab_get_rkey_ver_curr);
     apply(tab_inc_rkey_read_counter);
-    apply(tab_get_rset_size_b);
-    if (meta.rset_size != MAX_REPLICAS) {
+    //apply(tab_get_rset_size_b);
+    //if (meta.rset_size != MAX_REPLICAS) {
+    apply(tab_get_rset_num_ack);
+    if (meta.rset_num_ack != NNODES) {
         apply(tab_get_rkey_min_node);
     } else {
         apply(tab_get_min_node_a);
@@ -1681,6 +1761,7 @@ control process_reply {
         apply(tab_set_rkey_ver_curr_b);
         if (meta.ver_matched != 0) {
             // Higher version number
+            apply(tab_set_rset_num_ack_b);
             apply(tab_set_rset_size_b);
             apply(tab_set_rset_1_b);
             apply(tab_set_rkey_min_node_b);
@@ -1745,6 +1826,7 @@ control process_resubmit_reply {
         // For replicated write replies, check if version number equal
         apply(tab_compare_rkey_ver_curr_b);
         if (meta.ver_matched != 0) {
+            apply(tab_inc_rset_num_ack_b);
             apply(tab_inc_rset_size_b);
             if (meta.rset_size == 1) {
                 apply(tab_install_rset_2_b);
