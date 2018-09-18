@@ -24,6 +24,7 @@
 #define MAX_QUEUE_LEN   0x7FFF
 #define RNODE_NONE      0x7F
 #define RKEY_NONE       0x7F
+#define MAX_RKEY_RATE   0x7FFF
 
 #define OVERLOAD        0xA
 #define NNODES          32
@@ -144,6 +145,13 @@ register reg_rkey_ver_next {
 }
 register reg_rkey_ver_curr {
     width: 32;
+    instance_count: 32;
+}
+/*
+   rkey access rate counter
+ */
+register reg_rkey_rate_counter {
+    width: 16;
     instance_count: 32;
 }
 /*
@@ -434,6 +442,27 @@ table tab_replicated_keys {
     }
     default_action: set_default_dst_node;
     size: 32;
+}
+
+/*
+   inc rkey rate counter
+ */
+blackbox stateful_alu sa_inc_rkey_rate_counter {
+    reg: reg_rkey_rate_counter;
+    condition_lo: register_lo < MAX_RKEY_RATE;
+    update_lo_1_predicate: condition_lo;
+    update_lo_1_value: register_lo + 1;
+}
+action inc_rkey_rate_counter() {
+    sa_inc_rkey_rate_counter.execute_stateful_alu(meta.rkey_index);
+}
+@pragma stage 1
+table tab_inc_rkey_rate_counter {
+    actions {
+        inc_rkey_rate_counter;
+    }
+    default_action: inc_rkey_rate_counter;
+    size: 1;
 }
 
 /*
@@ -1870,6 +1899,7 @@ control process_mgr_ack {
 
 control process_request {
     if (meta.rkey_index != RKEY_NONE) {
+        apply(tab_inc_rkey_rate_counter);
         if (pegasus.op == OP_GET) {
             process_replicated_read();
         } else {
