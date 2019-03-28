@@ -1,5 +1,5 @@
 """
-bench_memcachekv.py: MemcacheKV benchmark.
+bench_kv.py: MemcacheKV benchmark.
 """
 
 import random
