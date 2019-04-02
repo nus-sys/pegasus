@@ -36,6 +36,8 @@ if __name__ == "__main__":
                         help="server utilization (as decimal)")
     parser.add_argument('-f', '--file',
                         help="output file name")
+    parser.add_argument('-t', '--topkeys', type=int, default=0,
+                        help="output load of most popular n keys")
     args = parser.parse_args()
 
     # Generate zipfian distribution
@@ -62,3 +64,7 @@ if __name__ == "__main__":
                 for j in range(args.servers):
                     f.write(str(int(racks[i][j])) + '\n')
                 f.write("Aggregate:" + str(int(sum(racks[i]))) + '\n')
+            if args.topkeys > 0:
+                f.write("Top keys:\n")
+                for i in range(args.topkeys):
+                    f.write(str(int(zipf[i] * total_load)) + '\n')
