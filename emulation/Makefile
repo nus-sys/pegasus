@@ -5,7 +5,6 @@ SRC_DIR := .
 BIN_DIR := ./bin
 BUILD_DIR := ./build
 EMULATOR := ./bin/emulator
-MIGRATOR := ./bin/migrator
 CLI := ./bin/cli
 
 SRCS := $(shell find $(SRC_DIR) -path $(BUILD_DIR) -prune -o -path $(BIN_DIR) -prune -o -name '*.cc' -print)
@@ -13,7 +12,6 @@ OBJS := $(SRCS:%.cc=$(BUILD_DIR)/%.o)
 DEPS := $(shell find $(BUILD_DIR) -type f -name '*.d' > /dev/null 2>&1)
 
 EMULATOR_OBJS := $(OBJS) $(BUILD_DIR)/bin/emulator.o
-MIGRATOR_OBJS := $(OBJS) $(BUILD_DIR)/bin/migrator.o
 CLI_OBJS := $(OBJS) $(BUILD_DIR)/bin/cli.o
 
 INC_DIRS := $(shell find $(SRC_DIR) -type d)
@@ -59,9 +57,6 @@ $(BUILD_DIR)/%.o: %.cc $(PROTOSRCS)
 $(EMULATOR): $(EMULATOR_OBJS) $(PROTOOBJS)
 	$(CXX) $(EMULATOR_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
 
-$(MIGRATOR): $(MIGRATOR_OBJS) $(PROTOOBJS)
-	$(CXX) $(MIGRATOR_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
-
 $(CLI): $(CLI_OBJS) $(PROTOOBJS)
 	$(CXX) $(CLI_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
 
@@ -73,7 +68,7 @@ MKDIR_P := mkdir -p
 .PHONY: clean
 clean:
 	$(RM) -r $(BUILD_DIR)
-	$(RM) $(EMULATOR) $(MIGRATOR) $(CLI)
+	$(RM) $(EMULATOR) $(CLI)
 
 .PHONY: all
-all: $(EMULATOR) $(MIGRATOR) $(CLI)
+all: $(EMULATOR) $(CLI)
