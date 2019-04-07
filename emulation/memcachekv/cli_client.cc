@@ -4,11 +4,10 @@ using std::string;
 
 namespace memcachekv {
 
-CLIClient::CLIClient(Transport *transport,
-                     Configuration *config,
+CLIClient::CLIClient(Configuration *config,
                      MessageCodec *codec,
                      Operation op)
-    : transport(transport), config(config), codec(codec), op(op)
+    : config(config), codec(codec), op(op)
 {
 }
 

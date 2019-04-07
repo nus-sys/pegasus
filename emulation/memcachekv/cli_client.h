@@ -9,8 +9,7 @@ namespace memcachekv {
 
 class CLIClient : public Application {
 public:
-    CLIClient(Transport *transport,
-           Configuration *config,
+    CLIClient(Configuration *config,
            MessageCodec *codec,
            Operation op);
     ~CLIClient() {};
@@ -20,7 +19,6 @@ public:
     void run(int duration) override;
 
 private:
-    Transport *transport;
     Configuration *config;
     MessageCodec *codec;
     Operation op;

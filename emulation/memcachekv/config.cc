@@ -14,8 +14,11 @@ uint64_t compute_keyhash(const std::string &key)
 
 MemcacheKVConfig::MemcacheKVConfig(const std::vector<NodeAddress> &addresses,
                                    const NodeAddress &router_address,
+                                   const NodeAddress &controller_address,
+                                   int node_id,
+                                   bool terminating,
                                    NodeConfigMode mode)
-    : Configuration(addresses, router_address)
+    : Configuration(addresses, router_address, controller_address, node_id, terminating)
 {
     this->mode = mode;
 }
@@ -43,9 +46,8 @@ MemcacheKVConfig::key_to_node_id(const std::string &key)
 }
 
 RouterConfig::RouterConfig(const std::vector<NodeAddress> &addresses,
-                           const NodeAddress &router_address,
                            RouterConfigMode mode)
-    : Configuration(addresses, router_address)
+    : Configuration(addresses, NodeAddress(), NodeAddress(), -1, false)
 {
     this->mode = mode;
 }

@@ -11,8 +11,7 @@ namespace memcachekv {
 
 class Controller : public Application {
 public:
-    Controller(Transport *transport,
-               Configuration *config,
+    Controller(Configuration *config,
                const ControllerMessage &msg);
     ~Controller() {};
 
@@ -21,7 +20,6 @@ public:
     void run(int duration) override;
 
 private:
-    Transport *transport;
     Configuration *config;
     ControllerCodec codec;
     ControllerMessage msg;

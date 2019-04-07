@@ -6,10 +6,21 @@
 #include "transport.h"
 #include "logger.h"
 
-Transport::Transport(int dscp)
-    : dscp(dscp), event_base(nullptr), socket_fd(-1), controller_fd(-1)
+Transport::Transport(const Configuration *config)
+    : config(config), receiver(nullptr), event_base(nullptr),
+    socket_fd(-1), controller_fd(-1)
 {
     evthread_use_pthreads();
+
+    if (config->node_id < 0) {
+        // Client node
+        register_address(NodeAddress());
+    } else {
+        // Server node
+        assert(config->node_id < config->num_nodes);
+        register_address(config->addresses.at(config->node_id));
+        listen_on_controller();
+    }
 };
 
 Transport::~Transport()
@@ -32,26 +43,10 @@ Transport::~Transport()
 }
 
 void
-Transport::register_node(TransportReceiver *receiver,
-                         Configuration *config,
-                         int node_id)
+Transport::register_receiver(TransportReceiver *receiver)
 {
-    if (node_id < 0) {
-        // Client node
-        register_address(receiver, config, NodeAddress());
-    } else {
-        assert(node_id < config->num_nodes);
-        register_address(receiver, config, config->addresses.at(node_id));
-        listen_on_controller();
-    }
-}
-
-void
-Transport::register_router(TransportReceiver *receiver,
-                           Configuration *config)
-{
-    assert(config->router_address.address.size() > 0);
-    register_address(receiver, config, config->router_address);
+    assert(receiver);
+    this->receiver = receiver;
 }
 
 void
@@ -101,15 +96,8 @@ Transport::send_message_to_controller(const std::string &msg)
 }
 
 void
-Transport::register_address(TransportReceiver *receiver,
-                            Configuration *config,
-                            const NodeAddress &node_addr)
+Transport::register_address(const NodeAddress &node_addr)
 {
-    assert(receiver != nullptr);
-    assert(config != nullptr);
-    this->receiver = receiver;
-    this->config = config;
-
     // Setup socket
     this->socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (this->socket_fd == -1) {
@@ -125,14 +113,6 @@ Transport::register_address(TransportReceiver *receiver,
     int n = 1;
     if (setsockopt(this->socket_fd, SOL_SOCKET, SO_BROADCAST, (char *)&n, sizeof(n)) < 0) {
         panic("Failed to set SO_BROADCAST");
-    }
-
-    // Set DSCP
-    if (this->dscp > 0) {
-        n = this->dscp << 2;
-        if (setsockopt(this->socket_fd, IPPROTO_IP, IP_TOS, (char *)&n, sizeof(n)) < 0) {
-            panic("Failed to set IP_TOS");
-        }
     }
 
     // Disable UDP checksum
@@ -174,61 +154,6 @@ Transport::register_address(TransportReceiver *receiver,
     // Add socket event
     struct event *sock_ev = event_new(this->event_base,
                                       this->socket_fd,
-                                      EV_READ | EV_PERSIST,
-                                      socket_callback,
-                                      (void *)this);
-    if (sock_ev == nullptr) {
-        panic("Failed to create new event");
-    }
-
-    event_add(sock_ev, NULL);
-    this->events.push_back(sock_ev);
-}
-
-void
-Transport::listen_on_router(const NodeAddress &node_addr)
-{
-    assert(this->config != nullptr);
-    if (this->config->router_address.address.size() == 0) {
-        return;
-    }
-    // Setup socket
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd == -1) {
-        panic("Failed to create socket");
-    }
-
-    // Non-blocking mode
-    if (fcntl(fd, F_SETFL, O_NONBLOCK, 1) == -1) {
-        panic("Failed to set O_NONBLOCK");
-    }
-
-    // Reuse address
-    int n = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
-        panic("Failed to set SO_REUSEADDR");
-    }
-
-    // Increase buffer size
-    n = this->SOCKET_BUF_SIZE;
-    if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&n, sizeof(n)) < 0) {
-        panic("Failed to set SO_RCVBUF");
-    }
-    if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char *)&n, sizeof(n)) < 0) {
-        panic("Failed to set SO_SNDBUF");
-    }
-
-    // Bind to address
-    struct sockaddr_in sin = this->config->router_address.sin;
-    sin.sin_port = node_addr.sin.sin_port;
-
-    if (bind(fd, (sockaddr *)&sin, sizeof(sin)) != 0) {
-        panic("Failed to bind port");
-    }
-
-    // Add socket event
-    struct event *sock_ev = event_new(this->event_base,
-                                      fd,
                                       EV_READ | EV_PERSIST,
                                       socket_callback,
                                       (void *)this);
@@ -287,6 +212,7 @@ Transport::listen_on_controller()
     event_add(sock_ev, NULL);
     this->events.push_back(sock_ev);
 }
+
 void
 Transport::socket_callback(evutil_socket_t fd, short what, void *arg)
 {
@@ -320,5 +246,6 @@ Transport::on_readable(int fd)
         printf("Failed to receive message\n");
     }
 
+    assert(this->receiver);
     this->receiver->receive_message(std::string(buf, ret), src_addr);
 }

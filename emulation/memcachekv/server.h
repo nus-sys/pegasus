@@ -14,8 +14,8 @@ namespace memcachekv {
 
 class Server : public Application {
 public:
-    Server(Transport *transport, Configuration *config, MessageCodec *codec,
-           ControllerCodec *ctrl_codec, int node_id, int proc_latency = 0,
+    Server(Configuration *config, MessageCodec *codec,
+           ControllerCodec *ctrl_codec, int proc_latency = 0,
            std::string default_value = "");
     ~Server() {};
 
@@ -41,7 +41,6 @@ private:
     void update_rate(const Operation &op);
     load_t calculate_load();
 
-    Transport *transport;
     Configuration *config;
     MessageCodec *codec;
     ControllerCodec *ctrl_codec;
@@ -59,7 +58,6 @@ private:
     };
     std::unordered_map<std::string, Rkey> replicated_keys;
 
-    int node_id;
     int proc_latency;
     std::string default_value;
     /* Load related */

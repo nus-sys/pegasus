@@ -10,13 +10,11 @@ using std::string;
 
 namespace memcachekv {
 
-Server::Server(Transport *transport, Configuration *config, MessageCodec *codec,
-       ControllerCodec *ctrl_codec, int node_id, int proc_latency, string default_value)
-    : transport(transport),
-    config(config),
+Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl_codec,
+               int proc_latency, string default_value)
+    : config(config),
     codec(codec),
     ctrl_codec(ctrl_codec),
-    node_id(node_id),
     proc_latency(proc_latency),
     default_value(default_value)
 {
@@ -129,7 +127,7 @@ Server::process_kv_request(const MemcacheKVRequest &msg,
     MemcacheKVMessage reply_msg;
     string reply_msg_str;
     reply_msg.type = MemcacheKVMessage::Type::REPLY;
-    reply_msg.reply.node_id = this->node_id;
+    reply_msg.reply.node_id = this->config->node_id;
     reply_msg.reply.client_id = msg.client_id;
     reply_msg.reply.req_id = msg.req_id;
 
@@ -217,13 +215,13 @@ Server::migrate_kv(const Operation &op,
         num_nodes = this->config->num_nodes - 1;
     }
     for (int i = 0; i < num_nodes; i++) {
-        int dst = this->node_id;
+        int dst = this->config->node_id;
         if (num_nodes == this->config->num_nodes - 1) {
             // Migrate to all other nodes
-            dst = i >= this->node_id ? i + 1 : i;
+            dst = i >= this->config->node_id ? i + 1 : i;
         } else {
             // Pick a random node
-            while (dst == this->node_id) {
+            while (dst == this->config->node_id) {
                 dst = rand() % this->config->num_nodes;
             }
         }
@@ -239,7 +237,7 @@ Server::migrate_kv_to(const Operation &op,
     // Only send migration request if:
     // 1. not to itself
     // 2. has not sent to the targeted node before
-    if (dst != this->node_id) {
+    if (dst != this->config->node_id) {
         if (this->replicated_keys[op.key].replicas.count(dst) == 0) {
             this->replicated_keys[op.key].replicas.insert(dst);
 
@@ -273,7 +271,7 @@ Server::process_migration_request(const MigrationRequest &request)
         msg.type = MemcacheKVMessage::Type::MGR_ACK;
         msg.migration_ack.keyhash = request.keyhash;
         msg.migration_ack.ver = request.ver;
-        msg.migration_ack.node_id = this->node_id;
+        msg.migration_ack.node_id = this->config->node_id;
 
         if (!this->codec->encode(msg_str, msg)) {
             printf("Failed to encode migration ack\n");

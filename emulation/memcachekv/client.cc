@@ -140,14 +140,12 @@ KVWorkloadGenerator::change_keys()
     }
 }
 
-Client::Client(Transport *transport,
-               Configuration *config,
+Client::Client(Configuration *config,
                MemcacheKVStats *stats,
                KVWorkloadGenerator *gen,
                MessageCodec *codec,
                int client_id)
-    : transport(transport), config(config),
-    stats(stats), gen(gen), codec(codec),
+    : config(config), stats(stats), gen(gen), codec(codec),
     client_id(client_id), req_id(1),
     phase(WARMUP) {}
 

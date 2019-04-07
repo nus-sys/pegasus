@@ -3,15 +3,26 @@
 
 using std::thread;
 
-Node::Node(int id,
-           Transport *transport,
-           Application *app,
-           bool terminating,
-           int app_core,
-           int transport_core)
-    : transport(transport), app(app), id (id), terminating(terminating),
-    app_core(app_core), transport_core(transport_core)
+Node::Node(const Configuration *config)
+    : config(config)
 {
+    this->transport = new Transport(config);
+}
+
+Node::~Node()
+{
+    if (this->transport) {
+        delete this->transport;
+    }
+}
+
+void
+Node::register_app(Application *app)
+{
+    assert(app);
+    this->app = app;
+    this->transport->register_receiver(app);
+    this->app->register_transport(this->transport);
 }
 
 void
@@ -20,20 +31,10 @@ Node::run(int duration)
     // Create one thread which runs the transport event loop.
     this->transport_thread = thread(&Node::run_transport, this);
 
-    if (this->app_core >= 0) {
-        // Pin app thread to core
-        cpu_set_t set;
-        CPU_ZERO(&set);
-        CPU_SET(this->app_core, &set);
-        if (sched_setaffinity(0, sizeof(set), &set) != 0) {
-            panic("Failed to pin app thread");
-        }
-    }
-
     // Run application logic
     this->app->run(duration);
 
-    if (this->terminating) {
+    if (this->config->terminating) {
         // Stop transport now
         this->transport->stop();
     }
@@ -59,14 +60,5 @@ Node::test_stop()
 void
 Node::run_transport()
 {
-    if (this->transport_core >= 0) {
-        // Pin transport thread to core
-        cpu_set_t set;
-        CPU_ZERO(&set);
-        CPU_SET(this->transport_core, &set);
-        if (sched_setaffinity(0, sizeof(set), &set) != 0) {
-            panic("Failed to pin transport thread");
-        }
-    }
     this->transport->run();
 }

@@ -84,8 +84,7 @@ struct PendingRequest {
 
 class Client : public Application {
 public:
-    Client(Transport *transport,
-           Configuration *config,
+    Client(Configuration *config,
            MemcacheKVStats *stats,
            KVWorkloadGenerator *gen,
            MessageCodec *codec,
@@ -108,7 +107,6 @@ private:
     PendingRequest& get_pending_request(uint32_t req_id);
     void delete_pending_request(uint32_t req_id);
 
-    Transport *transport;
     Configuration *config;
     MemcacheKVStats *stats;
     KVWorkloadGenerator *gen;

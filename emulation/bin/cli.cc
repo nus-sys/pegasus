@@ -29,14 +29,18 @@ int main(int argc, char *argv[])
     if (node_type == 0) {
         config = new MemcacheKVConfig(config_file_path, MemcacheKVConfig::ROUTER);
         codec = new WireCodec(true);
+    } else if (node_type == 1) {
+        config = new MemcacheKVConfig(config_file_path, MemcacheKVConfig::STATIC);
+        codec = new WireCodec(false);
     } else {
         config = new MemcacheKVConfig(config_file_path, MemcacheKVConfig::NETCACHE);
         codec = new NetcacheCodec();
     }
-    Transport transport;
-    CLIClient cli(&transport, config, codec, op);
-    transport.register_node(&cli, config, -1);
-    Node node(-1, &transport, &cli, false);
+    config->node_id = -1;
+    config->terminating = false;
+    CLIClient cli(config, codec, op);
+    Node node(config);
+    node.register_app(&cli);
 
     node.run(0);
 

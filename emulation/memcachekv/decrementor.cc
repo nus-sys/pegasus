@@ -13,10 +13,8 @@ static void convert_endian(void *dst, const void *src, size_t size)
     }
 }
 
-Decrementor::Decrementor(Transport *transport, Configuration *config,
-                         int interval, int n_dec)
-    : transport(transport), config(config),
-    interval(interval), n_dec(n_dec)
+Decrementor::Decrementor(Configuration *config, int interval, int n_dec)
+    : config(config), interval(interval), n_dec(n_dec)
 {
 }
 

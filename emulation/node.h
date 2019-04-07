@@ -8,14 +8,10 @@
 
 class Node {
 public:
-    Node(int id,
-         Transport *transport,
-         Application *app,
-         bool terminating,
-         int app_core = -1,
-         int transport_core = -1);
-    ~Node() {};
+    Node(const Configuration *config);
+    ~Node();
 
+    void register_app(Application *app);
     void run(int duration);
     void test_run(); // For testing
     void test_stop(); // For testing
@@ -23,12 +19,9 @@ public:
 private:
     void run_transport();
 
+    const Configuration *config;
     Transport *transport;
     Application *app;
-    int id;
-    bool terminating;
-    int app_core;
-    int transport_core;
     std::thread transport_thread;
 };
 

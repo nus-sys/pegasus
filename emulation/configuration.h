@@ -20,13 +20,18 @@ public:
 class Configuration {
 public:
     Configuration(const std::vector<NodeAddress> &addresses,
-                  const NodeAddress &router_address);
+                  const NodeAddress &router_address,
+                  const NodeAddress &controller_address,
+                  int node_id,
+                  bool terminating);
     Configuration(const char *file_path);
     virtual ~Configuration() {};
 
     virtual int key_to_node_id(const std::string &key) = 0;
 
     int num_nodes;
+    int node_id;
+    bool terminating;
     std::vector<NodeAddress> addresses;
     NodeAddress router_address;
     NodeAddress controller_address;

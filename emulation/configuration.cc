@@ -34,8 +34,13 @@ NodeAddress::NodeAddress(const string &address, const string &port)
 }
 
 Configuration::Configuration(const std::vector<NodeAddress> &addresses,
-                             const NodeAddress &router_address)
-    : num_nodes(addresses.size()), addresses(addresses), router_address(router_address)
+                             const NodeAddress &router_address,
+                             const NodeAddress &controller_address,
+                             int node_id,
+                             bool terminating)
+    : num_nodes(addresses.size()), node_id(node_id), terminating(terminating),
+    addresses(addresses), router_address(router_address),
+    controller_address(controller_address)
 {
 }
 

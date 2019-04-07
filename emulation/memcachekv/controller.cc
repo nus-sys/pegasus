@@ -2,10 +2,9 @@
 
 namespace memcachekv {
 
-Controller::Controller(Transport *transport,
-                       Configuration *config,
+Controller::Controller(Configuration *config,
                        const ControllerMessage &msg)
-    : transport(transport), config(config), msg(msg) {}
+    : config(config), msg(msg) {}
 
 
 void

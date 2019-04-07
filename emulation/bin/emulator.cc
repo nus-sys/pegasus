@@ -16,7 +16,6 @@
 enum NodeMode {
     CLIENT,
     SERVER,
-    ROUTER,
     CONTROLLER,
     DECREMENTOR,
     UNKNOWN
@@ -43,13 +42,12 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, app_core = -1, transport_core = -1, dscp = -1, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100;
+    int value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
     std::deque<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
     memcachekv::MemcacheKVConfig::NodeConfigMode node_config_mode = memcachekv::MemcacheKVConfig::STATIC;
-    memcachekv::RouterConfig::RouterConfigMode router_config_mode = memcachekv::RouterConfig::STATIC;
     CodecMode codec_mode = WIRE;
     memcachekv::DynamismType d_type = memcachekv::DynamismType::NONE;
 
@@ -57,7 +55,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, sigterm_handler);
     //std::srand(unsigned(std::time(0)));
 
-    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:j:l:m:n:o:p:r:s:t:v:w:x:y:z:A:B:C:D:E:F:G:H:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:c:d:e:f:g:i:l:m:n:p:s:t:v:w:x:y:z:A:B:C:D:E:F:G:H:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -87,10 +85,6 @@ int main(int argc, char *argv[])
             mean_interval = stoi(std::string(optarg));
             break;
         }
-        case 'j': {
-            dscp = stoi(std::string(optarg));
-            break;
-        }
         case 'l': {
             proc_latency = stoi(std::string(optarg));
             break;
@@ -100,8 +94,6 @@ int main(int argc, char *argv[])
                 mode = CLIENT;
             } else if (strcmp(optarg, "server") == 0) {
                 mode = SERVER;
-            } else if (strcmp(optarg, "router") == 0) {
-                mode = ROUTER;
             } else if (strcmp(optarg, "controller") == 0) {
                 mode = CONTROLLER;
             } else if (strcmp(optarg, "decrementor") == 0) {
@@ -116,16 +108,8 @@ int main(int argc, char *argv[])
             nkeys = stoi(std::string(optarg));
             break;
         }
-        case 'o': {
-            app_core = stoi(std::string(optarg));
-            break;
-        }
         case 'p': {
             put_ratio = stof(std::string(optarg));
-            break;
-        }
-        case 'r': {
-            transport_core = stoi(std::string(optarg));
             break;
         }
         case 's': {
@@ -156,15 +140,6 @@ int main(int argc, char *argv[])
                 node_config_mode = memcachekv::MemcacheKVConfig::NETCACHE;
             } else {
                 printf("Unknown node config mode %s\n", optarg);
-                exit(1);
-            }
-            break;
-        }
-        case 'x': {
-            if (strcmp(optarg, "static") == 0) {
-                router_config_mode = memcachekv::RouterConfig::STATIC;
-            } else {
-                printf("Unknown router config mode %s\n", optarg);
                 exit(1);
             }
             break;
@@ -263,10 +238,7 @@ int main(int argc, char *argv[])
     }
 
     memcachekv::MemcacheKVConfig node_config(config_file_path, node_config_mode);
-    memcachekv::RouterConfig router_config(config_file_path, router_config_mode);
     node_config.num_nodes = num_nodes;
-    router_config.num_nodes = num_nodes;
-    Transport transport(dscp);
     Node *node = nullptr;
     Application *app = nullptr;
     memcachekv::MemcacheKVStats *stats = nullptr;
@@ -326,9 +298,9 @@ int main(int argc, char *argv[])
                                                   d_interval,
                                                   d_nkeys);
 
-        app = new memcachekv::Client(&transport, &node_config, stats, gen, codec, node_id);
-        transport.register_node(app, &node_config, -1);
-        node = new Node(-1, &transport, app, true, app_core, transport_core);
+        node_config.node_id = -1;
+        node_config.terminating = true;
+        app = new memcachekv::Client(&node_config, stats, gen, codec, node_id);
         break;
     }
     case SERVER: {
@@ -336,33 +308,26 @@ int main(int argc, char *argv[])
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
+        node_config.node_id = node_id;
+        node_config.terminating = false;
         std::string default_value = std::string(value_len, 'v');
-        app = new memcachekv::Server(&transport, &node_config, codec, ctrl_codec, node_id, proc_latency, default_value);
-        transport.register_node(app, &node_config, node_id);
-        node = new Node(node_id, &transport, app, false, app_core, transport_core);
-        break;
-    }
-    case ROUTER: {
-        app = new memcachekv::Router(&transport, &router_config, codec);
-        transport.register_router(app, &router_config);
-        node = new Node(-1, &transport, app, false, app_core, transport_core);
+        app = new memcachekv::Server(&node_config, codec, ctrl_codec, proc_latency, default_value);
         break;
     }
     case CONTROLLER: {
+        node_config.node_id = -1;
+        node_config.terminating = true;
         memcachekv::ControllerMessage msg;
         msg.type = memcachekv::ControllerMessage::Type::RESET_REQ;
         msg.reset_req.num_nodes = num_nodes;
         msg.reset_req.num_rkeys = num_rkeys;
-        app = new memcachekv::Controller(&transport, &node_config, msg);
-        transport.register_node(app, &node_config, -1);
-        node = new Node(-1, &transport, app, true, app_core, transport_core);
+        app = new memcachekv::Controller(&node_config, msg);
         break;
     }
     case DECREMENTOR: {
-        app = new memcachekv::Decrementor(&transport, &node_config,
-                                          dec_interval, n_dec);
-        transport.register_node(app, &node_config, -1);
-        node = new Node(-1, &transport, app, false, app_core, transport_core);
+        node_config.node_id = -1;
+        node_config.terminating = false;
+        app = new memcachekv::Decrementor(&node_config, dec_interval, n_dec);
         break;
     }
     default:
@@ -370,6 +335,8 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
+    node = new Node(&node_config);
+    node->register_app(app);
     node->run(duration);
 
     delete node;

@@ -7,7 +7,7 @@ namespace memcachekv {
 
 class Decrementor : public Application {
 public:
-    Decrementor(Transport *transport, Configuration *config,
+    Decrementor(Configuration *config,
                 int interval, int n_dec);
     ~Decrementor() {};
 
@@ -16,7 +16,6 @@ public:
     void run(int duration) override;
 
 private:
-    Transport *transport;
     Configuration *config;
     int interval;
     int n_dec;
