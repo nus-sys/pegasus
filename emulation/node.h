@@ -13,14 +13,13 @@ public:
 
     void register_app(Application *app);
     void run(int duration);
-    void test_run(); // For testing
-    void test_stop(); // For testing
 
 private:
     void run_transport();
 
     const Configuration *config;
     Transport *transport;
+    TransportEventBase *transport_eb;
     Application *app;
     std::thread transport_thread;
 };

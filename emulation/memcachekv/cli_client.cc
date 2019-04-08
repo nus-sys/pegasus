@@ -20,7 +20,6 @@ CLIClient::receive_message(const string &message, const sockaddr &src_addr)
     printf("Received reply type %u keyhash %u node %u ver %u result %u value %s\n",
            (unsigned int)msg.reply.type, msg.reply.keyhash, msg.reply.node_id,
            msg.reply.ver, (unsigned int)msg.reply.result, msg.reply.value.c_str());
-    this->transport->stop();
 }
 
 void

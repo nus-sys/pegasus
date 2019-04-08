@@ -7,12 +7,16 @@ Node::Node(const Configuration *config)
     : config(config)
 {
     this->transport = new Transport(config);
+    this->transport_eb = new TransportEventBase(this->transport);
 }
 
 Node::~Node()
 {
     if (this->transport) {
         delete this->transport;
+    }
+    if (this->transport_eb) {
+        delete this->transport_eb;
     }
 }
 
@@ -36,7 +40,7 @@ Node::run(int duration)
 
     if (this->config->terminating) {
         // Stop transport now
-        this->transport->stop();
+        this->transport_eb->stop();
     }
 
     // Wait for transport thread
@@ -44,21 +48,7 @@ Node::run(int duration)
 }
 
 void
-Node::test_run()
-{
-    // Create one thread which runs the transport event loop.
-    this->transport_thread = thread(&Node::run_transport, this);
-}
-
-void
-Node::test_stop()
-{
-    this->transport->stop();
-    this->transport_thread.join();
-}
-
-void
 Node::run_transport()
 {
-    this->transport->run();
+    this->transport_eb->run();
 }

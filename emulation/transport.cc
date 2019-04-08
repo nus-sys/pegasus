@@ -7,11 +7,8 @@
 #include "logger.h"
 
 Transport::Transport(const Configuration *config)
-    : config(config), receiver(nullptr), event_base(nullptr),
-    socket_fd(-1), controller_fd(-1)
+    : config(config), receiver(nullptr), socket_fd(-1), controller_fd(-1)
 {
-    evthread_use_pthreads();
-
     if (config->node_id < 0) {
         // Client node
         register_address(NodeAddress());
@@ -32,14 +29,6 @@ Transport::~Transport()
     if (this->controller_fd > 0) {
         close(controller_fd);
     }
-
-    for (auto event : this->events) {
-        event_free(event);
-    }
-
-    if (this->event_base != nullptr) {
-        event_base_free(this->event_base);
-    }
 }
 
 void
@@ -47,18 +36,6 @@ Transport::register_receiver(TransportReceiver *receiver)
 {
     assert(receiver);
     this->receiver = receiver;
-}
-
-void
-Transport::run()
-{
-    event_base_dispatch(this->event_base);
-}
-
-void
-Transport::stop()
-{
-    event_base_loopbreak(this->event_base);
 }
 
 void
@@ -144,25 +121,6 @@ Transport::register_address(const NodeAddress &node_addr)
     if (bind(this->socket_fd, (sockaddr *)&sin, sizeof(sin)) != 0) {
         panic("Failed to bind port");
     }
-
-    // Create event base
-    this->event_base = event_base_new();
-    if (this->event_base == nullptr) {
-        panic("Failed to create new libevent event base");
-    }
-
-    // Add socket event
-    struct event *sock_ev = event_new(this->event_base,
-                                      this->socket_fd,
-                                      EV_READ | EV_PERSIST,
-                                      socket_callback,
-                                      (void *)this);
-    if (sock_ev == nullptr) {
-        panic("Failed to create new event");
-    }
-
-    event_add(sock_ev, NULL);
-    this->events.push_back(sock_ev);
 }
 
 void
@@ -198,35 +156,6 @@ Transport::listen_on_controller()
     if (bind(this->controller_fd, (sockaddr *)&sin, sizeof(sin)) != 0) {
         panic("Failed to bind port");
     }
-
-    // Add socket event
-    struct event *sock_ev = event_new(this->event_base,
-                                      this->controller_fd,
-                                      EV_READ | EV_PERSIST,
-                                      socket_callback,
-                                      (void *)this);
-    if (sock_ev == nullptr) {
-        panic("Failed to create new event");
-    }
-
-    event_add(sock_ev, NULL);
-    this->events.push_back(sock_ev);
-}
-
-void
-Transport::socket_callback(evutil_socket_t fd, short what, void *arg)
-{
-    if (what & EV_READ) {
-        Transport *transport = (Transport *)arg;
-        transport->on_readable(fd);
-    }
-}
-
-void
-Transport::signal_callback(evutil_socket_t fd, short what, void *arg)
-{
-    Transport *transport = (Transport *)arg;
-    transport->stop();
 }
 
 void
@@ -248,4 +177,79 @@ Transport::on_readable(int fd)
 
     assert(this->receiver);
     this->receiver->receive_message(std::string(buf, ret), src_addr);
+}
+
+TransportEventBase::TransportEventBase(Transport *transport)
+    : transport(transport)
+{
+    evthread_use_pthreads();
+
+    // Create event base
+    this->event_base = event_base_new();
+    if (this->event_base == nullptr) {
+        panic("Failed to create new libevent event base");
+    }
+
+    // Add socket events
+    if (transport->socket_fd > 0) {
+        add_socket_event(transport->socket_fd);
+    }
+    if (transport->controller_fd > 0) {
+        add_socket_event(transport->controller_fd);
+    }
+}
+
+TransportEventBase::~TransportEventBase()
+{
+    for (auto event : this->events) {
+        event_free(event);
+    }
+
+    if (this->event_base != nullptr) {
+        event_base_free(this->event_base);
+    }
+}
+
+void
+TransportEventBase::run()
+{
+    event_base_dispatch(this->event_base);
+}
+
+void
+TransportEventBase::stop()
+{
+    event_base_loopbreak(this->event_base);
+}
+
+void
+TransportEventBase::add_socket_event(int fd)
+{
+    struct event *sock_ev = event_new(this->event_base,
+                                      fd,
+                                      EV_READ | EV_PERSIST,
+                                      socket_callback,
+                                      (void *)this->transport);
+    if (sock_ev == nullptr) {
+        panic("Failed to create new event");
+    }
+
+    event_add(sock_ev, nullptr);
+    this->events.push_back(sock_ev);
+}
+
+void
+TransportEventBase::socket_callback(evutil_socket_t fd, short what, void *arg)
+{
+    if (what & EV_READ) {
+        Transport *transport = (Transport *)arg;
+        transport->on_readable(fd);
+    }
+}
+
+void
+TransportEventBase::signal_callback(evutil_socket_t fd, short what, void *arg)
+{
+    TransportEventBase *eb = (TransportEventBase *)arg;
+    eb->stop();
 }
