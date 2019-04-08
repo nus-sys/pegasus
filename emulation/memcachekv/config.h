@@ -16,12 +16,6 @@ public:
         NETCACHE = 3
     };
 
-    MemcacheKVConfig(const std::vector<NodeAddress> &addresses,
-                     const NodeAddress &router_address,
-                     const NodeAddress &controller_address,
-                     int node_id,
-                     bool terminating,
-                     NodeConfigMode mode);
     MemcacheKVConfig(const char *file_path,
                      NodeConfigMode mode);
     ~MemcacheKVConfig() {};
@@ -38,8 +32,6 @@ public:
         STATIC = 1
     };
 
-    RouterConfig(const std::vector<NodeAddress> &addresses,
-                 RouterConfigMode mode);
     RouterConfig(const char *file_path,
                  RouterConfigMode mode);
     ~RouterConfig() {};

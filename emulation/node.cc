@@ -1,22 +1,22 @@
 #include "logger.h"
 #include "node.h"
 
-using std::thread;
-
 Node::Node(const Configuration *config)
     : config(config)
 {
     this->transport = new Transport(config);
-    this->transport_eb = new TransportEventBase(this->transport);
 }
 
 Node::~Node()
 {
+    for (TransportEventBase *eb : this->transport_ebs) {
+        delete eb;
+    }
+    for (std::thread *thread : this->transport_threads) {
+        delete thread;
+    }
     if (this->transport) {
         delete this->transport;
-    }
-    if (this->transport_eb) {
-        delete this->transport_eb;
     }
 }
 
@@ -32,23 +32,31 @@ Node::register_app(Application *app)
 void
 Node::run(int duration)
 {
-    // Create one thread which runs the transport event loop.
-    this->transport_thread = thread(&Node::run_transport, this);
+    // Create threads which run the transport event loop.
+    for (int i = 0; i < this->config->n_transport_threads; i++) {
+        this->transport_threads.push_back(new std::thread(&Node::run_transport, this));
+    }
 
     // Run application logic
     this->app->run(duration);
 
     if (this->config->terminating) {
-        // Stop transport now
-        this->transport_eb->stop();
+        // Stop transport event base now
+        for (TransportEventBase *eb : this->transport_ebs) {
+            eb->stop();
+        }
     }
 
-    // Wait for transport thread
-    this->transport_thread.join();
+    // Wait for transport threads
+    for (std::thread *thread : this->transport_threads) {
+        thread->join();
+    }
 }
 
 void
 Node::run_transport()
 {
-    this->transport_eb->run();
+    TransportEventBase *eb = new TransportEventBase(this->transport);
+    this->transport_ebs.push_back(eb);
+    eb->run();
 }

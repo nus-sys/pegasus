@@ -12,17 +12,6 @@ uint64_t compute_keyhash(const std::string &key)
     return hash;
 }
 
-MemcacheKVConfig::MemcacheKVConfig(const std::vector<NodeAddress> &addresses,
-                                   const NodeAddress &router_address,
-                                   const NodeAddress &controller_address,
-                                   int node_id,
-                                   bool terminating,
-                                   NodeConfigMode mode)
-    : Configuration(addresses, router_address, controller_address, node_id, terminating)
-{
-    this->mode = mode;
-}
-
 MemcacheKVConfig::MemcacheKVConfig(const char *file_path,
                                    NodeConfigMode mode)
     : Configuration(file_path)
@@ -43,13 +32,6 @@ MemcacheKVConfig::key_to_node_id(const std::string &key)
     default:
         panic("Unknown MemcacheKVConfig mode");
     }
-}
-
-RouterConfig::RouterConfig(const std::vector<NodeAddress> &addresses,
-                           RouterConfigMode mode)
-    : Configuration(addresses, NodeAddress(), NodeAddress(), -1, false)
-{
-    this->mode = mode;
 }
 
 RouterConfig::RouterConfig(const char *file_path,

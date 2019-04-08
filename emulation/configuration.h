@@ -23,6 +23,7 @@ public:
                   const NodeAddress &router_address,
                   const NodeAddress &controller_address,
                   int node_id,
+                  int n_transport_threads,
                   bool terminating);
     Configuration(const char *file_path);
     virtual ~Configuration() {};
@@ -31,6 +32,7 @@ public:
 
     int num_nodes;
     int node_id;
+    int n_transport_threads;
     bool terminating;
     std::vector<NodeAddress> addresses;
     NodeAddress router_address;
