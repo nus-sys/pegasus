@@ -2,11 +2,11 @@
 #define __MEMCACHEKV_SERVER_H__
 
 #include <string>
-#include <map>
 #include <unordered_map>
 #include <set>
 #include <mutex>
 #include <vector>
+#include <tbb/concurrent_unordered_map.h>
 #include "application.h"
 #include "memcachekv/message.h"
 
@@ -48,15 +48,12 @@ private:
     struct Item {
         Item()
             : value(""), ver(0) {};
+        Item(std::string value, ver_t ver)
+            : value(value), ver(ver) {};
         std::string value;
         ver_t ver;
     };
-    std::unordered_map<std::string, Item> store;
-
-    struct Rkey {
-        std::set<int> replicas; // excluding self node
-    };
-    std::unordered_map<std::string, Rkey> replicated_keys;
+    tbb::concurrent_unordered_map<std::string, Item> store;
 
     int proc_latency;
     std::string default_value;

@@ -39,6 +39,9 @@ LIBEVENT_LDFLAGS := $(shell pkg-config --libs libevent)
 CFLAGS += $(LIBEVENT_CFlAGS)
 LDFLAGS += $(LIBEVENT_LDFLAGS)
 
+# Intel TBB definitions
+LDFLAGS += -ltbb
+
 # Generate protobuf files
 $(PROTOSRCS): $(BUILD_DIR)/gen/%.pb.cc: %.proto
 	$(MKDIR_P) $(dir $@)

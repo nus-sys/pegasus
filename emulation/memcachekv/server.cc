@@ -140,15 +140,12 @@ Server::process_kv_request(const MemcacheKVRequest &msg,
 void
 Server::process_op(const Operation &op, MemcacheKVReply &reply)
 {
-    //printf("Received request type %u keyhash %u ver %u key %s\n", op.op_type, op.keyhash, op.ver, op.key.c_str());
-
     reply.key = op.key;
     reply.keyhash = op.keyhash;
     reply.ver = op.ver;
     //reply.load = calculate_load();
     switch (op.op_type) {
-    case Operation::Type::GET:
-    case Operation::Type::MGR: {
+    case Operation::Type::GET: {
         reply.type = MemcacheKVReply::Type::READ;
         if (this->store.count(op.key) > 0) {
             // Key is present
@@ -159,25 +156,12 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
             reply.result = Result::NOT_FOUND;
             reply.value = this->default_value;
         }
-        if (op.op_type == Operation::Type::MGR) {
-            migrate_kv(op, reply.value);
-        }
         break;
     }
     case Operation::Type::PUT: {
         reply.type = MemcacheKVReply::Type::WRITE;
         if (op.ver >= this->store[op.key].ver) {
-            this->store[op.key].value = op.value;
-            if (op.ver > this->store[op.key].ver) {
-                // Rkey has a new version, can clear the replica set
-                this->store[op.key].ver = op.ver;
-                this->replicated_keys[op.key].replicas.clear();
-                // Hack: switch should have multicast to replicas, but
-                // we have logical nodes on the same physical server, so
-                // need to send migration messages explicitly
-                // XXX currently send to num_replicas servers
-                migrate_kv(op, op.value);
-            }
+            this->store[op.key] = Item(op.value, op.ver);
         }
         reply.result = Result::OK;
         reply.value = op.value; // for netcache
@@ -185,7 +169,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     }
     case Operation::Type::DEL: {
         reply.type = MemcacheKVReply::Type::WRITE;
-        this->store.erase(op.key);
+        this->store.unsafe_erase(op.key);
         // XXX rkey?
         reply.result = Result::OK;
         reply.value = "";
@@ -238,33 +222,25 @@ Server::migrate_kv_to(const Operation &op,
     // 1. not to itself
     // 2. has not sent to the targeted node before
     if (dst != this->config->node_id) {
-        if (this->replicated_keys[op.key].replicas.count(dst) == 0) {
-            this->replicated_keys[op.key].replicas.insert(dst);
-
-            MemcacheKVMessage mgr_req;
-            string mgr_req_str;
-            mgr_req.type = MemcacheKVMessage::Type::MGR_REQ;
-            mgr_req.migration_request.keyhash = op.keyhash;
-            mgr_req.migration_request.ver = op.ver;
-            mgr_req.migration_request.key = op.key;
-            mgr_req.migration_request.value = value;
-            this->codec->encode(mgr_req_str, mgr_req);
-            this->transport->send_message_to_node(mgr_req_str, dst);
-        }
+        MemcacheKVMessage mgr_req;
+        string mgr_req_str;
+        mgr_req.type = MemcacheKVMessage::Type::MGR_REQ;
+        mgr_req.migration_request.keyhash = op.keyhash;
+        mgr_req.migration_request.ver = op.ver;
+        mgr_req.migration_request.key = op.key;
+        mgr_req.migration_request.value = value;
+        this->codec->encode(mgr_req_str, mgr_req);
+        this->transport->send_message_to_node(mgr_req_str, dst);
     }
 }
 
 void
 Server::process_migration_request(const MigrationRequest &request)
 {
-    //printf("Received migration keyhash %u ver %u key %s value %s\n", request.keyhash, request.ver, request.key.c_str(), request.value.c_str());
-
     if (this->store.count(request.key) == 0 ||
         request.ver > this->store[request.key].ver) {
 
-        this->store[request.key].value = request.value;
-        this->store[request.key].ver = request.ver;
-        this->replicated_keys[request.key].replicas.clear();
+        this->store[request.key] = Item(request.value, request.ver);
 
         MemcacheKVMessage msg;
         string msg_str;
