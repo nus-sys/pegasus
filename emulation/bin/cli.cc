@@ -37,7 +37,8 @@ int main(int argc, char *argv[])
         codec = new NetcacheCodec();
     }
     config->node_id = -1;
-    config->terminating = false;
+    config->n_transport_threads = 1;
+    config->terminating = true;
     CLIClient cli(config, codec, op);
     Node node(config);
     node.register_app(&cli);
