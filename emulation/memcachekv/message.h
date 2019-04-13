@@ -264,6 +264,7 @@ struct ControllerHKReport {
 };
 
 struct ControllerKeyMigration {
+    keyhash_t keyhash;
     std::string key;
 };
 
@@ -306,7 +307,7 @@ private:
      * nkeys (16) + nkeys * (keyhash (32) + load (16))
      *
      * Key migration:
-     * key_len (16) + key
+     * keyhash (32) + key_len (16) + key
      */
     typedef uint16_t identifier_t;
     typedef uint8_t type_t;
@@ -333,7 +334,7 @@ private:
     static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(nnodes_t) + sizeof(nrkeys_t);
     static const size_t RESET_REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
     static const size_t HK_REPORT_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nkeys_t);
-    static const size_t KEY_MGR_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t);
+    static const size_t KEY_MGR_BASE_SIZE = PACKET_BASE_SIZE + sizeof(keyhash_t) + sizeof(key_len_t);
 };
 
 } // namespace memcachekv

@@ -300,8 +300,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     case MemcacheKVMessage::Type::MGR_REQ: {
         *(op_type_t*)ptr = OP_MGR_REQ;
         ptr += sizeof(op_type_t);
-        keyhash_t hash = (keyhash_t)compute_keyhash(in.migration_request.key);
-        convert_endian(ptr, &hash, sizeof(keyhash_t));
+        convert_endian(ptr, &in.migration_request.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
@@ -654,7 +653,9 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
         }
         break;
     case ControllerMessage::Type::KEY_MGR:
-        *(key_len_t*)ptr = (key_len_t)in.key_mgr.key.size();
+        *(keyhash_t*)ptr = in.key_mgr.keyhash;
+        ptr += sizeof(keyhash_t);
+        *(key_len_t*)ptr = in.key_mgr.key.size();
         ptr += sizeof(key_len_t);
         memcpy(ptr, in.key_mgr.key.data(), in.key_mgr.key.size());
         break;
@@ -721,6 +722,8 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
             return false;
         }
         out.type = ControllerMessage::Type::KEY_MGR;
+        out.key_mgr.keyhash = *(keyhash_t*)ptr;
+        ptr += sizeof(keyhash_t);
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
         out.key_mgr.key = string(ptr, key_len);

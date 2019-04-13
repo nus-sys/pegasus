@@ -219,6 +219,7 @@ Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
 
     // Send migration request to all nodes (except itself)
     msg.type = MemcacheKVMessage::Type::MGR_REQ;
+    msg.migration_request.keyhash = key_mgr.keyhash;
     msg.migration_request.key = key_mgr.key;
     if (this->store.count(key_mgr.key) == 0) {
         msg.migration_request.value = this->default_value;
