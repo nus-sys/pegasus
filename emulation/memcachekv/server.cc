@@ -11,12 +11,13 @@ using std::string;
 namespace memcachekv {
 
 Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl_codec,
-               int proc_latency, string default_value)
+               int proc_latency, string default_value, bool report_load)
     : config(config),
     codec(codec),
     ctrl_codec(ctrl_codec),
     proc_latency(proc_latency),
-    default_value(default_value)
+    default_value(default_value),
+    report_load(report_load)
 {
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
@@ -143,7 +144,9 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     reply.key = op.key;
     reply.keyhash = op.keyhash;
     reply.ver = op.ver;
-    //reply.load = calculate_load();
+    if (this->report_load) {
+        reply.load = calculate_load();
+    }
     switch (op.op_type) {
     case Operation::Type::GET: {
         reply.type = MemcacheKVReply::Type::READ;

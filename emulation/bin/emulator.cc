@@ -44,6 +44,7 @@ int main(int argc, char *argv[])
     NodeMode mode = UNKNOWN;
     int n_transport_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
+    bool report_load = false;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
     std::deque<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::UNIFORM;
@@ -55,7 +56,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, sigterm_handler);
     //std::srand(unsigned(std::time(0)));
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:l:m:n:p:s:t:v:w:x:y:z:A:B:C:D:E:F:G:H:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:n:p:s:t:v:w:x:y:z:A:B:C:D:E:F:G:H:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -87,6 +88,11 @@ int main(int argc, char *argv[])
         }
         case 'i': {
             mean_interval = stoi(std::string(optarg));
+            break;
+        }
+        case 'j': {
+            int input = stoi(std::string(optarg));
+            report_load = input != 0;
             break;
         }
         case 'l': {
@@ -316,7 +322,7 @@ int main(int argc, char *argv[])
         node_config.node_id = node_id;
         node_config.terminating = false;
         std::string default_value = std::string(value_len, 'v');
-        app = new memcachekv::Server(&node_config, codec, ctrl_codec, proc_latency, default_value);
+        app = new memcachekv::Server(&node_config, codec, ctrl_codec, proc_latency, default_value, report_load);
         break;
     }
     case CONTROLLER: {

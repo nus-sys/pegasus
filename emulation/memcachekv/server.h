@@ -15,8 +15,8 @@ namespace memcachekv {
 class Server : public Application {
 public:
     Server(Configuration *config, MessageCodec *codec,
-           ControllerCodec *ctrl_codec, int proc_latency = 0,
-           std::string default_value = "");
+           ControllerCodec *ctrl_codec, int proc_latency,
+           std::string default_value, bool report_load);
     ~Server() {};
 
     void receive_message(const std::string &message,
@@ -57,6 +57,7 @@ private:
 
     int proc_latency;
     std::string default_value;
+    bool report_load;
     /* Load related */
     static const int EPOCH_DURATION = 1000; // 1ms
     struct timeval epoch_start;
