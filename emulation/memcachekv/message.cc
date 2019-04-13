@@ -104,8 +104,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     switch (op_type) {
     case OP_GET:
     case OP_PUT:
-    case OP_DEL:
-    case OP_MGR: {
+    case OP_DEL: {
         if (buf_size < REQUEST_BASE_SIZE) {
             return false;
         }
@@ -124,8 +123,6 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         case OP_DEL:
             out.request.op.op_type = Operation::Type::DEL;
             break;
-        case OP_MGR:
-            out.request.op.op_type = Operation::Type::MGR;
         }
         out.request.op.keyhash = keyhash;
         out.request.op.ver = ver;
@@ -257,9 +254,6 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         case Operation::Type::DEL:
             *(op_type_t*)ptr = OP_DEL;
             break;
-        case Operation::Type::MGR:
-            panic("Should never generate MGR on a server!");
-            break;
         default:
             return false;
         }
@@ -306,7 +300,8 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     case MemcacheKVMessage::Type::MGR_REQ: {
         *(op_type_t*)ptr = OP_MGR_REQ;
         ptr += sizeof(op_type_t);
-        convert_endian(ptr, &in.migration_request.keyhash, sizeof(keyhash_t));
+        keyhash_t hash = (keyhash_t)compute_keyhash(in.migration_request.key);
+        convert_endian(ptr, &hash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
@@ -380,7 +375,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::Type::MGR_ACK: {
-        // emptry
+        // empty
         break;
     }
     default:
@@ -625,6 +620,9 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
     case ControllerMessage::Type::HK_REPORT:
         buf_size = HK_REPORT_BASE_SIZE + in.hk_report.reports.size() * (sizeof(keyhash_t) + sizeof(load_t));
         break;
+    case ControllerMessage::Type::KEY_MGR:
+        buf_size = KEY_MGR_BASE_SIZE + in.key_mgr.key.size();
+        break;
     default:
         return false;
     }
@@ -654,6 +652,11 @@ ControllerCodec::encode(std::string &out, const ControllerMessage &in)
             *(load_t*)ptr = report.load;
             ptr += sizeof(load_t);
         }
+        break;
+    case ControllerMessage::Type::KEY_MGR:
+        *(key_len_t*)ptr = (key_len_t)in.key_mgr.key.size();
+        ptr += sizeof(key_len_t);
+        memcpy(ptr, in.key_mgr.key.data(), in.key_mgr.key.size());
         break;
     }
 
@@ -711,6 +714,16 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
             ptr += sizeof(load_t);
             out.hk_report.reports.push_back(report);
         }
+        break;
+    }
+    case TYPE_KEY_MGR: {
+        if (buf_size < KEY_MGR_BASE_SIZE) {
+            return false;
+        }
+        out.type = ControllerMessage::Type::KEY_MGR;
+        key_len_t key_len = *(key_len_t*)ptr;
+        ptr += sizeof(key_len_t);
+        out.key_mgr.key = string(ptr, key_len);
         break;
     }
     default:

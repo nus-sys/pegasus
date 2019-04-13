@@ -111,6 +111,10 @@ Server::process_ctrl_message(const ControllerMessage &msg,
                              const sockaddr &addr)
 {
     switch (msg.type) {
+    case ControllerMessage::Type::KEY_MGR: {
+        process_ctrl_key_migration(msg.key_mgr);
+        break;
+    }
     default:
         panic("Server received unexpected controller message");
     }
@@ -185,59 +189,6 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
 }
 
 void
-Server::migrate_kv(const Operation &op,
-                   const string &value)
-{
-    int num_nodes = 0;
-    float read_ratio = float(op.read_load) / (op.read_load + op.write_load);
-    if (read_ratio < 0.88) {
-        num_nodes = 0;
-    } else if (read_ratio < 0.95) {
-        num_nodes = 1;
-    } else if (read_ratio < 0.98) {
-        num_nodes = 2;
-    } else if (read_ratio < 0.995) {
-        num_nodes = 4;
-    } else {
-        num_nodes = this->config->num_nodes - 1;
-    }
-    for (int i = 0; i < num_nodes; i++) {
-        int dst = this->config->node_id;
-        if (num_nodes == this->config->num_nodes - 1) {
-            // Migrate to all other nodes
-            dst = i >= this->config->node_id ? i + 1 : i;
-        } else {
-            // Pick a random node
-            while (dst == this->config->node_id) {
-                dst = rand() % this->config->num_nodes;
-            }
-        }
-        migrate_kv_to(op, value, dst);
-    }
-}
-
-void
-Server::migrate_kv_to(const Operation &op,
-                      const string &value,
-                      int dst)
-{
-    // Only send migration request if:
-    // 1. not to itself
-    // 2. has not sent to the targeted node before
-    if (dst != this->config->node_id) {
-        MemcacheKVMessage mgr_req;
-        string mgr_req_str;
-        mgr_req.type = MemcacheKVMessage::Type::MGR_REQ;
-        mgr_req.migration_request.keyhash = op.keyhash;
-        mgr_req.migration_request.ver = op.ver;
-        mgr_req.migration_request.key = op.key;
-        mgr_req.migration_request.value = value;
-        this->codec->encode(mgr_req_str, mgr_req);
-        this->transport->send_message_to_node(mgr_req_str, dst);
-    }
-}
-
-void
 Server::process_migration_request(const MigrationRequest &request)
 {
     if (this->store.count(request.key) == 0 ||
@@ -257,6 +208,30 @@ Server::process_migration_request(const MigrationRequest &request)
             return;
         }
         this->transport->send_message_to_addr(msg_str, this->config->router_address);
+    }
+}
+
+void
+Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
+{
+    MemcacheKVMessage msg;
+    string msg_str;
+
+    // Send migration request to all nodes (except itself)
+    msg.type = MemcacheKVMessage::Type::MGR_REQ;
+    msg.migration_request.key = key_mgr.key;
+    if (this->store.count(key_mgr.key) == 0) {
+        msg.migration_request.value = this->default_value;
+        msg.migration_request.ver = 0;
+    } else {
+        msg.migration_request.value = this->store.at(key_mgr.key).value;
+        msg.migration_request.ver = this->store.at(key_mgr.key).ver;
+    }
+    this->codec->encode(msg_str, msg);
+    for (int node_id = 0; node_id < this->config->num_nodes; node_id++) {
+        if (node_id != this->config->node_id) {
+            this->transport->send_message_to_node(msg_str, node_id);
+        }
     }
 }
 

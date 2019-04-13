@@ -19,8 +19,7 @@ struct Operation {
     enum class Type {
         GET,
         PUT,
-        DEL,
-        MGR
+        DEL
     };
     Operation()
         : op_type(Type::GET), keyhash(0), ver(0), node_id(0), read_load(0), write_load(0), key(""), value("") {};
@@ -95,8 +94,8 @@ struct MigrationRequest {
 
 struct MigrationAck {
     keyhash_t keyhash;
-    int node_id;
     ver_t ver;
+    int node_id;
 };
 
 struct MemcacheKVMessage {
@@ -157,7 +156,7 @@ private:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value
      *
      * Migration request format:
-     * key_len (16) + key + value_len(16) + value
+     * key_len (16) + key + value_len (16) + value
      *
      * Migration ack format:
      * empty
@@ -181,9 +180,8 @@ private:
     static const op_type_t OP_DEL       = 0x2;
     static const op_type_t OP_REP_R     = 0x3;
     static const op_type_t OP_REP_W     = 0x4;
-    static const op_type_t OP_MGR       = 0x5;
-    static const op_type_t OP_MGR_REQ   = 0x6;
-    static const op_type_t OP_MGR_ACK   = 0x7;
+    static const op_type_t OP_MGR_REQ   = 0x5;
+    static const op_type_t OP_MGR_ACK   = 0x6;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
     static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(key_len_t);
@@ -265,16 +263,22 @@ struct ControllerHKReport {
     std::list<Report> reports;
 };
 
+struct ControllerKeyMigration {
+    std::string key;
+};
+
 struct ControllerMessage {
     enum class Type {
         RESET_REQ,
         RESET_REPLY,
-        HK_REPORT
+        HK_REPORT,
+        KEY_MGR
     };
     Type type;
     ControllerResetRequest reset_req;
     ControllerResetReply reset_reply;
     ControllerHKReport hk_report;
+    ControllerKeyMigration key_mgr;
 };
 
 class ControllerCodec {
@@ -300,6 +304,9 @@ private:
      *
      * Hot key report:
      * nkeys (16) + nkeys * (keyhash (32) + load (16))
+     *
+     * Key migration:
+     * key_len (16) + key
      */
     typedef uint16_t identifier_t;
     typedef uint8_t type_t;
@@ -310,12 +317,14 @@ private:
     typedef uint16_t nkeys_t;
     typedef uint32_t keyhash_t;
     typedef uint16_t load_t;
+    typedef uint16_t key_len_t;
 
     static const identifier_t CONTROLLER = 0xDEAC;
 
     static const type_t TYPE_RESET_REQ      = 0;
     static const type_t TYPE_RESET_REPLY    = 1;
     static const type_t TYPE_HK_REPORT      = 2;
+    static const type_t TYPE_KEY_MGR        = 3;
 
     static const ack_t ACK_OK       = 0;
     static const ack_t ACK_FAILED   = 1;
@@ -324,6 +333,7 @@ private:
     static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(nnodes_t) + sizeof(nrkeys_t);
     static const size_t RESET_REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
     static const size_t HK_REPORT_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nkeys_t);
+    static const size_t KEY_MGR_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t);
 };
 
 } // namespace memcachekv

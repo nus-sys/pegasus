@@ -32,12 +32,8 @@ private:
                             const sockaddr &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
-    void migrate_kv(const Operation &op,
-                    const std::string &value);
-    void migrate_kv_to(const Operation &op,
-                       const std::string &value,
-                       int dst);
     void process_migration_request(const MigrationRequest &request);
+    void process_ctrl_key_migration(const ControllerKeyMigration &key_mgr);
     void update_rate(const Operation &op);
     load_t calculate_load();
 
