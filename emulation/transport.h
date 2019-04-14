@@ -30,11 +30,13 @@ public:
 
     void register_receiver(TransportReceiver *receiver);
     void send_message(const std::string &msg, const sockaddr &addr);
-    void send_message_to_addr(const std::string &msg, const NodeAddress &addr);
-    void send_message_to_node(const std::string &msg, int dst_node_id);
+    void send_message_to_node(const std::string &msg, int rack_id, int node_id);
+    void send_message_to_local_node(const std::string &msg, int node_id);
+    void send_message_to_router(const std::string &msg);
     void send_message_to_controller(const std::string &msg);
 
 private:
+    void send_message_to_addr(const std::string &msg, const NodeAddress &addr);
     void register_address(const NodeAddress &node_addr);
     void on_readable(int fd);
 

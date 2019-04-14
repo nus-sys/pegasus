@@ -19,9 +19,10 @@ public:
 
 class Configuration {
 public:
-    Configuration(const std::vector<NodeAddress> &addresses,
+    Configuration(const std::vector<std::vector<NodeAddress>> &addresses,
                   const NodeAddress &router_address,
                   const NodeAddress &controller_address,
+                  int rack_id,
                   int node_id,
                   int n_transport_threads,
                   bool terminating);
@@ -30,11 +31,13 @@ public:
 
     virtual int key_to_node_id(const std::string &key) = 0;
 
+    int num_racks;
     int num_nodes;
+    int rack_id;
     int node_id;
     int n_transport_threads;
     bool terminating;
-    std::vector<NodeAddress> addresses;
+    std::vector<std::vector<NodeAddress>> addresses;
     NodeAddress router_address;
     NodeAddress controller_address;
 };

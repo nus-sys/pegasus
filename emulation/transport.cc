@@ -14,8 +14,9 @@ Transport::Transport(const Configuration *config)
         register_address(NodeAddress());
     } else {
         // Server node
+        assert(config->rack_id < config->num_racks);
         assert(config->node_id < config->num_nodes);
-        register_address(config->addresses.at(config->node_id));
+        register_address(config->addresses.at(config->rack_id).at(config->node_id));
     }
 };
 
@@ -48,10 +49,25 @@ Transport::send_message_to_addr(const std::string &msg, const NodeAddress &addr)
 }
 
 void
-Transport::send_message_to_node(const std::string &msg, int dst_node_id)
+Transport::send_message_to_node(const std::string &msg, int rack_id, int node_id)
 {
-    assert(dst_node_id < this->config->num_nodes);
-    send_message_to_addr(msg, this->config->addresses.at(dst_node_id));
+    assert(rack_id < this->config->num_racks && rack_id >= 0);
+    assert(node_id < this->config->num_nodes && node_id >= 0);
+    send_message_to_addr(msg, this->config->addresses.at(rack_id).at(node_id));
+}
+
+void
+Transport::send_message_to_local_node(const std::string &msg, int node_id)
+{
+    assert(this->config->rack_id >= 0);
+    assert(node_id < this->config->num_nodes && node_id >= 0);
+    send_message_to_addr(msg, this->config->addresses.at(this->config->rack_id).at(node_id));
+}
+
+void
+Transport::send_message_to_router(const std::string &msg)
+{
+    send_message_to_addr(msg, this->config->router_address);
 }
 
 void

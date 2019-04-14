@@ -35,7 +35,7 @@ CLIClient::run(int duration)
     msg.request.op = this->op;
     this->codec->encode(msg_str, msg);
 
-    this->transport->send_message_to_addr(msg_str, this->config->addresses[node_id]);
+    this->transport->send_message_to_node(msg_str, 0, node_id);
 }
 
 } // namespace memcahcekv

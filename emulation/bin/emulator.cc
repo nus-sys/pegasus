@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
 {
     int opt;
     NodeMode mode = UNKNOWN;
-    int n_transport_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, node_id = -1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100;
+    int n_transport_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     bool report_load = false;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
     signal(SIGTERM, sigterm_handler);
     //std::srand(unsigned(std::time(0)));
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:n:p:s:t:v:w:x:y:z:A:B:C:D:E:F:G:H:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:n:p:r:s:t:v:w:x:y:z:A:B:C:D:E:F:G:H:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -121,6 +121,10 @@ int main(int argc, char *argv[])
             put_ratio = stof(std::string(optarg));
             break;
         }
+        case 'r': {
+            rack_id = stoi(std::string(optarg));
+            break;
+        }
         case 's': {
             stats_file_path = optarg;
             break;
@@ -149,6 +153,14 @@ int main(int argc, char *argv[])
                 node_config_mode = memcachekv::MemcacheKVConfig::NETCACHE;
             } else {
                 printf("Unknown node config mode %s\n", optarg);
+                exit(1);
+            }
+            break;
+        }
+        case 'x': {
+            num_racks = stoi(std::string(optarg));
+            if (num_racks < 1) {
+                printf("Number of racks should be > 0\n");
                 exit(1);
             }
             break;
@@ -308,16 +320,22 @@ int main(int argc, char *argv[])
                                                   d_interval,
                                                   d_nkeys);
 
+        node_config.rack_id = -1;
         node_config.node_id = -1;
         node_config.terminating = true;
         app = new memcachekv::Client(&node_config, stats, gen, codec, node_id);
         break;
     }
     case SERVER: {
+        if (rack_id < 0) {
+            printf("server requires argument '-r <rack id>'\n");
+            exit(1);
+        }
         if (node_id < 0) {
             printf("server requires argument '-e <node id>'\n");
             exit(1);
         }
+        node_config.rack_id = rack_id;
         node_config.node_id = node_id;
         node_config.terminating = false;
         std::string default_value = std::string(value_len, 'v');
@@ -325,6 +343,7 @@ int main(int argc, char *argv[])
         break;
     }
     case CONTROLLER: {
+        node_config.rack_id = -1;
         node_config.node_id = -1;
         node_config.terminating = true;
         memcachekv::ControllerMessage msg;
@@ -335,6 +354,7 @@ int main(int argc, char *argv[])
         break;
     }
     case DECREMENTOR: {
+        node_config.rack_id = -1;
         node_config.node_id = -1;
         node_config.terminating = false;
         app = new memcachekv::Decrementor(&node_config, dec_interval, n_dec);

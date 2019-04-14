@@ -33,22 +33,27 @@ NodeAddress::NodeAddress(const string &address, const string &port)
     freeaddrinfo(res);
 }
 
-Configuration::Configuration(const std::vector<NodeAddress> &addresses,
+Configuration::Configuration(const std::vector<std::vector<NodeAddress>> &addresses,
                              const NodeAddress &router_address,
                              const NodeAddress &controller_address,
+                             int rack_id,
                              int node_id,
                              int n_transport_threads,
                              bool terminating)
-    : num_nodes(addresses.size()), node_id(node_id),
+    : num_racks(addresses.size()), rack_id(rack_id), node_id(node_id),
     n_transport_threads(n_transport_threads), terminating(terminating),
     addresses(addresses), router_address(router_address),
     controller_address(controller_address)
 {
+    this->num_nodes = addresses.empty() ? 0 : addresses[0].size();
 }
 
 Configuration::Configuration(const char *file_path)
+    : rack_id(-1), node_id(-1),
+    n_transport_threads(1), terminating(false)
 {
     std::ifstream file;
+    std::vector<NodeAddress> rack;
     file.open(file_path);
     if (!file) {
         panic("Failed to open configuration file");
@@ -65,7 +70,12 @@ Configuration::Configuration(const char *file_path)
 
         char *cmd = strtok(&line[0], " \t");
 
-        if (strcasecmp(cmd, "node") == 0) {
+        if (strcasecmp(cmd, "rack") == 0) {
+            if (!rack.empty()) {
+                this->addresses.push_back(rack);
+                rack.clear();
+            }
+        } else if (strcasecmp(cmd, "node") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
                 panic("'node' configuration line requires an argument");
@@ -77,7 +87,7 @@ Configuration::Configuration(const char *file_path)
             if (host == nullptr || port == nullptr) {
                 panic("Configuration line format: 'node host:port'");
             }
-            this->addresses.push_back(NodeAddress(string(host), string(port)));
+            rack.push_back(NodeAddress(string(host), string(port)));
         } else if (strcasecmp(cmd, "router") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
@@ -108,7 +118,12 @@ Configuration::Configuration(const char *file_path)
             panic("Unknown configuration directive");
         }
     }
+    // last rack
+    if (!rack.empty()) {
+        this->addresses.push_back(rack);
+    }
     file.close();
-    this->num_nodes = this->addresses.size();
-    assert(this->num_nodes > 0);
+    this->num_racks = this->addresses.size();
+    this->num_nodes = this->num_racks == 0 ? 0 : this->addresses[0].size();
+    assert(this->num_racks > 0 && this->num_nodes > 0);
 }

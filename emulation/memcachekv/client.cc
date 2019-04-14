@@ -223,7 +223,8 @@ Client::execute_op(Operation &op)
     msg.request.op = op;
     this->codec->encode(msg_str, msg);
 
-    this->transport->send_message_to_addr(msg_str, this->config->addresses[node_id]);
+    // XXX Need to change this for chain replication
+    this->transport->send_message_to_node(msg_str, 0, node_id);
 
     this->req_id++;
     this->stats->report_issue();

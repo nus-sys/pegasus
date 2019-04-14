@@ -55,7 +55,7 @@ Decrementor::run(int duration)
         }
         prev = now;
         for (int i = 0; i < this->config->num_nodes/2; i++) {
-            this->transport->send_message_to_node(msgs[i], 0);
+            this->transport->send_message_to_router(msgs[i]);
         }
     }
 }

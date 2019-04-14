@@ -31,7 +31,7 @@ Controller::run(int duration)
     this->replied = false;
     std::string msg_str;
     this->codec.encode(msg_str, this->msg);
-    this->transport->send_message_to_addr(msg_str, this->config->controller_address);
+    this->transport->send_message_to_controller(msg_str);
     // Wait for ack
     /*
     std::unique_lock<std::mutex> lck(mtx);

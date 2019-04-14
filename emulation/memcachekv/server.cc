@@ -207,7 +207,7 @@ Server::process_migration_request(const MigrationRequest &request)
             printf("Failed to encode migration ack\n");
             return;
         }
-        this->transport->send_message_to_addr(msg_str, this->config->router_address);
+        this->transport->send_message_to_router(msg_str);
     }
 }
 
@@ -217,7 +217,7 @@ Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
     MemcacheKVMessage msg;
     string msg_str;
 
-    // Send migration request to all nodes (except itself)
+    // Send migration request to all nodes in the rack (except itself)
     msg.type = MemcacheKVMessage::Type::MGR_REQ;
     msg.migration_request.keyhash = key_mgr.keyhash;
     msg.migration_request.key = key_mgr.key;
@@ -231,7 +231,7 @@ Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
     this->codec->encode(msg_str, msg);
     for (int node_id = 0; node_id < this->config->num_nodes; node_id++) {
         if (node_id != this->config->node_id) {
-            this->transport->send_message_to_node(msg_str, node_id);
+            this->transport->send_message_to_local_node(msg_str, node_id);
         }
     }
 }
