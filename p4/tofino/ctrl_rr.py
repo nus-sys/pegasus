@@ -32,11 +32,13 @@ TYPE_ERROR = -1
 TYPE_RESET_REQ = 0x0
 TYPE_RESET_REPLY = 0x1
 TYPE_HK_REPORT = 0x2
+TYPE_KEY_MGR = 0x3
 TYPE_SIZE = 1
 NNODES_SIZE = 2
 NKEYS_SIZE = 2
 KEYHASH_SIZE = 4
 LOAD_SIZE = 2
+KEY_LEN_SIZE = 2
 
 MAX_NRKEYS = 32
 DEFAULT_NUM_NODES = 32
@@ -69,6 +71,11 @@ class HKReport(object):
         # sorted list of Reports
         self.reports = SortedList(key=lambda x : x.load)
 
+class KeyMigration(object):
+    def __init__(self, keyhash, key):
+        self.keyhash = keyhash
+        self.key = key
+
 class ReplicatedKey(object):
     def __init__(self, index, load):
         self.index = index
@@ -99,14 +106,26 @@ class MessageHandler(threading.Thread):
             index += NKEYS_SIZE
             msg = HKReport()
             for _ in range(nkeys):
-                keyhash = struct.unpack('I', buf[index:index+KEYHASH_SIZE])[0]
+                keyhash = struct.unpack('<I', buf[index:index+KEYHASH_SIZE])[0]
                 index += KEYHASH_SIZE
-                load = struct.unpack('H', buf[index:index+LOAD_SIZE])[0]
+                load = struct.unpack('<H', buf[index:index+LOAD_SIZE])[0]
                 index += LOAD_SIZE
                 msg.reports.add(Report(keyhash, load))
         else:
             msg_type = TYPE_ERROR
         return (msg_type, msg)
+
+    def encode_msg(self, msg_type, msg):
+        buf = ""
+        buf += struct.pack('<H', IDENTIFIER)
+        buf += struct.pack('<B', msg_type)
+        if msg_type == TYPE_KEY_MGR:
+            buf += struct.pack('<I', msg.keyhash)
+            buf += struct.pack('<H', len(msg.key))
+            buf += msg.key
+        else:
+            buf = ""
+        return buf
 
     def handle_reset_request(self, addr, msg):
         global controller
@@ -115,6 +134,7 @@ class MessageHandler(threading.Thread):
         controller.reset_node_load()
 
     def handle_hk_report(self, addr, msg):
+        global controller
         controller.handle_hk_report(msg.reports)
 
     def run(self):
