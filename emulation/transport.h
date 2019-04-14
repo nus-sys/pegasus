@@ -36,7 +36,6 @@ public:
 
 private:
     void register_address(const NodeAddress &node_addr);
-    void listen_on_controller();
     void on_readable(int fd);
 
     const int SOCKET_BUF_SIZE = 1024 * 1024; // 1MB buffer size
@@ -44,7 +43,6 @@ private:
     const Configuration *config;
     TransportReceiver *receiver;
     int socket_fd;
-    int controller_fd;
 
     friend class TransportEventBase;
 };

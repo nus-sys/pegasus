@@ -7,7 +7,7 @@
 #include "logger.h"
 
 Transport::Transport(const Configuration *config)
-    : config(config), receiver(nullptr), socket_fd(-1), controller_fd(-1)
+    : config(config), receiver(nullptr), socket_fd(-1)
 {
     if (config->node_id < 0) {
         // Client node
@@ -16,7 +16,6 @@ Transport::Transport(const Configuration *config)
         // Server node
         assert(config->node_id < config->num_nodes);
         register_address(config->addresses.at(config->node_id));
-        listen_on_controller();
     }
 };
 
@@ -24,10 +23,6 @@ Transport::~Transport()
 {
     if (this->socket_fd > 0) {
         close(socket_fd);
-    }
-
-    if (this->controller_fd > 0) {
-        close(controller_fd);
     }
 }
 
@@ -62,14 +57,7 @@ Transport::send_message_to_node(const std::string &msg, int dst_node_id)
 void
 Transport::send_message_to_controller(const std::string &msg)
 {
-    if (sendto(this->controller_fd,
-               msg.c_str(),
-               msg.size(),
-               0,
-               (struct sockaddr *)&this->config->controller_address.sin,
-               sizeof(this->config->controller_address.sin)) == -1) {
-        printf("Failed to send message to controller\n");
-    }
+    send_message_to_addr(msg, this->config->controller_address);
 }
 
 void
@@ -124,41 +112,6 @@ Transport::register_address(const NodeAddress &node_addr)
 }
 
 void
-Transport::listen_on_controller()
-{
-    assert(this->config != nullptr);
-    if (this->config->controller_address.address.size() == 0) {
-        return;
-    }
-    // Setup socket
-    this->controller_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (this->controller_fd == -1) {
-        panic("Failed to create socket");
-    }
-
-    // Non-blocking mode
-    if (fcntl(this->controller_fd, F_SETFL, O_NONBLOCK, 1) == -1) {
-        panic("Failed to set O_NONBLOCK");
-    }
-
-    // Reuse address
-    int n = 1;
-    if (setsockopt(this->controller_fd, SOL_SOCKET, SO_REUSEADDR, (char *)&n, sizeof(n)) < 0) {
-        panic("Failed to set SO_REUSEADDR");
-    }
-
-    // Bind to any address
-    struct sockaddr_in sin;
-    memset(&sin, 0, sizeof(sin));
-    sin.sin_family = AF_INET;
-    sin.sin_port = 0;
-
-    if (bind(this->controller_fd, (sockaddr *)&sin, sizeof(sin)) != 0) {
-        panic("Failed to bind port");
-    }
-}
-
-void
 Transport::on_readable(int fd)
 {
     const int BUFSIZE = 65535;
@@ -193,9 +146,6 @@ TransportEventBase::TransportEventBase(Transport *transport)
     // Add socket events
     if (transport->socket_fd > 0) {
         add_socket_event(transport->socket_fd);
-    }
-    if (transport->controller_fd > 0) {
-        add_socket_event(transport->controller_fd);
     }
 }
 
