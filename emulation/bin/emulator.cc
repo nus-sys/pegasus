@@ -9,7 +9,6 @@
 #include "memcachekv/message.h"
 #include "memcachekv/server.h"
 #include "memcachekv/client.h"
-#include "memcachekv/router.h"
 #include "memcachekv/controller.h"
 #include "memcachekv/decrementor.h"
 
