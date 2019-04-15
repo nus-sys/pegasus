@@ -1,6 +1,7 @@
 #ifndef __MEMCACHEKV_MESSAGE_H__
 #define __MEMCACHEKV_MESSAGE_H__
 
+#include <sys/socket.h>
 #include <list>
 #include <string>
 #include "memcachekv/memcachekv.pb.h"
@@ -48,6 +49,7 @@ struct MemcacheKVRequest {
 
     int client_id;
     uint32_t req_id;
+    struct sockaddr client_addr;
     Operation op;
 };
 
@@ -150,7 +152,7 @@ private:
      * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) + version (32) + debug_node (8) + debug_load (16) + message
      *
      * Request format:
-     * client_id (32) + req_id (32) + key_len (16) + key (+ value_len(16) + value)
+     * client_id (32) + req_id (32) + client_addr (16) + key_len (16) + key (+ value_len(16) + value)
      *
      * Reply format:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value
@@ -172,6 +174,7 @@ private:
     typedef uint16_t key_len_t;
     typedef uint8_t result_t;
     typedef uint16_t value_len_t;
+    typedef uint16_t sa_family_t;
 
     static const identifier_t PEGASUS = 0x4750;
     static const identifier_t STATIC = 0x1573;
@@ -184,7 +187,7 @@ private:
     static const op_type_t OP_MGR_ACK   = 0x6;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
-    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(key_len_t);
+    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + 16 + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
     static const size_t MGR_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
     static const size_t MGR_ACK_BASE_SIZE = PACKET_BASE_SIZE;

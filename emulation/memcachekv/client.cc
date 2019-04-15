@@ -221,10 +221,13 @@ Client::execute_op(Operation &op)
     int node_id = this->config->key_to_node_id(op.key);
     op.node_id = node_id;
     msg.request.op = op;
+    // client_addr filled by head rack
+    memset(&msg.request.client_addr, 0, sizeof(sockaddr));
     this->codec->encode(msg_str, msg);
 
-    // XXX Need to change this for chain replication
-    this->transport->send_message_to_node(msg_str, 0, node_id);
+    // Chain replication: send READs to tail rack and WRITEs to head rack
+    int rack_id = op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
+    this->transport->send_message_to_node(msg_str, rack_id, node_id);
 
     this->req_id++;
     this->stats->report_issue();

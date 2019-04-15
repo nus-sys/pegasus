@@ -82,6 +82,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     if (!this->proto_enable && *(identifier_t*)ptr != STATIC) {
         return false;
     }
+    // Header
     ptr += sizeof(identifier_t);
     op_type_t op_type = *(op_type_t*)ptr;
     ptr += sizeof(op_type_t);
@@ -101,6 +102,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     convert_endian(&load_b, ptr, sizeof(load_t));
     ptr += sizeof(load_t);
 
+    // Payload
     switch (op_type) {
     case OP_GET:
     case OP_PUT:
@@ -113,6 +115,10 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         ptr += sizeof(client_id_t);
         out.request.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
+        out.request.client_addr.sa_family = *(sa_family_t*)ptr;
+        ptr += sizeof(sa_family_t);
+        memcpy(out.request.client_addr.sa_data, ptr, 14);
+        ptr += 14;
         switch (op_type) {
         case OP_GET:
             out.request.op.op_type = Operation::Type::GET;
@@ -235,7 +241,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
 
     char *buf = new char[buf_size];
     char *ptr = buf;
-    // App header
+    // Header
     if (this->proto_enable) {
         *(identifier_t*)ptr = PEGASUS;
     } else {
@@ -335,6 +341,10 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.request.req_id;
         ptr += sizeof(req_id_t);
+        *(sa_family_t*)ptr = (sa_family_t)in.request.client_addr.sa_family;
+        ptr += sizeof(sa_family_t);
+        memcpy(ptr, in.request.client_addr.sa_data, 14);
+        ptr += 14;
         *(key_len_t*)ptr = (key_len_t)in.request.op.key.size();
         ptr += sizeof(key_len_t);
         memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
