@@ -10,8 +10,7 @@ namespace memcachekv {
 class CLIClient : public Application {
 public:
     CLIClient(Configuration *config,
-           MessageCodec *codec,
-           Operation op);
+           MessageCodec *codec);
     ~CLIClient() {};
 
     void receive_message(const std::string &message,
@@ -21,7 +20,6 @@ public:
 private:
     Configuration *config;
     MessageCodec *codec;
-    Operation op;
 };
 
 } // namespace memcachekv

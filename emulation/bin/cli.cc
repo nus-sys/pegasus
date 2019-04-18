@@ -9,20 +9,12 @@ using namespace memcachekv;
 
 int main(int argc, char *argv[])
 {
-    if (argc < 5) {
+    if (argc < 3) {
         printf("usage: cli <config_file> <node_type> <op_type> <key> (<value>)\n");
         exit(1);
     }
     const char *config_file_path = argv[1];
     int node_type = stoi(string(argv[2]));
-    Operation op;
-    op.op_type = static_cast<Operation::Type>(stoi(string(argv[3])));
-    op.key = string(argv[4]);
-    if (argc > 5) {
-        op.value = string(argv[5]);
-    } else {
-        op.value = op.key;
-    }
 
     MemcacheKVConfig *config;
     MessageCodec *codec;
@@ -39,7 +31,7 @@ int main(int argc, char *argv[])
     config->node_id = -1;
     config->n_transport_threads = 1;
     config->terminating = true;
-    CLIClient cli(config, codec, op);
+    CLIClient cli(config, codec);
     Node node(config);
     node.register_app(&cli);
 
