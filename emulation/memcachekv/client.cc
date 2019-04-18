@@ -205,7 +205,7 @@ Client::run(int duration)
 }
 
 void
-Client::execute_op(Operation &op)
+Client::execute_op(const Operation &op)
 {
     PendingRequest pending_request;
     gettimeofday(&pending_request.start_time, nullptr);
@@ -218,8 +218,7 @@ Client::execute_op(Operation &op)
     msg.type = MemcacheKVMessage::Type::REQUEST;
     msg.request.client_id = this->client_id;
     msg.request.req_id = this->req_id;
-    int node_id = this->config->key_to_node_id(op.key);
-    op.node_id = node_id;
+    msg.request.node_id = this->config->key_to_node_id(op.key);
     msg.request.op = op;
     // client_addr filled by head rack
     memset(&msg.request.client_addr, 0, sizeof(sockaddr));
@@ -227,7 +226,7 @@ Client::execute_op(Operation &op)
 
     // Chain replication: send READs to tail rack and WRITEs to head rack
     int rack_id = op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
-    this->transport->send_message_to_node(msg_str, rack_id, node_id);
+    this->transport->send_message_to_node(msg_str, rack_id, msg.request.node_id);
 
     this->req_id++;
     this->stats->report_issue();

@@ -23,7 +23,7 @@ struct Operation {
         DEL
     };
     Operation()
-        : op_type(Type::GET), keyhash(0), ver(0), node_id(0), read_load(0), write_load(0), key(""), value("") {};
+        : op_type(Type::GET), keyhash(0), ver(0), key(""), value("") {};
     Operation(const proto::Operation &op)
         : op_type(static_cast<Operation::Type>(op.op_type())),
         key(op.key()), value(op.value()) {};
@@ -31,9 +31,6 @@ struct Operation {
     Type op_type;
     keyhash_t keyhash;
     ver_t ver;
-    int node_id;
-    load_t read_load;
-    load_t write_load;
 
     std::string key;
     std::string value;
@@ -41,7 +38,7 @@ struct Operation {
 
 struct MemcacheKVRequest {
     MemcacheKVRequest()
-        : client_id(0), req_id(0) {};
+        : client_id(0), req_id(0), node_id(0) {};
     MemcacheKVRequest(const proto::MemcacheKVRequest &request)
         : client_id(request.client_id()),
         req_id(request.req_id()),
@@ -50,6 +47,7 @@ struct MemcacheKVRequest {
     int client_id;
     uint32_t req_id;
     struct sockaddr client_addr;
+    int node_id;
     Operation op;
 };
 

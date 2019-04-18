@@ -30,14 +30,13 @@ CLIClient::run(int duration)
     msg.type = MemcacheKVMessage::Type::REQUEST;
     msg.request.client_id = 0;
     msg.request.req_id = 0;
-    int node_id = this->config->key_to_node_id(op.key);
-    this->op.node_id = node_id;
+    msg.request.node_id = this->config->key_to_node_id(op.key);
     msg.request.op = this->op;
     memset(&msg.request.client_addr, 0, sizeof(sockaddr));
     this->codec->encode(msg_str, msg);
 
-    int rack_id = op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
-    this->transport->send_message_to_node(msg_str, rack_id, node_id);
+    int rack_id = this->op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
+    this->transport->send_message_to_node(msg_str, rack_id, msg.request.node_id);
 }
 
 } // namespace memcahcekv

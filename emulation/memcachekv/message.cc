@@ -132,8 +132,6 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         }
         out.request.op.keyhash = keyhash;
         out.request.op.ver = ver;
-        out.request.op.read_load = load_a;
-        out.request.op.write_load = load_b;
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
         if (buf_size < REQUEST_BASE_SIZE + key_len) {
@@ -268,7 +266,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         hash = hash & KEYHASH_MASK; // controller uses signed int
         convert_endian(ptr, &hash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
-        *(node_t*)ptr = in.request.op.node_id;
+        *(node_t*)ptr = in.request.node_id;
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         *(ver_t*)ptr = 0;

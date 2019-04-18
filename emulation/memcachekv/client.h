@@ -101,7 +101,7 @@ private:
         RECORD,
         COOLDOWN
     };
-    void execute_op(Operation &op);
+    void execute_op(const Operation &op);
     void complete_op(uint32_t req_id, const PendingRequest &request, Result result);
     void insert_pending_request(uint32_t req_id, const PendingRequest &request);
     PendingRequest& get_pending_request(uint32_t req_id);

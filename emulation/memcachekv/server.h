@@ -28,9 +28,9 @@ private:
                             const sockaddr &addr);
     void process_ctrl_message(const ControllerMessage &msg,
                               const sockaddr &addr);
-    void process_kv_request(const MemcacheKVRequest &msg,
+    void process_kv_request(const MemcacheKVRequest &request,
                             const sockaddr &addr);
-    void process_op(const Operation &op,
+    bool process_op(const MemcacheKVRequest &request,
                     MemcacheKVReply &reply);
     void process_migration_request(const MigrationRequest &request);
     void process_ctrl_key_migration(const ControllerKeyMigration &key_mgr);
