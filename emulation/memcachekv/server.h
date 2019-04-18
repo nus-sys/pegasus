@@ -30,7 +30,7 @@ private:
                               const sockaddr &addr);
     void process_kv_request(const MemcacheKVRequest &request,
                             const sockaddr &addr);
-    bool process_op(const MemcacheKVRequest &request,
+    void process_op(const MemcacheKVRequest &request,
                     MemcacheKVReply &reply);
     void process_migration_request(const MigrationRequest &request);
     void process_ctrl_key_migration(const ControllerKeyMigration &key_mgr);
@@ -50,6 +50,12 @@ private:
         ver_t ver;
     };
     tbb::concurrent_unordered_map<std::string, Item> store;
+
+    struct ClientTableEntry {
+        uint32_t req_id;
+        MemcacheKVMessage msg;
+    };
+    tbb::concurrent_unordered_map<int, ClientTableEntry> client_table; // client id -> table entry
 
     int proc_latency;
     std::string default_value;

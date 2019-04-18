@@ -132,9 +132,7 @@ Server::process_kv_request(const MemcacheKVRequest &request,
     MemcacheKVMessage msg;
     string msg_str;
 
-    if (!process_op(request, msg.reply)) {
-        return;
-    }
+    process_op(request, msg.reply);
 
     // Chain replication: tail rack replies to client; other racks forward
     // request to the next rack (same node id) in chain
@@ -171,7 +169,7 @@ Server::process_kv_request(const MemcacheKVRequest &request,
     }
 }
 
-bool
+void
 Server::process_op(const MemcacheKVRequest &request, MemcacheKVReply &reply)
 {
     const Operation &op = request.op;
@@ -200,8 +198,6 @@ Server::process_op(const MemcacheKVRequest &request, MemcacheKVReply &reply)
         if (this->store.count(op.key) == 0 ||
             op.ver >= this->store.at(op.key).ver) {
             this->store[op.key] = Item(op.value, op.ver);
-        } else {
-            return false;
         }
         reply.result = Result::OK;
         reply.value = op.value; // for netcache
@@ -219,7 +215,6 @@ Server::process_op(const MemcacheKVRequest &request, MemcacheKVReply &reply)
         panic("Unknown memcachekv op type");
     }
     update_rate(op);
-    return true;
 }
 
 void
