@@ -30,7 +30,7 @@ private:
                               const sockaddr &addr);
     void process_kv_request(const MemcacheKVRequest &request,
                             const sockaddr &addr);
-    void process_op(const MemcacheKVRequest &request,
+    void process_op(const Operation &op,
                     MemcacheKVReply &reply);
     void process_migration_request(const MigrationRequest &request);
     void process_ctrl_key_migration(const ControllerKeyMigration &key_mgr);
@@ -52,8 +52,12 @@ private:
     tbb::concurrent_unordered_map<std::string, Item> store;
 
     struct ClientTableEntry {
+        ClientTableEntry()
+            : req_id(0), msg("") {};
+        ClientTableEntry(uint32_t req_id, std::string msg)
+            : req_id(req_id), msg(msg) {};
         uint32_t req_id;
-        MemcacheKVMessage msg;
+        std::string msg;
     };
     tbb::concurrent_unordered_map<int, ClientTableEntry> client_table; // client id -> table entry
 

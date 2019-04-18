@@ -132,17 +132,42 @@ Server::process_kv_request(const MemcacheKVRequest &request,
     MemcacheKVMessage msg;
     string msg_str;
 
-    process_op(request, msg.reply);
+    // Check client table
+    if (this->client_table.count(request.client_id) == 0 ||
+        this->client_table.at(request.client_id).req_id < request.req_id) {
+        // New request from client
+        process_op(request.op, msg.reply);
+
+        // Chain replication: tail rack sends a reply; other racks forward the request
+        if (this->config->rack_id == this->config->num_racks - 1) {
+            msg.type = MemcacheKVMessage::Type::REPLY;
+            msg.reply.node_id = this->config->node_id;
+            msg.reply.client_id = request.client_id;
+            msg.reply.req_id = request.req_id;
+        } else {
+            msg.type = MemcacheKVMessage::Type::REQUEST;
+            msg.request = request;
+            if (this->config->rack_id == 0) {
+                // we are the head rack: write client address into request
+                // so that the tail rack can find the original client
+                msg.request.client_addr = addr;
+            }
+        }
+        this->codec->encode(msg_str, msg);
+        // Update client table
+        this->client_table[request.client_id] = ClientTableEntry(request.req_id, msg_str);
+    } else {
+        if (this->client_table.at(request.client_id).req_id > request.req_id) {
+            // we can ignore old requests
+            return;
+        }
+        // This is (potentially) a client retry. Send the previous reply
+        msg_str = this->client_table.at(request.client_id).msg;
+    }
 
     // Chain replication: tail rack replies to client; other racks forward
     // request to the next rack (same node id) in chain
     if (this->config->rack_id == this->config->num_racks - 1) {
-        msg.type = MemcacheKVMessage::Type::REPLY;
-        msg.reply.node_id = this->config->node_id;
-        msg.reply.client_id = request.client_id;
-        msg.reply.req_id = request.req_id;
-
-        this->codec->encode(msg_str, msg);
         if (request.client_addr.sa_family == 0) {
             // client_addr in request is empty: request is
             // directly sent from client -- send back to
@@ -154,15 +179,6 @@ Server::process_kv_request(const MemcacheKVRequest &request,
             this->transport->send_message(msg_str, request.client_addr);
         }
     } else {
-        msg.type = MemcacheKVMessage::Type::REQUEST;
-        msg.request = request;
-        if (this->config->rack_id == 0) {
-            // we are the head rack: write client address into request
-            // so that the tail rack can find the original client
-            msg.request.client_addr = addr;
-        }
-
-        this->codec->encode(msg_str, msg);
         this->transport->send_message_to_node(msg_str,
                                               this->config->rack_id+1,
                                               this->config->node_id);
@@ -170,9 +186,8 @@ Server::process_kv_request(const MemcacheKVRequest &request,
 }
 
 void
-Server::process_op(const MemcacheKVRequest &request, MemcacheKVReply &reply)
+Server::process_op(const Operation &op, MemcacheKVReply &reply)
 {
-    const Operation &op = request.op;
     reply.key = op.key;
     reply.keyhash = op.keyhash;
     reply.ver = op.ver;
