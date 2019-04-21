@@ -25,6 +25,7 @@ public:
                   int rack_id,
                   int node_id,
                   int n_transport_threads,
+                  int core_id,
                   bool terminating);
     Configuration(const char *file_path);
     virtual ~Configuration() {};
@@ -36,6 +37,7 @@ public:
     int rack_id;
     int node_id;
     int n_transport_threads;
+    int core_id;
     bool terminating;
     std::vector<std::vector<NodeAddress>> addresses;
     NodeAddress router_address;

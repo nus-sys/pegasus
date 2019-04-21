@@ -16,7 +16,7 @@ public:
     void run(int duration);
 
 private:
-    void run_transport();
+    void run_transport(int core_id);
 
     const Configuration *config;
     Transport *transport;

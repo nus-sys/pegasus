@@ -39,10 +39,11 @@ Configuration::Configuration(const std::vector<std::vector<NodeAddress>> &addres
                              int rack_id,
                              int node_id,
                              int n_transport_threads,
+                             int core_id,
                              bool terminating)
     : num_racks(addresses.size()), rack_id(rack_id), node_id(node_id),
-    n_transport_threads(n_transport_threads), terminating(terminating),
-    addresses(addresses), router_address(router_address),
+    n_transport_threads(n_transport_threads), core_id(core_id),
+    terminating(terminating), addresses(addresses), router_address(router_address),
     controller_address(controller_address)
 {
     this->num_nodes = addresses.empty() ? 0 : addresses[0].size();
