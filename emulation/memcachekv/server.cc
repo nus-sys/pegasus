@@ -155,7 +155,8 @@ Server::process_kv_request(const MemcacheKVRequest &request,
         }
         this->codec->encode(msg_str, msg);
         // Update client table
-        this->client_table[request.client_id] = ClientTableEntry(request.req_id, msg_str);
+        // XXX need to fix this
+        //this->client_table[request.client_id] = ClientTableEntry(request.req_id, msg_str);
     } else {
         if (this->client_table.at(request.client_id).req_id > request.req_id) {
             // we can ignore old requests
