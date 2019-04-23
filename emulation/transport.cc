@@ -17,8 +17,8 @@ Transport::Transport(const Configuration *config)
         assert(config->rack_id < config->num_racks);
         assert(config->node_id < config->num_nodes);
         register_address(config->addresses.at(config->rack_id).at(config->node_id));
-        register_controller();
     }
+    register_controller();
 };
 
 Transport::~Transport()
