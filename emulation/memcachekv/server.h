@@ -44,7 +44,7 @@ private:
     struct Item {
         Item()
             : value(""), ver(0) {};
-        Item(std::string value, ver_t ver)
+        Item(const std::string &value, ver_t ver)
             : value(value), ver(ver) {};
         std::string value;
         ver_t ver;
@@ -54,7 +54,7 @@ private:
     struct ClientTableEntry {
         ClientTableEntry()
             : req_id(0), msg("") {};
-        ClientTableEntry(uint32_t req_id, std::string msg)
+        ClientTableEntry(uint32_t req_id, const std::string &msg)
             : req_id(req_id), msg(msg) {};
         uint32_t req_id;
         std::string msg;

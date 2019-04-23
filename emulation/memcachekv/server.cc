@@ -213,7 +213,8 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         reply.type = MemcacheKVReply::Type::WRITE;
         if (this->store.count(op.key) == 0 ||
             op.ver >= this->store.at(op.key).ver) {
-            this->store[op.key] = Item(op.value, op.ver);
+            this->store[op.key].value = op.value;
+            this->store[op.key].ver = op.ver;
         }
         reply.result = Result::OK;
         reply.value = op.value; // for netcache
