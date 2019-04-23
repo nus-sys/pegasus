@@ -15,16 +15,14 @@
 #define OP_DEL          0x2
 #define OP_REP_R        0x3
 #define OP_REP_W        0x4
-#define OP_MGR          0x5
-#define OP_MGR_REQ      0x6
-#define OP_MGR_ACK      0x7
+#define OP_MGR_REQ      0x5
+#define OP_MGR_ACK      0x6
 #define OP_DEC          0xF
 
 #define RNODE_NONE      0x7F
 #define RKEY_NONE       0x7F
 #define MAX_RKEY_RATE   0x7FFF
 
-#define OVERLOAD        0xA
 #define NNODES          32
 #define MAX_REPLICAS    16
 
@@ -98,7 +96,6 @@ header_type metadata_t {
         rset_index: 8;
         node : 8;
         load : 16;
-        overload : 1;
         ver_matched : 1;
     }
 }
@@ -109,21 +106,16 @@ metadata metadata_t meta;
 *********************** STATEFUL MEMORY  *********************************
 *************************************************************************/
 /*
-   Current number of outstanding requests (queue length)
-   at each node
- */
-register reg_queue_len {
-    width: 16;
-    instance_count: 32;
+   next version number
+*/
+register reg_ver_next {
+    width: 32;
+    instance_count: 1;
 }
 /*
-   rkey version number
-*/
-register reg_rkey_ver_next {
-    width: 32;
-    instance_count: 32;
-}
-register reg_rkey_ver_curr {
+   version number of latest completed write
+ */
+register reg_rkey_ver_completed {
     width: 32;
     instance_count: 32;
 }
@@ -137,13 +129,12 @@ register reg_rkey_rate_counter {
 /*
    round-robin counter
 */
-register reg_rr_read_counter {
+register reg_rr_rkey_counter {
     // per key counter
     width: 8;
     instance_count: 32;
 }
-register reg_rr_write_counter {
-    // one global counter
+register reg_rr_global_counter {
     width: 8;
     instance_count: 1;
 }
@@ -229,14 +220,6 @@ register reg_rkey_read_counter {
 register reg_rkey_write_counter {
     width: 16;
     instance_count: 32;
-}
-/*************************************************************************
-*********************** RESUBMIT  ****************************************
-*************************************************************************/
-field_list resubmit_fields {
-    meta.rkey_index;
-    meta.node;
-    meta.load;
 }
 /*************************************************************************
 *********************** CHECKSUM *****************************************
@@ -376,92 +359,6 @@ table tab_do_drop {
 }
 
 /*
-   resubmit
- */
-action do_resubmit() {
-    resubmit(resubmit_fields);
-}
-
-table tab_do_resubmit {
-    actions {
-        do_resubmit;
-    }
-    default_action: do_resubmit;
-    size: 1;
-}
-
-/*
-   dummies
-*/
-blackbox stateful_alu sa_dummy {
-    reg: reg_rkey_ver_curr;
-}
-
-action dummy() {
-    sa_dummy.execute_stateful_alu(0);
-}
-
-@pragma stage 1
-table tab_dummy {
-    actions {
-        dummy;
-    }
-    default_action: dummy;
-    size: 1;
-}
-
-/*
-   inc/dec queue len
- */
-blackbox stateful_alu sa_inc_queue_len {
-    reg: reg_queue_len;
-    condition_lo: register_lo > OVERLOAD;
-    update_lo_1_value: register_lo + 1;
-    output_predicate: condition_lo;
-    output_value: combined_predicate;
-    output_dst: meta.overload;
-}
-blackbox stateful_alu sa_dec_queue_len {
-    reg: reg_queue_len;
-    condition_lo: register_lo > meta.load;
-    update_lo_1_predicate: condition_lo;
-    update_lo_1_value: register_lo - meta.load;
-}
-
-action inc_queue_len() {
-    sa_inc_queue_len.execute_stateful_alu(meta.node);
-}
-action dec_queue_len() {
-    sa_dec_queue_len.execute_stateful_alu(meta.node);
-    add(meta.node, meta.node, 1);
-}
-
-@pragma stage 8
-table tab_inc_queue_len {
-    actions {
-        inc_queue_len;
-    }
-    default_action: inc_queue_len;
-    size: 1;
-}
-@pragma stage 8
-table tab_dec_queue_len_a {
-    actions {
-        dec_queue_len;
-    }
-    default_action: dec_queue_len;
-    size: 1;
-}
-@pragma stage 8
-table tab_dec_queue_len_b {
-    actions {
-        dec_queue_len;
-    }
-    default_action: dec_queue_len;
-    size: 1;
-}
-
-/*
    replicated keys
 */
 action lookup_rkey(rkey_index) {
@@ -508,10 +405,10 @@ table tab_inc_rkey_rate_counter {
 }
 
 /*
-   access round-robin read/write counter
+   access round-robin counter
  */
-blackbox stateful_alu sa_access_rr_read_counter {
-    reg: reg_rr_read_counter;
+blackbox stateful_alu sa_access_rr_rkey_counter {
+    reg: reg_rr_rkey_counter;
     condition_lo: register_lo >= meta.rset_size - 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: 0;
@@ -520,8 +417,8 @@ blackbox stateful_alu sa_access_rr_read_counter {
     output_value: alu_lo;
     output_dst: meta.rset_index;
 }
-blackbox stateful_alu sa_access_rr_write_counter {
-    reg: reg_rr_write_counter;
+blackbox stateful_alu sa_access_rr_global_counter {
+    reg: reg_rr_global_counter;
     condition_lo: register_lo >= NNODES - 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: 0;
@@ -531,27 +428,27 @@ blackbox stateful_alu sa_access_rr_write_counter {
     output_dst: meta.node;
 }
 
-action access_rr_read_counter() {
-    sa_access_rr_read_counter.execute_stateful_alu(meta.rkey_index);
+action access_rr_rkey_counter() {
+    sa_access_rr_rkey_counter.execute_stateful_alu(meta.rkey_index);
 }
-action access_rr_write_counter() {
-    sa_access_rr_write_counter.execute_stateful_alu(0);
+action access_rr_global_counter() {
+    sa_access_rr_global_counter.execute_stateful_alu(0);
 }
 
 @pragma stage 3
-table tab_access_rr_read_counter {
+table tab_access_rr_rkey_counter {
     actions {
-        access_rr_read_counter;
+        access_rr_rkey_counter;
     }
-    default_action: access_rr_read_counter;
+    default_action: access_rr_rkey_counter;
     size: 1;
 }
 @pragma stage 3
-table tab_access_rr_write_counter {
+table tab_access_rr_global_counter {
     actions {
-        access_rr_write_counter;
+        access_rr_global_counter;
     }
-    default_action: access_rr_write_counter;
+    default_action: access_rr_global_counter;
     size: 1;
 }
 
@@ -601,15 +498,7 @@ table tab_set_rset_num_ack {
     size: 1;
 }
 @pragma stage 2
-table tab_inc_rset_num_ack_a {
-    actions {
-        inc_rset_num_ack;
-    }
-    default_action: inc_rset_num_ack;
-    size: 1;
-}
-@pragma stage 2
-table tab_inc_rset_num_ack_b {
+table tab_inc_rset_num_ack {
     actions {
         inc_rset_num_ack;
     }
@@ -665,15 +554,7 @@ table tab_set_rset_size {
     size: 1;
 }
 @pragma stage 2
-table tab_inc_rset_size_a {
-    actions {
-        inc_rset_size;
-    }
-    default_action: inc_rset_size;
-    size: 1;
-}
-@pragma stage 2
-table tab_inc_rset_size_b {
+table tab_inc_rset_size {
     actions {
         inc_rset_size;
     }
@@ -1064,7 +945,7 @@ table tab_set_rset_1 {
     size: 1;
 }
 @pragma stage 4
-table tab_install_rset_2_a {
+table tab_install_rset_2 {
     actions {
         install_rset_2;
     }
@@ -1072,15 +953,7 @@ table tab_install_rset_2_a {
     size: 1;
 }
 @pragma stage 4
-table tab_install_rset_2_b {
-    actions {
-        install_rset_2;
-    }
-    default_action: install_rset_2;
-    size: 1;
-}
-@pragma stage 4
-table tab_install_rset_3_a {
+table tab_install_rset_3 {
     actions {
         install_rset_3;
     }
@@ -1088,23 +961,7 @@ table tab_install_rset_3_a {
     size: 1;
 }
 @pragma stage 4
-table tab_install_rset_3_b {
-    actions {
-        install_rset_3;
-    }
-    default_action: install_rset_3;
-    size: 1;
-}
-@pragma stage 4
-table tab_install_rset_4_a {
-    actions {
-        install_rset_4;
-    }
-    default_action: install_rset_4;
-    size: 1;
-}
-@pragma stage 4
-table tab_install_rset_4_b {
+table tab_install_rset_4 {
     actions {
         install_rset_4;
     }
@@ -1112,7 +969,7 @@ table tab_install_rset_4_b {
     size: 1;
 }
 @pragma stage 5
-table tab_install_rset_5_a {
+table tab_install_rset_5 {
     actions {
         install_rset_5;
     }
@@ -1120,15 +977,7 @@ table tab_install_rset_5_a {
     size: 1;
 }
 @pragma stage 5
-table tab_install_rset_5_b {
-    actions {
-        install_rset_5;
-    }
-    default_action: install_rset_5;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rset_6_a {
+table tab_install_rset_6 {
     actions {
         install_rset_6;
     }
@@ -1136,15 +985,7 @@ table tab_install_rset_6_a {
     size: 1;
 }
 @pragma stage 5
-table tab_install_rset_6_b {
-    actions {
-        install_rset_6;
-    }
-    default_action: install_rset_6;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rset_7_a {
+table tab_install_rset_7 {
     actions {
         install_rset_7;
     }
@@ -1152,23 +993,7 @@ table tab_install_rset_7_a {
     size: 1;
 }
 @pragma stage 5
-table tab_install_rset_7_b {
-    actions {
-        install_rset_7;
-    }
-    default_action: install_rset_7;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rset_8_a {
-    actions {
-        install_rset_8;
-    }
-    default_action: install_rset_8;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rset_8_b {
+table tab_install_rset_8 {
     actions {
         install_rset_8;
     }
@@ -1176,7 +1001,7 @@ table tab_install_rset_8_b {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_9_a {
+table tab_install_rset_9 {
     actions {
         install_rset_9;
     }
@@ -1184,15 +1009,7 @@ table tab_install_rset_9_a {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_9_b {
-    actions {
-        install_rset_9;
-    }
-    default_action: install_rset_9;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_10_a {
+table tab_install_rset_10 {
     actions {
         install_rset_10;
     }
@@ -1200,15 +1017,7 @@ table tab_install_rset_10_a {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_10_b {
-    actions {
-        install_rset_10;
-    }
-    default_action: install_rset_10;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_11_a {
+table tab_install_rset_11 {
     actions {
         install_rset_11;
     }
@@ -1216,23 +1025,7 @@ table tab_install_rset_11_a {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_11_b {
-    actions {
-        install_rset_11;
-    }
-    default_action: install_rset_11;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_12_a {
-    actions {
-        install_rset_12;
-    }
-    default_action: install_rset_12;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_12_b {
+table tab_install_rset_12 {
     actions {
         install_rset_12;
     }
@@ -1240,7 +1033,7 @@ table tab_install_rset_12_b {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_13_a {
+table tab_install_rset_13 {
     actions {
         install_rset_13;
     }
@@ -1248,15 +1041,7 @@ table tab_install_rset_13_a {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_13_b {
-    actions {
-        install_rset_13;
-    }
-    default_action: install_rset_13;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_14_a {
+table tab_install_rset_14 {
     actions {
         install_rset_14;
     }
@@ -1264,15 +1049,7 @@ table tab_install_rset_14_a {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_14_b {
-    actions {
-        install_rset_14;
-    }
-    default_action: install_rset_14;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_15_a {
+table tab_install_rset_15 {
     actions {
         install_rset_15;
     }
@@ -1280,23 +1057,7 @@ table tab_install_rset_15_a {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_15_b {
-    actions {
-        install_rset_15;
-    }
-    default_action: install_rset_15;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_16_a {
-    actions {
-        install_rset_16;
-    }
-    default_action: install_rset_16;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_16_b {
+table tab_install_rset_16 {
     actions {
         install_rset_16;
     }
@@ -1305,28 +1066,23 @@ table tab_install_rset_16_b {
 }
 
 /*
-   rkey version number
+   version number
  */
-blackbox stateful_alu sa_get_rkey_ver_next {
-    reg: reg_rkey_ver_next;
+blackbox stateful_alu sa_get_ver_next {
+    reg: reg_ver_next;
     update_lo_1_value: register_lo + 1;
     output_value: alu_lo;
     output_dst: pegasus.ver;
 }
-blackbox stateful_alu sa_get_rkey_ver_curr {
-    reg: reg_rkey_ver_curr;
-    output_value: register_lo;
-    output_dst: pegasus.ver;
-}
-blackbox stateful_alu sa_compare_rkey_ver_curr {
-    reg: reg_rkey_ver_curr;
+blackbox stateful_alu sa_compare_rkey_ver_completed {
+    reg: reg_rkey_ver_completed;
     condition_lo: pegasus.ver == register_lo;
     output_predicate: condition_lo;
     output_value: combined_predicate;
     output_dst: meta.ver_matched;
 }
-blackbox stateful_alu sa_set_rkey_ver_curr {
-    reg: reg_rkey_ver_curr;
+blackbox stateful_alu sa_set_rkey_ver_completed {
+    reg: reg_rkey_ver_completed;
     condition_lo: pegasus.ver > register_lo;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: pegasus.ver;
@@ -1335,68 +1091,44 @@ blackbox stateful_alu sa_set_rkey_ver_curr {
     output_dst: meta.ver_matched;
 }
 
-action get_rkey_ver_next() {
-    sa_get_rkey_ver_next.execute_stateful_alu(meta.rkey_index);
+action get_ver_next() {
+    sa_get_ver_next.execute_stateful_alu(meta.rkey_index);
 }
-action get_rkey_ver_curr() {
-    sa_get_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
+action compare_rkey_ver_completed() {
+    sa_compare_rkey_ver_completed.execute_stateful_alu(meta.rkey_index);
 }
-action compare_rkey_ver_curr() {
-    sa_compare_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
-}
-action set_rkey_ver_curr() {
-    sa_set_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
+action set_rkey_ver_completed() {
+    sa_set_rkey_ver_completed.execute_stateful_alu(meta.rkey_index);
 }
 
 @pragma stage 1
-table tab_get_rkey_ver_next {
+table tab_get_ver_next {
     actions {
-        get_rkey_ver_next;
+        get_ver_next;
     }
-    default_action: get_rkey_ver_next;
+    default_action: get_ver_next;
     size: 1;
 }
 @pragma stage 1
-table tab_get_rkey_ver_curr {
+table tab_compare_rkey_ver_completed {
     actions {
-        get_rkey_ver_curr;
+        compare_rkey_ver_completed;
     }
-    default_action: get_rkey_ver_curr;
+    default_action: compare_rkey_ver_completed;
     size: 1;
 }
 @pragma stage 1
-table tab_compare_rkey_ver_curr_a {
+table tab_set_rkey_ver_completed {
     actions {
-        compare_rkey_ver_curr;
+        set_rkey_ver_completed;
     }
-    default_action: compare_rkey_ver_curr;
-    size: 1;
-}
-@pragma stage 1
-table tab_compare_rkey_ver_curr_b {
-    actions {
-        compare_rkey_ver_curr;
-    }
-    default_action: compare_rkey_ver_curr;
-    size: 1;
-}
-@pragma stage 1
-table tab_set_rkey_ver_curr {
-    actions {
-        set_rkey_ver_curr;
-    }
-    default_action: set_rkey_ver_curr;
+    default_action: set_rkey_ver_completed;
     size: 1;
 }
 
 /*
    rw counter
  */
-blackbox stateful_alu sa_get_rkey_read_counter {
-    reg: reg_rkey_read_counter;
-    output_value: register_lo;
-    output_dst: pegasus.load;
-}
 blackbox stateful_alu sa_inc_rkey_read_counter {
     reg: reg_rkey_read_counter;
     update_lo_1_value: register_lo + 1;
@@ -1404,13 +1136,8 @@ blackbox stateful_alu sa_inc_rkey_read_counter {
 blackbox stateful_alu sa_inc_rkey_write_counter {
     reg: reg_rkey_write_counter;
     update_lo_1_value: register_lo + 1;
-    output_value: alu_lo;
-    output_dst: pegasus.debug_load;
 }
 
-action get_rkey_read_counter() {
-    sa_get_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
-}
 action inc_rkey_read_counter() {
     sa_inc_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
 }
@@ -1418,13 +1145,6 @@ action inc_rkey_write_counter() {
     sa_inc_rkey_write_counter.execute_stateful_alu(meta.rkey_index);
 }
 
-table tab_get_rkey_read_counter {
-    actions {
-        get_rkey_read_counter;
-    }
-    default_action: get_rkey_read_counter;
-    size: 1;
-}
 table tab_inc_rkey_read_counter {
     actions {
         inc_rkey_read_counter;
@@ -1437,21 +1157,6 @@ table tab_inc_rkey_write_counter {
         inc_rkey_write_counter;
     }
     default_action: inc_rkey_write_counter;
-    size: 1;
-}
-
-/*
-   rkey migration
- */
-action rkey_migration() {
-    modify_field(pegasus.op, OP_MGR);
-}
-
-table tab_rkey_migration {
-    actions {
-        rkey_migration;
-    }
-    default_action: rkey_migration;
     size: 1;
 }
 
@@ -1484,44 +1189,8 @@ table tab_copy_pegasus_header_c {
     default_action: copy_pegasus_header;
     size: 1;
 }
-table tab_copy_pegasus_header_d {
-    actions {
-        copy_pegasus_header;
-    }
-    default_action: copy_pegasus_header;
-    size: 1;
-}
-
-/*
-   write num replicas
- */
-action write_num_replicas() {
-    // Currently just replicate to MAX_REPLICAS - 1 nodes
-    modify_field(pegasus.debug_node, MAX_REPLICAS - 1);
-}
-
-table tab_write_num_replicas {
-    actions {
-        write_num_replicas;
-    }
-    default_action : write_num_replicas;
-    size : 1;
-}
 
 control process_dec {
-    apply(tab_copy_pegasus_header_a);
-    apply(tab_dec_queue_len_a);
-    apply(tab_do_resubmit);
-}
-
-control process_resubmit_dec {
-    apply(tab_dummy);
-    apply(tab_dec_queue_len_b);
-    apply(tab_do_drop);
-}
-
-control process_mgr {
-    // Should never receive MGR message
     apply(tab_do_drop);
 }
 
@@ -1531,41 +1200,41 @@ control process_mgr_req {
 
 control process_mgr_ack {
     if (meta.rkey_index != RKEY_NONE) {
-        apply(tab_copy_pegasus_header_b);
-        apply(tab_compare_rkey_ver_curr_a);
+        apply(tab_copy_pegasus_header_a);
+        apply(tab_compare_rkey_ver_completed);
         if (meta.ver_matched != 0) {
-            apply(tab_inc_rset_num_ack_a);
-            apply(tab_inc_rset_size_a);
+            apply(tab_inc_rset_num_ack);
+            apply(tab_inc_rset_size);
             if (meta.rset_size == 1) {
-                apply(tab_install_rset_2_a);
+                apply(tab_install_rset_2);
             } else if (meta.rset_size == 2) {
-                apply(tab_install_rset_3_a);
+                apply(tab_install_rset_3);
             } else if (meta.rset_size == 3) {
-                apply(tab_install_rset_4_a);
+                apply(tab_install_rset_4);
             } else if (meta.rset_size == 4) {
-                apply(tab_install_rset_5_a);
+                apply(tab_install_rset_5);
             } else if (meta.rset_size == 5) {
-                apply(tab_install_rset_6_a);
+                apply(tab_install_rset_6);
             } else if (meta.rset_size == 6) {
-                apply(tab_install_rset_7_a);
+                apply(tab_install_rset_7);
             } else if (meta.rset_size == 7) {
-                apply(tab_install_rset_8_a);
+                apply(tab_install_rset_8);
             } else if (meta.rset_size == 8) {
-                apply(tab_install_rset_9_a);
+                apply(tab_install_rset_9);
             } else if (meta.rset_size == 9) {
-                apply(tab_install_rset_10_a);
+                apply(tab_install_rset_10);
             } else if (meta.rset_size == 10) {
-                apply(tab_install_rset_11_a);
+                apply(tab_install_rset_11);
             } else if (meta.rset_size == 11) {
-                apply(tab_install_rset_12_a);
+                apply(tab_install_rset_12);
             } else if (meta.rset_size == 12) {
-                apply(tab_install_rset_13_a);
+                apply(tab_install_rset_13);
             } else if (meta.rset_size == 13) {
-                apply(tab_install_rset_14_a);
+                apply(tab_install_rset_14);
             } else if (meta.rset_size == 14) {
-                apply(tab_install_rset_15_a);
+                apply(tab_install_rset_15);
             } else if (meta.rset_size == 15) {
-                apply(tab_install_rset_16_a);
+                apply(tab_install_rset_16);
             }
         }
     }
@@ -1574,61 +1243,15 @@ control process_mgr_ack {
 
 control process_reply {
     if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
-        apply(tab_copy_pegasus_header_c);
-        apply(tab_set_rkey_ver_curr);
+        apply(tab_copy_pegasus_header_b);
+        apply(tab_set_rkey_ver_completed);
         if (meta.ver_matched != 0) {
             apply(tab_set_rset_num_ack);
             apply(tab_set_rset_size);
             apply(tab_set_rset_1);
-            apply(tab_l2_forward);
-        } else {
-            apply(tab_do_resubmit);
         }
-    } else {
-        apply(tab_l2_forward);
     }
-}
-
-control process_resubmit_reply {
-    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
-        apply(tab_compare_rkey_ver_curr_b);
-        if (meta.ver_matched != 0) {
-            apply(tab_inc_rset_num_ack_b);
-            apply(tab_inc_rset_size_b);
-            if (meta.rset_size == 1) {
-                apply(tab_install_rset_2_b);
-            } else if (meta.rset_size == 2) {
-                apply(tab_install_rset_3_b);
-            } else if (meta.rset_size == 3) {
-                apply(tab_install_rset_4_b);
-            } else if (meta.rset_size == 4) {
-                apply(tab_install_rset_5_b);
-            } else if (meta.rset_size == 5) {
-                apply(tab_install_rset_6_b);
-            } else if (meta.rset_size == 6) {
-                apply(tab_install_rset_7_b);
-            } else if (meta.rset_size == 7) {
-                apply(tab_install_rset_8_b);
-            } else if (meta.rset_size == 8) {
-                apply(tab_install_rset_9_b);
-            } else if (meta.rset_size == 9) {
-                apply(tab_install_rset_10_b);
-            } else if (meta.rset_size == 10) {
-                apply(tab_install_rset_11_b);
-            } else if (meta.rset_size == 11) {
-                apply(tab_install_rset_12_b);
-            } else if (meta.rset_size == 12) {
-                apply(tab_install_rset_13_b);
-            } else if (meta.rset_size == 13) {
-                apply(tab_install_rset_14_b);
-            } else if (meta.rset_size == 14) {
-                apply(tab_install_rset_15_b);
-            } else if (meta.rset_size == 15) {
-                apply(tab_install_rset_16_b);
-            }
-        }
-        apply(tab_l2_forward);
-    }
+    apply(tab_l2_forward);
 }
 
 control process_request {
@@ -1640,27 +1263,17 @@ control process_request {
             process_replicated_write();
         }
     } else {
-        apply(tab_copy_pegasus_header_d);
+        apply(tab_copy_pegasus_header_c);
     }
-    apply(tab_inc_queue_len);
-    /*
-    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_GET) {
-        if (meta.rset_size != MAX_REPLICAS and meta.overload != 0) {
-            apply(tab_rkey_migration);
-            apply(tab_write_num_replicas);
-        }
-    }
-    */
     apply(tab_node_forward);
 }
 
 control process_replicated_read {
-    apply(tab_get_rkey_ver_curr);
     apply(tab_inc_rkey_read_counter);
     apply(tab_get_rset_num_ack);
     apply(tab_get_rset_size);
     if (meta.rset_num_ack != NNODES) {
-        apply(tab_access_rr_read_counter);
+        apply(tab_access_rr_rkey_counter);
         if (meta.rset_index == 0) {
             apply(tab_get_rset_1);
         } else if (meta.rset_index == 1) {
@@ -1695,49 +1308,34 @@ control process_replicated_read {
             apply(tab_get_rset_16);
         }
     } else {
-        apply(tab_access_rr_write_counter);
+        apply(tab_access_rr_global_counter);
     }
 }
 
 control process_replicated_write {
-    apply(tab_get_rkey_ver_next);
-    apply(tab_get_rkey_read_counter);
+    apply(tab_get_ver_next);
     apply(tab_inc_rkey_write_counter);
-    apply(tab_access_rr_write_counter);
+    apply(tab_access_rr_global_counter);
 }
 
 control ingress {
-    if (0 == ig_intr_md.resubmit_flag) {
-        if (valid(pegasus)) {
-            if (pegasus.op == OP_DEC) {
-                process_dec();
-            } else if (pegasus.op == OP_MGR) {
-                process_mgr();
-            } else if (pegasus.op == OP_MGR_REQ) {
-                process_mgr_req();
-            } else {
-                apply(tab_replicated_keys);
-                if (pegasus.op == OP_REP_R or pegasus.op == OP_REP_W) {
-                    process_reply();
-                } else if (pegasus.op == OP_MGR_ACK) {
-                    process_mgr_ack();
-                } else {
-                    process_request();
-                }
-            }
+    if (valid(pegasus)) {
+        if (pegasus.op == OP_DEC) {
+            process_dec();
+        } else if (pegasus.op == OP_MGR_REQ) {
+            process_mgr_req();
         } else {
-            apply(tab_l2_forward);
+            apply(tab_replicated_keys);
+            if (pegasus.op == OP_REP_R or pegasus.op == OP_REP_W) {
+                process_reply();
+            } else if (pegasus.op == OP_MGR_ACK) {
+                process_mgr_ack();
+            } else {
+                process_request();
+            }
         }
     } else {
-        if (valid(pegasus)) {
-            if (pegasus.op == OP_DEC) {
-                process_resubmit_dec();
-            } else if (pegasus.op == OP_REP_W) {
-                process_resubmit_reply();
-            } else {
-                apply(tab_do_drop);
-            }
-        }
+        apply(tab_l2_forward);
     }
 }
 

@@ -21,8 +21,8 @@ from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.protocol import TMultiplexedProtocol
 
-CONTROLLER_ADDR = ("10.100.1.8", 24680)
-THRIFT_SERVER = "oyster"
+CONTROLLER_ADDR = ("192.168.149.174", 24680)
+THRIFT_SERVER = "tofino1"
 THRIFT_PORT = 9090
 
 IDENTIFIER = 0xDEAC
@@ -41,14 +41,16 @@ KEY_LEN_SIZE = 2
 
 BUF_SIZE = 4096
 MAX_NRKEYS = 32
-DEFAULT_NUM_NODES = 32
+DEFAULT_NUM_NODES = 4
 HASH_MASK = DEFAULT_NUM_NODES - 1
 RKEY_LOAD_FACTOR = 0.05
-PRINT_DEBUG = False
+PRINT_DEBUG = True
+
+g_controller = None
 
 def signal_handler(signum, frame):
     print "Received INT/TERM signal...Exiting"
-    controller.stop()
+    g_controller.stop()
     os._exit(1)
 
 # Messages
@@ -83,7 +85,7 @@ class ReplicatedKey(object):
         self.nodes = set()
 
 # Message Codec
-def decode_msg(self, buf):
+def decode_msg(buf):
     index = 0
     identifier = struct.unpack('<H', buf[index:index+IDENTIFIER_SIZE])[0]
     if identifier != IDENTIFIER:
@@ -108,7 +110,7 @@ def decode_msg(self, buf):
         msg_type = TYPE_ERROR
     return (msg_type, msg)
 
-def encode_msg(self, msg_type, msg):
+def encode_msg(msg_type, msg):
     buf = ""
     buf += struct.pack('<H', IDENTIFIER)
     buf += struct.pack('<B', msg_type)
@@ -130,8 +132,7 @@ class MessageHandler(threading.Thread):
 
     def handle_reset_request(self, addr, msg):
         print "Reset request with", msg.num_nodes, "nodes"
-        self.controller.clear_rkeys()
-        self.controller.reset_node_load()
+        self.controller.reset()
 
     def handle_hk_report(self, addr, msg):
         self.controller.handle_hk_report(msg.reports)
@@ -235,7 +236,7 @@ class Controller(object):
 
         self.conn_mgr.complete_operations(self.sess_hdl)
 
-    def clear_rkeys(self):
+    def reset(self):
         self.switch_lock.acquire()
         for keyhash in self.replicated_keys.keys():
             self.client.tab_replicated_keys_table_delete_by_match_spec(
@@ -243,30 +244,27 @@ class Controller(object):
                 pegasus_tab_replicated_keys_match_spec_t(
                     pegasus_keyhash = keyhash))
         self.replicated_keys.clear()
-        self.proto_controller.clear_rkeys()
-        self.conn_mgr.complete_operations(self.sess_hdl)
-        self.switch_lock.release()
-
-    def reset_node_load(self):
-        self.switch_lock.acquire()
-        self.proto_controller.reset_node_load()
+        self.client.register_write_reg_ver_next(
+            self.sess_hdl, self.dev_tgt, 0, 0)
+        self.proto_controller.reset()
         self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
     def add_rkey(self, keyhash, rkey_index, load):
+        # Hack...can read from any node after installing rkey
         self.client.register_write_reg_rset_num_ack(
+            self.sess_hdl, self.dev_tgt, rkey_index, DEFAULT_NUM_NODES)
+        self.client.register_write_reg_rset_size(
             self.sess_hdl, self.dev_tgt, rkey_index, 1)
         self.client.register_write_reg_rset_1(
             self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) & HASH_MASK)
-        self.client.register_write_reg_rset_size(
-            self.sess_hdl, self.dev_tgt, rkey_index, 1)
-        self.client.register_write_reg_rkey_ver_curr(
-            self.sess_hdl, self.dev_tgt, rkey_index, 0)
-        self.client.register_write_reg_rkey_ver_next(
+        self.client.register_write_reg_rkey_ver_completed(
             self.sess_hdl, self.dev_tgt, rkey_index, 0)
         self.client.register_write_reg_rkey_read_counter(
             self.sess_hdl, self.dev_tgt, rkey_index, 0)
         self.client.register_write_reg_rkey_write_counter(
+            self.sess_hdl, self.dev_tgt, rkey_index, 0)
+        self.client.register_write_reg_rkey_rate_counter(
             self.sess_hdl, self.dev_tgt, rkey_index, 0)
         self.proto_controller.add_rkey(keyhash, rkey_index)
         self.client.tab_replicated_keys_table_add_with_lookup_rkey(
@@ -368,14 +366,13 @@ class RRController(object):
     def __init__(self, controller):
         self.controller = controller
 
-    def clear_rkeys(self):
-        pass
-
-    def reset_node_load(self):
-        pass
+    def reset(self):
+        self.controller.client.register_write_reg_rr_global_counter(
+            self.controller.sess_hdl, self.controller.dev_tgt, 0, 0)
 
     def add_rkey(self, keyhash, rkey_index):
-        pass
+        self.controller.client.register_write_reg_rr_rkey_counter(
+            self.controller.sess_hdl, self.controller.dev_tgt, rkey_index, 0)
 
     def print_node_load(self):
         pass
@@ -384,11 +381,9 @@ class LoadController(object):
     def __init__(self, controller):
         self.controller = controller
 
-    def clear_rkeys(self):
+    def reset(self):
         self.controller.client.register_write_reg_rkey_size(
             self.controller.sess_hdl, self.controller.dev_tgt, 0, 0)
-
-    def reset_node_load(self):
         self.controller.client.register_reset_all_reg_node_load(
             self.controller.sess_hdl, self.controller.dev_tgt)
 
@@ -415,11 +410,9 @@ def PredController(object):
     def __init__(self, controller):
         self.controller = controller
 
-    def clear_rkeys(self):
+    def reset(self):
         self.controller.client.register_write_reg_rkey_size(
             self.controller.sess_hdl, self.controller.dev_tgt, 0, 0)
-
-    def reset_node_load(self):
         self.controller.client.register_reset_all_reg_queue_len(
             self.controller.sess_hdl, self.controller.dev_tgt)
 
@@ -443,6 +436,7 @@ def PredController(object):
             print "node", i, "load", read_value[1]
 
 def main():
+    global g_controller
     parser = argparse.ArgumentParser()
     parser.add_argument("--config",
                         required=True,
@@ -460,6 +454,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
 
     controller = Controller(THRIFT_SERVER, THRIFT_PORT)
+    g_controller = controller
     if args.mode == 'rr':
         controller.proto_controller = RRController(controller)
     elif args.mode == 'load':
