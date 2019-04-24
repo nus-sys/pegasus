@@ -8,7 +8,6 @@
 
 #define ETHERTYPE_IPV4  0x800
 #define PROTO_UDP       0x11
-
 #define PEGASUS_ID      0x5047
 
 #define OP_GET          0x0
@@ -16,15 +15,14 @@
 #define OP_DEL          0x2
 #define OP_REP_R        0x3
 #define OP_REP_W        0x4
-#define OP_MGR          0x5
-#define OP_MGR_REQ      0x6
-#define OP_MGR_ACK      0x7
+#define OP_MGR_REQ      0x5
+#define OP_MGR_ACK      0x6
 #define OP_DEC          0xF
 
 #define RNODE_NONE      0x7F
 #define RKEY_NONE       0x7F
+#define MAX_RKEY_RATE   0x7FFF
 
-#define OVERLOAD        0xA
 #define NNODES          32
 #define MAX_REPLICAS    16
 
@@ -132,14 +130,24 @@ register reg_rkey_min_node {
     instance_count: 32;
 }
 /*
-   rkey version number
+   next version number
 */
-register reg_rkey_ver_next {
+register reg_ver_next {
+    width: 32;
+    instance_count: 1;
+}
+/*
+   version number of latest completed write
+ */
+register reg_rkey_ver_completed {
     width: 32;
     instance_count: 32;
 }
-register reg_rkey_ver_curr {
-    width: 32;
+/*
+   rkey access rate counter
+ */
+register reg_rkey_rate_counter {
+    width: 16;
     instance_count: 32;
 }
 /*
@@ -435,26 +443,21 @@ table tab_replicated_keys {
 /*
    rkey version number
  */
-blackbox stateful_alu sa_get_rkey_ver_next {
-    reg: reg_rkey_ver_next;
+blackbox stateful_alu sa_get_ver_next {
+    reg: reg_ver_next;
     update_lo_1_value: register_lo + 1;
     output_value: alu_lo;
     output_dst: pegasus.ver;
 }
-blackbox stateful_alu sa_get_rkey_ver_curr {
-    reg: reg_rkey_ver_curr;
-    output_value: register_lo;
-    output_dst: pegasus.ver;
-}
-blackbox stateful_alu sa_compare_rkey_ver_curr {
-    reg: reg_rkey_ver_curr;
+blackbox stateful_alu sa_compare_rkey_ver_completed {
+    reg: reg_rkey_ver_completed;
     condition_lo: pegasus.ver == register_lo;
     output_predicate: condition_lo;
     output_value: combined_predicate;
     output_dst: meta.ver_matched;
 }
-blackbox stateful_alu sa_set_rkey_ver_curr {
-    reg: reg_rkey_ver_curr;
+blackbox stateful_alu sa_set_rkey_ver_completed {
+    reg: reg_rkey_ver_completed;
     condition_lo: pegasus.ver > register_lo;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: pegasus.ver;
@@ -463,70 +466,43 @@ blackbox stateful_alu sa_set_rkey_ver_curr {
     output_dst: meta.ver_matched;
 }
 
-action get_rkey_ver_next() {
-    sa_get_rkey_ver_next.execute_stateful_alu(meta.rkey_index);
+action get_ver_next() {
+    sa_get_ver_next.execute_stateful_alu(meta.rkey_index);
 }
-action get_rkey_ver_curr() {
-    sa_get_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
+action compare_rkey_ver_completed() {
+    sa_compare_rkey_ver_completed.execute_stateful_alu(meta.rkey_index);
 }
-action compare_rkey_ver_curr() {
-    sa_compare_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
-}
-action set_rkey_ver_curr() {
-    sa_set_rkey_ver_curr.execute_stateful_alu(meta.rkey_index);
+action set_rkey_ver_completed() {
+    sa_set_rkey_ver_completed.execute_stateful_alu(meta.rkey_index);
 }
 
 @pragma stage 1
-table tab_get_rkey_ver_next {
+table tab_get_ver_next {
     actions {
-        get_rkey_ver_next;
+        get_ver_next;
     }
-    default_action: get_rkey_ver_next;
+    default_action: get_ver_next;
     size: 1;
 }
 @pragma stage 1
-table tab_get_rkey_ver_curr {
+table tab_compare_rkey_ver_completed {
     actions {
-        get_rkey_ver_curr;
+        compare_rkey_ver_completed;
     }
-    default_action: get_rkey_ver_curr;
+    default_action: compare_rkey_ver_completed;
     size: 1;
 }
 @pragma stage 1
-table tab_compare_rkey_ver_curr_a {
+table tab_set_rkey_ver_completed {
     actions {
-        compare_rkey_ver_curr;
+        set_rkey_ver_completed;
     }
-    default_action: compare_rkey_ver_curr;
-    size: 1;
-}
-@pragma stage 1
-table tab_compare_rkey_ver_curr_b {
-    actions {
-        compare_rkey_ver_curr;
-    }
-    default_action: compare_rkey_ver_curr;
-    size: 1;
-}
-@pragma stage 1
-table tab_set_rkey_ver_curr_a {
-    actions {
-        set_rkey_ver_curr;
-    }
-    default_action: set_rkey_ver_curr;
-    size: 1;
-}
-@pragma stage 1
-table tab_set_rkey_ver_curr_b {
-    actions {
-        set_rkey_ver_curr;
-    }
-    default_action: set_rkey_ver_curr;
+    default_action: set_rkey_ver_completed;
     size: 1;
 }
 
 /*
-   get/update node load, and check overload
+   get/update node load
  */
 blackbox stateful_alu sa_get_node_load {
     reg: reg_node_load;
@@ -563,26 +539,6 @@ table tab_update_node_load {
 }
 
 /*
-   dummies
- */
-blackbox stateful_alu sa_dummy {
-    reg: reg_rkey_ver_curr;
-}
-
-action dummy() {
-    sa_dummy.execute_stateful_alu(0);
-}
-
-@pragma stage 1
-table tab_dummy {
-    actions {
-        dummy;
-    }
-    default_action: dummy;
-    size: 1;
-}
-
-/*
    get/set/compare min node
  */
 blackbox stateful_alu sa_get_min_node {
@@ -608,15 +564,7 @@ action compare_min_node() {
 }
 
 @pragma stage 10
-table tab_get_min_node_a {
-    actions {
-        get_min_node;
-    }
-    default_action: get_min_node;
-    size: 1;
-}
-@pragma stage 10
-table tab_get_min_node_b {
+table tab_get_min_node {
     actions {
         get_min_node;
     }
@@ -675,15 +623,7 @@ table tab_get_rkey_min_node {
     size: 1;
 }
 @pragma stage 10
-table tab_set_rkey_min_node_a {
-    actions {
-        set_rkey_min_node;
-    }
-    default_action: set_rkey_min_node;
-    size: 1;
-}
-@pragma stage 10
-table tab_set_rkey_min_node_b {
+table tab_set_rkey_min_node {
     actions {
         set_rkey_min_node;
     }
@@ -700,7 +640,7 @@ table tab_compare_rkey_min_node {
 }
 
 /*
-   get/set rset (1-4)
+   get/set/install rset
 */
 blackbox stateful_alu sa_get_rset_1 {
     reg: reg_rset_1;
@@ -953,15 +893,7 @@ table tab_get_rset_1 {
     size: 1;
 }
 @pragma stage 5
-table tab_set_rset_1_a {
-    actions {
-        set_rset_1;
-    }
-    default_action: set_rset_1;
-    size: 1;
-}
-@pragma stage 5
-table tab_set_rset_1_b {
+table tab_set_rset_1 {
     actions {
         set_rset_1;
     }
@@ -977,15 +909,7 @@ table tab_get_rset_2 {
     size: 1;
 }
 @pragma stage 5
-table tab_install_rset_2_a {
-    actions {
-        install_rset_2;
-    }
-    default_action: install_rset_2;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rset_2_b {
+table tab_install_rset_2 {
     actions {
         install_rset_2;
     }
@@ -1001,15 +925,7 @@ table tab_get_rset_3 {
     size: 1;
 }
 @pragma stage 5
-table tab_install_rset_3_a {
-    actions {
-        install_rset_3;
-    }
-    default_action: install_rset_3;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rset_3_b {
+table tab_install_rset_3 {
     actions {
         install_rset_3;
     }
@@ -1025,15 +941,7 @@ table tab_get_rset_4 {
     size: 1;
 }
 @pragma stage 5
-table tab_install_rset_4_a {
-    actions {
-        install_rset_4;
-    }
-    default_action: install_rset_4;
-    size: 1;
-}
-@pragma stage 5
-table tab_install_rset_4_b {
+table tab_install_rset_4 {
     actions {
         install_rset_4;
     }
@@ -1049,15 +957,7 @@ table tab_get_rset_5 {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_5_a {
-    actions {
-        install_rset_5;
-    }
-    default_action: install_rset_5;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_5_b {
+table tab_install_rset_5 {
     actions {
         install_rset_5;
     }
@@ -1073,15 +973,7 @@ table tab_get_rset_6 {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_6_a {
-    actions {
-        install_rset_6;
-    }
-    default_action: install_rset_6;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_6_b {
+table tab_install_rset_6 {
     actions {
         install_rset_6;
     }
@@ -1097,15 +989,7 @@ table tab_get_rset_7 {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_7_a {
-    actions {
-        install_rset_7;
-    }
-    default_action: install_rset_7;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_7_b {
+table tab_install_rset_7 {
     actions {
         install_rset_7;
     }
@@ -1121,15 +1005,7 @@ table tab_get_rset_8 {
     size: 1;
 }
 @pragma stage 6
-table tab_install_rset_8_a {
-    actions {
-        install_rset_8;
-    }
-    default_action: install_rset_8;
-    size: 1;
-}
-@pragma stage 6
-table tab_install_rset_8_b {
+table tab_install_rset_8 {
     actions {
         install_rset_8;
     }
@@ -1145,15 +1021,7 @@ table tab_get_rset_9 {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_9_a {
-    actions {
-        install_rset_9;
-    }
-    default_action: install_rset_9;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_9_b {
+table tab_install_rset_9 {
     actions {
         install_rset_9;
     }
@@ -1169,15 +1037,7 @@ table tab_get_rset_10 {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_10_a {
-    actions {
-        install_rset_10;
-    }
-    default_action: install_rset_10;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_10_b {
+table tab_install_rset_10 {
     actions {
         install_rset_10;
     }
@@ -1193,15 +1053,7 @@ table tab_get_rset_11 {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_11_a {
-    actions {
-        install_rset_11;
-    }
-    default_action: install_rset_11;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_11_b {
+table tab_install_rset_11 {
     actions {
         install_rset_11;
     }
@@ -1217,15 +1069,7 @@ table tab_get_rset_12 {
     size: 1;
 }
 @pragma stage 7
-table tab_install_rset_12_a {
-    actions {
-        install_rset_12;
-    }
-    default_action: install_rset_12;
-    size: 1;
-}
-@pragma stage 7
-table tab_install_rset_12_b {
+table tab_install_rset_12 {
     actions {
         install_rset_12;
     }
@@ -1241,15 +1085,7 @@ table tab_get_rset_13 {
     size: 1;
 }
 @pragma stage 8
-table tab_install_rset_13_a {
-    actions {
-        install_rset_13;
-    }
-    default_action: install_rset_13;
-    size: 1;
-}
-@pragma stage 8
-table tab_install_rset_13_b {
+table tab_install_rset_13 {
     actions {
         install_rset_13;
     }
@@ -1265,15 +1101,7 @@ table tab_get_rset_14 {
     size: 1;
 }
 @pragma stage 8
-table tab_install_rset_14_a {
-    actions {
-        install_rset_14;
-    }
-    default_action: install_rset_14;
-    size: 1;
-}
-@pragma stage 8
-table tab_install_rset_14_b {
+table tab_install_rset_14 {
     actions {
         install_rset_14;
     }
@@ -1289,15 +1117,7 @@ table tab_get_rset_15 {
     size: 1;
 }
 @pragma stage 8
-table tab_install_rset_15_a {
-    actions {
-        install_rset_15;
-    }
-    default_action: install_rset_15;
-    size: 1;
-}
-@pragma stage 8
-table tab_install_rset_15_b {
+table tab_install_rset_15 {
     actions {
         install_rset_15;
     }
@@ -1313,15 +1133,7 @@ table tab_get_rset_16 {
     size: 1;
 }
 @pragma stage 8
-table tab_install_rset_16_a {
-    actions {
-        install_rset_16;
-    }
-    default_action: install_rset_16;
-    size: 1;
-}
-@pragma stage 8
-table tab_install_rset_16_b {
+table tab_install_rset_16 {
     actions {
         install_rset_16;
     }
@@ -1367,7 +1179,7 @@ table tab_get_rset_num_ack {
     size: 1;
 }
 @pragma stage 2
-table tab_set_rset_num_ack_a {
+table tab_set_rset_num_ack {
     actions {
         set_rset_num_ack;
     }
@@ -1375,23 +1187,7 @@ table tab_set_rset_num_ack_a {
     size: 1;
 }
 @pragma stage 2
-table tab_set_rset_num_ack_b {
-    actions {
-        set_rset_num_ack;
-    }
-    default_action: set_rset_num_ack;
-    size: 1;
-}
-@pragma stage 2
-table tab_inc_rset_num_ack_a {
-    actions {
-        inc_rset_num_ack;
-    }
-    default_action: inc_rset_num_ack;
-    size: 1;
-}
-@pragma stage 2
-table tab_inc_rset_num_ack_b {
+table tab_inc_rset_num_ack {
     actions {
         inc_rset_num_ack;
     }
@@ -1428,13 +1224,9 @@ blackbox stateful_alu sa_inc_rset_size {
 action get_rkey_size() {
     sa_get_rkey_size.execute_stateful_alu(0);
 }
-action get_rset_size_a() {
+action get_rset_size() {
     // for probing
     sa_get_rset_size.execute_stateful_alu(meta.probe_rkey_index);
-}
-action get_rset_size_b() {
-    // for replicated read
-    sa_get_rset_size.execute_stateful_alu(meta.rkey_index);
 }
 action set_rset_size() {
     sa_set_rset_size.execute_stateful_alu(meta.rkey_index);
@@ -1452,25 +1244,16 @@ table tab_get_rkey_size {
     size: 1;
 }
 @pragma stage 2
-table tab_get_rset_size_a {
+table tab_get_rset_size {
     // for probing
     actions {
-        get_rset_size_a;
+        get_rset_size;
     }
-    default_action: get_rset_size_a;
+    default_action: get_rset_size;
     size: 1;
 }
 @pragma stage 2
-table tab_get_rset_size_b {
-    // for replicated read
-    actions {
-        get_rset_size_b;
-    }
-    default_action: get_rset_size_b;
-    size: 1;
-}
-@pragma stage 2
-table tab_set_rset_size_a {
+table tab_set_rset_size {
     actions {
         set_rset_size;
     }
@@ -1478,23 +1261,7 @@ table tab_set_rset_size_a {
     size: 1;
 }
 @pragma stage 2
-table tab_set_rset_size_b {
-    actions {
-        set_rset_size;
-    }
-    default_action: set_rset_size;
-    size: 1;
-}
-@pragma stage 2
-table tab_inc_rset_size_a {
-    actions {
-        inc_rset_size;
-    }
-    default_action: inc_rset_size;
-    size: 1;
-}
-@pragma stage 2
-table tab_inc_rset_size_b {
+table tab_inc_rset_size {
     actions {
         inc_rset_size;
     }
@@ -1551,28 +1318,8 @@ table tab_get_probe_rset_counter {
 }
 
 /*
-   set rkey none
- */
-action set_rkey_none() {
-    modify_field(meta.rkey_index, RKEY_NONE);
-}
-
-table tab_set_rkey_none {
-    actions {
-        set_rkey_none;
-    }
-    default_action: set_rkey_none;
-    size: 1;
-}
-
-/*
    rw counter
  */
-blackbox stateful_alu sa_get_rkey_read_counter {
-    reg: reg_rkey_read_counter;
-    output_value: register_lo;
-    output_dst: pegasus.load;
-}
 blackbox stateful_alu sa_inc_rkey_read_counter {
     reg: reg_rkey_read_counter;
     update_lo_1_value: register_lo + 1;
@@ -1580,13 +1327,8 @@ blackbox stateful_alu sa_inc_rkey_read_counter {
 blackbox stateful_alu sa_inc_rkey_write_counter {
     reg: reg_rkey_write_counter;
     update_lo_1_value: register_lo + 1;
-    output_value: alu_lo;
-    output_dst: pegasus.debug_load;
 }
 
-action get_rkey_read_counter() {
-    sa_get_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
-}
 action inc_rkey_read_counter() {
     sa_inc_rkey_read_counter.execute_stateful_alu(meta.rkey_index);
 }
@@ -1594,13 +1336,6 @@ action inc_rkey_write_counter() {
     sa_inc_rkey_write_counter.execute_stateful_alu(meta.rkey_index);
 }
 
-table tab_get_rkey_read_counter {
-    actions {
-        get_rkey_read_counter;
-    }
-    default_action: get_rkey_read_counter;
-    size: 1;
-}
 table tab_inc_rkey_read_counter {
     actions {
         inc_rkey_read_counter;
@@ -1650,11 +1385,6 @@ control process_dec {
     apply(tab_do_drop);
 }
 
-control process_mgr {
-    // Should never receive MGR message
-    apply(tab_do_drop);
-}
-
 control process_mgr_req {
     apply(tab_l2_forward);
 }
@@ -1662,58 +1392,40 @@ control process_mgr_req {
 control process_mgr_ack {
     if (meta.rkey_index != RKEY_NONE) {
         apply(tab_copy_pegasus_header_a);
-        apply(tab_set_rkey_ver_curr_a);
+        apply(tab_compare_rkey_ver_completed);
         if (meta.ver_matched != 0) {
-            // Higher version number
-            apply(tab_set_rset_num_ack_a);
-            apply(tab_set_rset_size_a);
-            apply(tab_set_rset_1_a);
-            apply(tab_set_rkey_min_node_a);
-            apply(tab_do_drop);
-        } else {
-            apply(tab_do_resubmit);
-        }
-    } else {
-        apply(tab_do_drop);
-    }
-}
-
-control process_resubmit_mgr_ack {
-    if (meta.rkey_index != RKEY_NONE) {
-        apply(tab_compare_rkey_ver_curr_a);
-        if (meta.ver_matched != 0) {
-            apply(tab_inc_rset_num_ack_a);
-            apply(tab_inc_rset_size_a);
+            apply(tab_inc_rset_num_ack);
+            apply(tab_inc_rset_size);
             if (meta.rset_size == 1) {
-                apply(tab_install_rset_2_a);
+                apply(tab_install_rset_2);
             } else if (meta.rset_size == 2) {
-                apply(tab_install_rset_3_a);
+                apply(tab_install_rset_3);
             } else if (meta.rset_size == 3) {
-                apply(tab_install_rset_4_a);
+                apply(tab_install_rset_4);
             } else if (meta.rset_size == 4) {
-                apply(tab_install_rset_5_a);
+                apply(tab_install_rset_5);
             } else if (meta.rset_size == 5) {
-                apply(tab_install_rset_6_a);
+                apply(tab_install_rset_6);
             } else if (meta.rset_size == 6) {
-                apply(tab_install_rset_7_a);
+                apply(tab_install_rset_7);
             } else if (meta.rset_size == 7) {
-                apply(tab_install_rset_8_a);
+                apply(tab_install_rset_8);
             } else if (meta.rset_size == 8) {
-                apply(tab_install_rset_9_a);
+                apply(tab_install_rset_9);
             } else if (meta.rset_size == 9) {
-                apply(tab_install_rset_10_a);
+                apply(tab_install_rset_10);
             } else if (meta.rset_size == 10) {
-                apply(tab_install_rset_11_a);
+                apply(tab_install_rset_11);
             } else if (meta.rset_size == 11) {
-                apply(tab_install_rset_12_a);
+                apply(tab_install_rset_12);
             } else if (meta.rset_size == 12) {
-                apply(tab_install_rset_13_a);
+                apply(tab_install_rset_13);
             } else if (meta.rset_size == 13) {
-                apply(tab_install_rset_14_a);
+                apply(tab_install_rset_14);
             } else if (meta.rset_size == 14) {
-                apply(tab_install_rset_15_a);
+                apply(tab_install_rset_15);
             } else if (meta.rset_size == 15) {
-                apply(tab_install_rset_16_a);
+                apply(tab_install_rset_16);
             }
         }
     }
@@ -1734,23 +1446,19 @@ control process_request {
 }
 
 control process_replicated_read {
-    apply(tab_get_rkey_ver_curr);
     apply(tab_inc_rkey_read_counter);
-    //apply(tab_get_rset_size_b);
-    //if (meta.rset_size != MAX_REPLICAS) {
     apply(tab_get_rset_num_ack);
     if (meta.rset_num_ack != NNODES) {
         apply(tab_get_rkey_min_node);
     } else {
-        apply(tab_get_min_node_a);
+        apply(tab_get_min_node);
     }
 }
 
 control process_replicated_write {
-    apply(tab_get_rkey_ver_next);
-    apply(tab_get_rkey_read_counter);
+    apply(tab_get_ver_next);
     apply(tab_inc_rkey_write_counter);
-    apply(tab_get_min_node_b);
+    apply(tab_get_min_node);
 }
 
 control process_reply {
@@ -1758,22 +1466,19 @@ control process_reply {
     if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
         // For replicated write replies, check if version number higher
         apply(tab_copy_pegasus_header_c);
-        apply(tab_set_rkey_ver_curr_b);
+        apply(tab_set_rkey_ver_completed);
         if (meta.ver_matched != 0) {
             // Higher version number
-            apply(tab_set_rset_num_ack_b);
-            apply(tab_set_rset_size_b);
-            apply(tab_set_rset_1_b);
-            apply(tab_set_rkey_min_node_b);
-            // Don't check equal version number on resubmit
-            apply(tab_set_rkey_none);
+            apply(tab_set_rset_num_ack);
+            apply(tab_set_rset_size);
+            apply(tab_set_rset_1);
+            apply(tab_set_rkey_min_node);
         }
     } else {
         // For all other replies, probe rkey min node
-        // Probe rkey min node
         if (meta.rkey_size != 0) {
             apply(tab_get_probe_rkey_counter);
-            apply(tab_get_rset_size_a);
+            apply(tab_get_rset_size);
             apply(tab_get_probe_rset_counter);
             if (meta.probe_rset_index == 0) {
                 apply(tab_get_rset_1);
@@ -1822,45 +1527,6 @@ control process_reply {
 }
 
 control process_resubmit_reply {
-    if (meta.rkey_index != RKEY_NONE and pegasus.op == OP_REP_W) {
-        // For replicated write replies, check if version number equal
-        apply(tab_compare_rkey_ver_curr_b);
-        if (meta.ver_matched != 0) {
-            apply(tab_inc_rset_num_ack_b);
-            apply(tab_inc_rset_size_b);
-            if (meta.rset_size == 1) {
-                apply(tab_install_rset_2_b);
-            } else if (meta.rset_size == 2) {
-                apply(tab_install_rset_3_b);
-            } else if (meta.rset_size == 3) {
-                apply(tab_install_rset_4_b);
-            } else if (meta.rset_size == 4) {
-                apply(tab_install_rset_5_b);
-            } else if (meta.rset_size == 5) {
-                apply(tab_install_rset_6_b);
-            } else if (meta.rset_size == 6) {
-                apply(tab_install_rset_7_b);
-            } else if (meta.rset_size == 7) {
-                apply(tab_install_rset_8_b);
-            } else if (meta.rset_size == 8) {
-                apply(tab_install_rset_9_b);
-            } else if (meta.rset_size == 9) {
-                apply(tab_install_rset_10_b);
-            } else if (meta.rset_size == 10) {
-                apply(tab_install_rset_11_b);
-            } else if (meta.rset_size == 11) {
-                apply(tab_install_rset_12_b);
-            } else if (meta.rset_size == 12) {
-                apply(tab_install_rset_13_b);
-            } else if (meta.rset_size == 13) {
-                apply(tab_install_rset_14_b);
-            } else if (meta.rset_size == 14) {
-                apply(tab_install_rset_15_b);
-            } else if (meta.rset_size == 15) {
-                apply(tab_install_rset_16_b);
-            }
-        }
-    }
     apply(tab_update_node_load);
     apply(tab_l2_forward);
 }
@@ -1870,8 +1536,6 @@ control ingress {
         if (valid(pegasus)) {
             if (pegasus.op == OP_DEC) {
                 process_dec();
-            } else if (pegasus.op == OP_MGR) {
-                process_mgr();
             } else if (pegasus.op == OP_MGR_REQ) {
                 process_mgr_req();
             } else {
@@ -1891,8 +1555,6 @@ control ingress {
         if (valid(pegasus)) {
             if (pegasus.op == OP_REP_R or pegasus.op == OP_REP_W) {
                 process_resubmit_reply();
-            } else if (pegasus.op == OP_MGR_ACK) {
-                process_resubmit_mgr_ack();
             } else {
                 apply(tab_do_drop);
             }
