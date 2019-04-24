@@ -41,9 +41,9 @@ KEY_LEN_SIZE = 2
 
 BUF_SIZE = 4096
 MAX_NRKEYS = 32
-DEFAULT_NUM_NODES = 4
+DEFAULT_NUM_NODES = 32
 HASH_MASK = DEFAULT_NUM_NODES - 1
-RKEY_LOAD_FACTOR = 0.05
+RKEY_LOAD_FACTOR = 0.008
 PRINT_DEBUG = True
 
 g_controller = None
@@ -55,8 +55,9 @@ def signal_handler(signum, frame):
 
 # Messages
 class ResetRequest(object):
-    def __init__(self, num_nodes):
+    def __init__(self, num_nodes, num_rkeys):
         self.num_nodes = num_nodes
+        self.num_rkeys = num_rkeys
 
 class ResetReply(object):
     def __init__(self, ack):
@@ -95,7 +96,9 @@ def decode_msg(buf):
     index += TYPE_SIZE
     if msg_type == TYPE_RESET_REQ:
         num_nodes = struct.unpack('<H', buf[index:index+NNODES_SIZE])[0]
-        msg = ResetRequest(num_nodes)
+        index += NNODES_SIZE
+        num_rkeys = struct.unpack('<H', buf[index:index+NKEYS_SIZE])[0]
+        msg = ResetRequest(num_nodes, num_rkeys)
     elif msg_type == TYPE_HK_REPORT:
         nkeys = struct.unpack('<H', buf[index:index+NKEYS_SIZE])[0]
         index += NKEYS_SIZE
@@ -131,7 +134,9 @@ class MessageHandler(threading.Thread):
         self.ctrl_sk.bind(address)
 
     def handle_reset_request(self, addr, msg):
-        print "Reset request with", msg.num_nodes, "nodes"
+        print "Reset request with", msg.num_nodes, "nodes", msg.num_rkeys, "rkeys"
+        self.controller.num_nodes = msg.num_nodes
+        self.controller.num_rkeys = msg.num_rkeys
         self.controller.reset()
 
     def handle_hk_report(self, addr, msg):
@@ -204,6 +209,7 @@ class Controller(object):
         # keyhash -> ReplicatedKey (sorted in ascending load)
         self.replicated_keys = SortedDict(lambda x : self.replicated_keys[x].load)
         self.num_nodes = DEFAULT_NUM_NODES
+        self.num_rkeys = MAX_NRKEYS
         self.switch_lock = threading.Lock()
 
     def install_table_entries(self, tables):
@@ -287,7 +293,7 @@ class Controller(object):
                 if report.load > self.replicated_keys[report.keyhash].load:
                     self.replicated_keys[report.keyhash].load = report.load
             else:
-                if len(self.replicated_keys) < MAX_NRKEYS:
+                if len(self.replicated_keys) < self.num_rkeys:
                     if PRINT_DEBUG:
                         print "Adding key", report.keyhash, "to rkeys, load", report.load, ", size now:", len(self.replicated_keys)
                     self.add_rkey(report.keyhash, len(self.replicated_keys), report.load)

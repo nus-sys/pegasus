@@ -106,7 +106,7 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    controller = Controller("oyster")
+    controller = Controller("tofino1")
     controller.install_table_entries(tables, args.kfile, args.nkeys)
 
 

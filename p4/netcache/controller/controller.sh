@@ -5,6 +5,6 @@ if [ ! -d $SDE_INSTALL ]; then
     exit 1
 fi
 
-export PYTHONPATH=$SDE_INSTALL/lib/python2.7/site-packages/tofino/:$SDE_INSTALL/lib/python2.7/site-packages/tofinopd/:$PYTHONPATH
+export PYTHONPATH=$SDE_INSTALL/lib/python2.7/site-packages/tofino/:$SDE_INSTALL/lib/python2.7/site-packages/tofinopd/:$SDE_INSTALL/lib/python2.7/site-packages/:$PYTHONPATH
 
 python $(dirname $0)/controller.py --config $1 --kfile $2 --nkeys $3
