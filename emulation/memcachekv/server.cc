@@ -81,7 +81,7 @@ Server::run(int duration)
             i++;
         }
         if (this->ctrl_codec->encode(msg_str, msg)) {
-            this->transport->send_message_to_controller(msg_str);
+            this->transport->send_message_to_controller(msg_str, this->config->rack_id);
         } else {
             printf("Failed to encode hk report\n");
         }
@@ -147,13 +147,16 @@ Server::process_kv_request(const MemcacheKVRequest &request,
         } else {
             msg.type = MemcacheKVMessage::Type::REQUEST;
             msg.request = request;
+            msg.request.op.op_type = Operation::Type::PUTFWD;
             if (this->config->rack_id == 0) {
                 // we are the head rack: write client address into request
                 // so that the tail rack can find the original client
                 msg.request.client_addr = addr;
             }
         }
-        this->codec->encode(msg_str, msg);
+        if (!this->codec->encode(msg_str, msg)) {
+            printf("Failed to encode message\n");
+        }
         // Update client table
         // XXX need to fix this
         //this->client_table[request.client_id] = ClientTableEntry(request.req_id, msg_str);

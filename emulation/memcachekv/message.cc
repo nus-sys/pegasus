@@ -106,7 +106,8 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
     switch (op_type) {
     case OP_GET:
     case OP_PUT:
-    case OP_DEL: {
+    case OP_DEL:
+    case OP_PUT_FWD: {
         if (buf_size < REQUEST_BASE_SIZE) {
             return false;
         }
@@ -119,11 +120,13 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         ptr += sizeof(sa_family_t);
         memcpy(out.request.client_addr.sa_data, ptr, 14);
         ptr += 14;
+        out.request.node_id = node_id;
         switch (op_type) {
         case OP_GET:
             out.request.op.op_type = Operation::Type::GET;
             break;
         case OP_PUT:
+        case OP_PUT_FWD:
             out.request.op.op_type = Operation::Type::PUT;
             break;
         case OP_DEL:
@@ -139,7 +142,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         }
         out.request.op.key = string(ptr, key_len);
         ptr += key_len;
-        if (op_type == OP_PUT) {
+        if (op_type == OP_PUT || op_type == OP_PUT_FWD) {
             if (buf_size < REQUEST_BASE_SIZE + key_len + sizeof(value_len_t)) {
                 return false;
             }
@@ -216,7 +219,8 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
         buf_size = REQUEST_BASE_SIZE + in.request.op.key.size();
-        if (in.request.op.op_type == Operation::Type::PUT) {
+        if (in.request.op.op_type == Operation::Type::PUT ||
+            in.request.op.op_type == Operation::Type::PUTFWD) {
             buf_size += sizeof(value_len_t) + in.request.op.value.size();
         }
         break;
@@ -257,6 +261,9 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
             break;
         case Operation::Type::DEL:
             *(op_type_t*)ptr = OP_DEL;
+            break;
+        case Operation::Type::PUTFWD:
+            *(op_type_t*)ptr = OP_PUT_FWD;
             break;
         default:
             return false;
@@ -347,7 +354,8 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(key_len_t);
         memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
         ptr += in.request.op.key.size();
-        if (in.request.op.op_type == Operation::Type::PUT) {
+        if (in.request.op.op_type == Operation::Type::PUT ||
+            in.request.op.op_type == Operation::Type::PUTFWD) {
             *(value_len_t*)ptr = (value_len_t)in.request.op.value.size();
             ptr += sizeof(value_len_t);
             memcpy(ptr, in.request.op.value.data(), in.request.op.value.size());

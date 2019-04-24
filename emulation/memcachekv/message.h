@@ -20,7 +20,8 @@ struct Operation {
     enum class Type {
         GET,
         PUT,
-        DEL
+        DEL,
+        PUTFWD,
     };
     Operation()
         : op_type(Type::GET), keyhash(0), ver(0), key(""), value("") {};
@@ -183,6 +184,7 @@ private:
     static const op_type_t OP_REP_W     = 0x4;
     static const op_type_t OP_MGR_REQ   = 0x5;
     static const op_type_t OP_MGR_ACK   = 0x6;
+    static const op_type_t OP_PUT_FWD   = 0x7;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
     static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + 16 + sizeof(key_len_t);

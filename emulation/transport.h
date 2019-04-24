@@ -33,7 +33,7 @@ public:
     void send_message_to_node(const std::string &msg, int rack_id, int node_id);
     void send_message_to_local_node(const std::string &msg, int node_id);
     void send_message_to_router(const std::string &msg);
-    void send_message_to_controller(const std::string &msg);
+    void send_message_to_controller(const std::string &msg, int rack_id);
 
 private:
     void send_message_to_addr(const std::string &msg, const NodeAddress &addr);

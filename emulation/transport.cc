@@ -75,12 +75,13 @@ Transport::send_message_to_router(const std::string &msg)
 }
 
 void
-Transport::send_message_to_controller(const std::string &msg)
+Transport::send_message_to_controller(const std::string &msg, int rack_id)
 {
+    assert(rack_id >= 0 && rack_id < (int)this->config->controller_addresses.size());
     // Controller is on a different subnet
     if (sendto(this->controller_fd, msg.c_str(), msg.size(), 0,
-               (struct sockaddr *)&this->config->controller_address.sin,
-               sizeof(this->config->controller_address.sin)) == -1) {
+               (struct sockaddr *)&this->config->controller_addresses[rack_id].sin,
+               sizeof(this->config->controller_addresses[rack_id].sin)) == -1) {
         printf("Failed to send message to controller\n");
     }
 }

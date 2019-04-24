@@ -21,7 +21,7 @@ class Configuration {
 public:
     Configuration(const std::vector<std::vector<NodeAddress>> &addresses,
                   const NodeAddress &router_address,
-                  const NodeAddress &controller_address,
+                  const std::vector<NodeAddress> &controller_addresses,
                   int rack_id,
                   int node_id,
                   int n_transport_threads,
@@ -41,7 +41,7 @@ public:
     bool terminating;
     std::vector<std::vector<NodeAddress>> addresses;
     NodeAddress router_address;
-    NodeAddress controller_address;
+    std::vector<NodeAddress> controller_addresses;
 };
 
 #endif /* __CONFIGURATION_H__ */

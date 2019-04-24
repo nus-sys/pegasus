@@ -31,7 +31,9 @@ Controller::run(int duration)
     this->replied = false;
     std::string msg_str;
     this->codec.encode(msg_str, this->msg);
-    this->transport->send_message_to_controller(msg_str);
+    for (int i = 0; i < this->config->num_racks; i++) {
+        this->transport->send_message_to_controller(msg_str, i);
+    }
     // Wait for ack
     /*
     std::unique_lock<std::mutex> lck(mtx);

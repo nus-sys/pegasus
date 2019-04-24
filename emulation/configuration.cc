@@ -35,7 +35,7 @@ NodeAddress::NodeAddress(const string &address, const string &port)
 
 Configuration::Configuration(const std::vector<std::vector<NodeAddress>> &addresses,
                              const NodeAddress &router_address,
-                             const NodeAddress &controller_address,
+                             const std::vector<NodeAddress> &controller_addresses,
                              int rack_id,
                              int node_id,
                              int n_transport_threads,
@@ -44,7 +44,7 @@ Configuration::Configuration(const std::vector<std::vector<NodeAddress>> &addres
     : num_racks(addresses.size()), rack_id(rack_id), node_id(node_id),
     n_transport_threads(n_transport_threads), core_id(core_id),
     terminating(terminating), addresses(addresses), router_address(router_address),
-    controller_address(controller_address)
+    controller_addresses(controller_addresses)
 {
     this->num_nodes = addresses.empty() ? 0 : addresses[0].size();
 }
@@ -114,7 +114,7 @@ Configuration::Configuration(const char *file_path)
             if (host == nullptr || port == nullptr) {
                 panic("Configuration line format: 'controller host:port'");
             }
-            this->controller_address = NodeAddress(string(host), string(port));
+            this->controller_addresses.push_back(NodeAddress(string(host), string(port)));
         } else {
             panic("Unknown configuration directive");
         }
@@ -127,4 +127,5 @@ Configuration::Configuration(const char *file_path)
     this->num_racks = this->addresses.size();
     this->num_nodes = this->num_racks == 0 ? 0 : this->addresses[0].size();
     assert(this->num_racks > 0 && this->num_nodes > 0);
+    assert((int)this->controller_addresses.size() == this->num_racks);
 }
