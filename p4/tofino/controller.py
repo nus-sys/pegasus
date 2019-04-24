@@ -42,9 +42,9 @@ KEY_LEN_SIZE = 2
 BUF_SIZE = 4096
 MAX_NRKEYS = 32
 DEFAULT_NUM_NODES = 32
-HASH_MASK = DEFAULT_NUM_NODES - 1
 RKEY_LOAD_FACTOR = 0.008
 PRINT_DEBUG = True
+READ_RKEY_RATE = True
 
 g_controller = None
 
@@ -259,19 +259,20 @@ class Controller(object):
     def add_rkey(self, keyhash, rkey_index, load):
         # Hack...can read from any node after installing rkey
         self.client.register_write_reg_rset_num_ack(
-            self.sess_hdl, self.dev_tgt, rkey_index, DEFAULT_NUM_NODES)
+            self.sess_hdl, self.dev_tgt, rkey_index, self.num_nodes)
         self.client.register_write_reg_rset_size(
             self.sess_hdl, self.dev_tgt, rkey_index, 1)
         self.client.register_write_reg_rset_1(
-            self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) & HASH_MASK)
+            self.sess_hdl, self.dev_tgt, rkey_index, int(keyhash) % self.num_nodes)
         self.client.register_write_reg_rkey_ver_completed(
             self.sess_hdl, self.dev_tgt, rkey_index, 0)
         self.client.register_write_reg_rkey_read_counter(
             self.sess_hdl, self.dev_tgt, rkey_index, 0)
         self.client.register_write_reg_rkey_write_counter(
             self.sess_hdl, self.dev_tgt, rkey_index, 0)
-        self.client.register_write_reg_rkey_rate_counter(
-            self.sess_hdl, self.dev_tgt, rkey_index, 0)
+        if READ_RKEY_RATE:
+            self.client.register_write_reg_rkey_rate_counter(
+                self.sess_hdl, self.dev_tgt, rkey_index, 0)
         self.proto_controller.add_rkey(keyhash, rkey_index)
         self.client.tab_replicated_keys_table_add_with_lookup_rkey(
             self.sess_hdl, self.dev_tgt,
@@ -325,14 +326,15 @@ class Controller(object):
             self.sess_hdl, self.dev_tgt)
         self.client.register_reset_all_reg_rkey_write_counter(
             self.sess_hdl, self.dev_tgt)
-        # Read rkey load
-        for rkey in self.replicated_keys.values():
-            read_value = self.client.register_read_reg_rkey_rate_counter(
-                self.sess_hdl, self.dev_tgt, rkey.index, self.flags)
-            rkey.load = int(read_value[1] * RKEY_LOAD_FACTOR)
-        # Reset rkey load
-        self.client.register_reset_all_reg_rkey_rate_counter(
-            self.sess_hdl, self.dev_tgt)
+        if READ_RKEY_RATE:
+            # Read rkey load
+            for rkey in self.replicated_keys.values():
+                read_value = self.client.register_read_reg_rkey_rate_counter(
+                    self.sess_hdl, self.dev_tgt, rkey.index, self.flags)
+                rkey.load = int(read_value[1] * RKEY_LOAD_FACTOR)
+            # Reset rkey load
+            self.client.register_reset_all_reg_rkey_rate_counter(
+                self.sess_hdl, self.dev_tgt)
         self.conn_mgr.complete_operations(self.sess_hdl)
         self.switch_lock.release()
 
@@ -396,7 +398,7 @@ class LoadController(object):
     def add_rkey(self, keyhash, rkey_index):
         self.controller.client.register_write_reg_rkey_min_node(
             self.controller.sess_hdl, self.controller.dev_tgt, rkey_index,
-            pegasus_reg_rkey_min_node_value_t(f0 = int(keyhash) & HASH_MASK, f1 = 0))
+            pegasus_reg_rkey_min_node_value_t(f0 = int(keyhash) % self.controller.num_nodes, f1 = 0))
         self.controller.client.register_write_reg_rkey_size(
             self.controller.sess_hdl,
             self.controller.dev_tgt,
@@ -412,7 +414,7 @@ class LoadController(object):
                 self.controller.flags)
             print "node", i, "load", read_value[1]
 
-def PredController(object):
+class PredController(object):
     def __init__(self, controller):
         self.controller = controller
 
@@ -425,7 +427,7 @@ def PredController(object):
     def add_rkey(self, keyhash, rkey_index):
         self.controller.client.register_write_reg_rkey_min_node(
             self.controller.sess_hdl, self.controller.dev_tgt, rkey_index,
-            pegasus_reg_rkey_min_node_value_t(f0 = int(keyhash) & HASH_MASK, f1 = 0))
+            pegasus_reg_rkey_min_node_value_t(f0 = int(keyhash) % self.controller.num_nodes, f1 = 0))
         self.controller.client.register_write_reg_rkey_size(
             self.controller.sess_hdl,
             self.controller.dev_tgt,
