@@ -304,6 +304,7 @@ Server::calculate_load()
         // Initialize epoch
         this->epoch_start = now;
     }
+    this->load_mutex.lock();
     this->request_ts.push_back(now);
 
     if (latency(this->epoch_start, now) > EPOCH_DURATION) {
@@ -318,6 +319,7 @@ Server::calculate_load()
             }
         }
     }
+    this->load_mutex.unlock();
 
     return this->request_ts.size();
 }
