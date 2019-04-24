@@ -67,6 +67,7 @@ private:
     /* Load related */
     static const int EPOCH_DURATION = 1000; // 1ms
     struct timeval epoch_start;
+    std::mutex load_mutex;
     std::list<struct timeval> request_ts;
 
     static const int HK_EPOCH = 10000; // 10ms
