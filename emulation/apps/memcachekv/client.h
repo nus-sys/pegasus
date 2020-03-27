@@ -1,5 +1,5 @@
-#ifndef __MEMCACHEKV_CLIENT_H__
-#define __MEMCACHEKV_CLIENT_H__
+#ifndef _MEMCACHEKV_CLIENT_H_
+#define _MEMCACHEKV_CLIENT_H_
 
 #include <string>
 #include <vector>
@@ -8,10 +8,11 @@
 #include <unordered_map>
 #include <random>
 #include <mutex>
-#include "application.h"
-#include "configuration.h"
-#include "memcachekv/stats.h"
-#include "memcachekv/message.h"
+
+#include <application.h>
+#include <configuration.h>
+#include <apps/memcachekv/stats.h>
+#include <apps/memcachekv/message.h>
 
 namespace memcachekv {
 
@@ -87,13 +88,12 @@ public:
     Client(Configuration *config,
            MemcacheKVStats *stats,
            KVWorkloadGenerator *gen,
-           MessageCodec *codec,
-           int client_id);
-    ~Client() {};
+           MessageCodec *codec);
+    ~Client();
 
-    void receive_message(const std::string &message,
-                         const sockaddr &src_addr) override;
-    void run(int duration) override;
+    virtual void receive_message(const std::string &message,
+                                 const Address &addr) override final;
+    virtual void run(int duration) override final;
 
 private:
     enum Phase {
@@ -112,7 +112,6 @@ private:
     KVWorkloadGenerator *gen;
     MessageCodec *codec;
 
-    int client_id;
     uint32_t req_id;
     Phase phase;
     std::unordered_map<uint32_t, PendingRequest> pending_requests;
@@ -121,4 +120,4 @@ private:
 
 } // namespace memcachekv
 
-#endif /* __MEMCACHEKV_CLIENT_H__ */
+#endif /* _MEMCACHEKV_CLIENT_H_ */

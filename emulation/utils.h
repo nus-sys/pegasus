@@ -1,5 +1,7 @@
-#ifndef __UTILS_H__
-#define __UTILS_H__
+#ifndef _UTILS_H_
+#define _UTILS_H_
+
+#include <sched.h>
 
 #include <sys/time.h>
 #include <unistd.h>
@@ -51,4 +53,15 @@ inline void wait(int time)
     wait(start, time);
 }
 
-#endif /* __UTILS_H__ */
+inline void pin_to_core(int core_id) {
+    if (core_id >= 0) {
+        cpu_set_t cpu_set;
+        CPU_ZERO(&cpu_set);
+        CPU_SET(core_id, &cpu_set);
+        if (sched_setaffinity(0, sizeof(cpu_set), &cpu_set) != 0) {
+            panic("Failed to set cpu affinity\n");
+        }
+    }
+}
+
+#endif /* _UTILS_H_ */

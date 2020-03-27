@@ -1,7 +1,8 @@
-#ifndef __MEMCACHEKV_DECREMENTOR_H_
-#define __MEMCACHEKV_DECREMENTOR_H_
+#ifndef _MEMCACHEKV_DECREMENTOR_H_
+#define _MEMCACHEKV_DECREMENTOR_H_
 
-#include "application.h"
+#include <application.h>
+#include <configuration.h>
 
 namespace memcachekv {
 
@@ -9,11 +10,11 @@ class Decrementor : public Application {
 public:
     Decrementor(Configuration *config,
                 int interval, int n_dec);
-    ~Decrementor() {};
+    ~Decrementor();
 
-    void receive_message(const std::string &message,
-                         const sockaddr &src_addr) override;
-    void run(int duration) override;
+    virtual void receive_message(const std::string &message,
+                                 const Address &addr) override final;
+    virtual void run(int duration) override final;
 
 private:
     Configuration *config;
@@ -35,4 +36,4 @@ private:
 
 } // namespace memcachekv
 
-#endif /* __MEMCACHEKV_DECREMENTOR_H__ */
+#endif /* _MEMCACHEKV_DECREMENTOR_H_ */

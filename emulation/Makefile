@@ -9,7 +9,7 @@ CLI := ./bin/cli
 
 SRCS := $(shell find $(SRC_DIR) -path $(BUILD_DIR) -prune -o -path $(BIN_DIR) -prune -o -name '*.cc' -print)
 OBJS := $(SRCS:%.cc=$(BUILD_DIR)/%.o)
-DEPS := $(shell find $(BUILD_DIR) -type f -name '*.d' > /dev/null 2>&1)
+DEPS := $(shell find $(BUILD_DIR) -type f -name '*.d')
 
 EMULATOR_OBJS := $(OBJS) $(BUILD_DIR)/bin/emulator.o
 CLI_OBJS := $(OBJS) $(BUILD_DIR)/bin/cli.o
@@ -23,16 +23,6 @@ CFLAGS := -g -Wall -pthread -O3
 CXXFLAGS := -std=c++0x -O3
 LDFLAGS := -levent_pthreads
 
-# Protobuf definitions
-PROTOC := protoc
-PROTOS := $(shell find $(SRC_DIR) -name "*.proto")
-PROTOSRCS := $(PROTOS:%.proto=$(BUILD_DIR)/gen/%.pb.cc)
-PROTOOBJS := $(PROTOS:%.proto=$(BUILD_DIR)/%.o)
-PROTO_CFLAGS := $(shell pkg-config --cflags protobuf)
-PROTO_LDFLAGS := $(shell pkg-config --libs protobuf)
-CFLAGS += $(PROTO_CFLAGS)
-LDFLAGS += $(PROTO_LDFLAGS)
-
 # Libevent definitions
 LIBEVENT_CFLAGS := $(shell pkg-config --cflags libevent)
 LIBEVENT_LDFLAGS := $(shell pkg-config --libs libevent)
@@ -42,26 +32,20 @@ LDFLAGS += $(LIBEVENT_LDFLAGS)
 # Intel TBB definitions
 LDFLAGS += -ltbb
 
-# Generate protobuf files
-$(PROTOSRCS): $(BUILD_DIR)/gen/%.pb.cc: %.proto
-	$(MKDIR_P) $(dir $@)
-	$(PROTOC) --cpp_out=$(BUILD_DIR)/gen $^
+# Pthread library
+LDFLAGS += -lpthread
 
 # Object files
-$(PROTOOBJS): $(BUILD_DIR)/%.o: $(BUILD_DIR)/gen/%.pb.cc
-	$(MKDIR_P) $(dir $@)
-	$(CXX) $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/%.o: %.cc $(PROTOSRCS)
+$(BUILD_DIR)/%.o: %.cc
 	$(MKDIR_P) $(dir $@)
 	$(CXX) $(CPPFLAGS) $(CFLAGS) $(CXXFLAGS) -c $< -o $@
 
 # Linking
-$(EMULATOR): $(EMULATOR_OBJS) $(PROTOOBJS)
-	$(CXX) $(EMULATOR_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
+$(EMULATOR): $(EMULATOR_OBJS)
+	$(CXX) $(EMULATOR_OBJS) -o $@ $(LDFLAGS)
 
-$(CLI): $(CLI_OBJS) $(PROTOOBJS)
-	$(CXX) $(CLI_OBJS) $(PROTOOBJS) -o $@ $(LDFLAGS)
+$(CLI): $(CLI_OBJS)
+	$(CXX) $(CLI_OBJS) -o $@ $(LDFLAGS)
 
 -include $(DEPS)
 

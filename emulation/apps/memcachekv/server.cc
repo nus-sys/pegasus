@@ -1,10 +1,10 @@
 #include <algorithm>
 #include <functional>
 #include <set>
-#include "logger.h"
-#include "utils.h"
-#include "memcachekv/config.h"
-#include "memcachekv/server.h"
+
+#include <logger.h>
+#include <utils.h>
+#include <apps/memcachekv/server.h>
 
 using std::string;
 
@@ -24,20 +24,23 @@ Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl
     this->request_count = 0;
 }
 
-void
-Server::receive_message(const string &message, const sockaddr &src_addr)
+Server::~Server()
+{
+}
+
+void Server::receive_message(const string &message, const Address &addr)
 {
     // Check for controller message
     ControllerMessage ctrl_msg;
     if (this->ctrl_codec->decode(message, ctrl_msg)) {
-        process_ctrl_message(ctrl_msg, src_addr);
+        process_ctrl_message(ctrl_msg, addr);
         return;
     }
 
     // KV message
     MemcacheKVMessage kv_msg;
     if (this->codec->decode(message, kv_msg)) {
-        process_kv_message(kv_msg, src_addr);
+        process_kv_message(kv_msg, addr);
         return;
     }
 }
@@ -51,8 +54,7 @@ static Comparator comp =
     return a.second > b.second;
 };
 
-void
-Server::run(int duration)
+void Server::run(int duration)
 {
     // Send HK report periodically
     while (true) {
@@ -88,9 +90,8 @@ Server::run(int duration)
     }
 }
 
-void
-Server::process_kv_message(const MemcacheKVMessage &msg,
-                           const sockaddr &addr)
+void Server::process_kv_message(const MemcacheKVMessage &msg,
+                                const Address &addr)
 {
     switch (msg.type) {
     case MemcacheKVMessage::Type::REQUEST: {
@@ -106,9 +107,8 @@ Server::process_kv_message(const MemcacheKVMessage &msg,
     }
 }
 
-void
-Server::process_ctrl_message(const ControllerMessage &msg,
-                             const sockaddr &addr)
+void Server::process_ctrl_message(const ControllerMessage &msg,
+                                  const Address &addr)
 {
     switch (msg.type) {
     case ControllerMessage::Type::KEY_MGR: {
@@ -120,9 +120,8 @@ Server::process_ctrl_message(const ControllerMessage &msg,
     }
 }
 
-void
-Server::process_kv_request(const MemcacheKVRequest &request,
-                           const sockaddr &addr)
+void Server::process_kv_request(const MemcacheKVRequest &request,
+                                const Address &addr)
 {
     // User defined processing latency
     if (this->proc_latency > 0) {
@@ -148,11 +147,6 @@ Server::process_kv_request(const MemcacheKVRequest &request,
             msg.type = MemcacheKVMessage::Type::REQUEST;
             msg.request = request;
             msg.request.op.op_type = Operation::Type::PUTFWD;
-            if (this->config->rack_id == 0) {
-                // we are the head rack: write client address into request
-                // so that the tail rack can find the original client
-                msg.request.client_addr = addr;
-            }
         }
         if (!this->codec->encode(msg_str, msg)) {
             printf("Failed to encode message\n");
@@ -172,16 +166,8 @@ Server::process_kv_request(const MemcacheKVRequest &request,
     // Chain replication: tail rack replies to client; other racks forward
     // request to the next rack (same node id) in chain
     if (this->config->rack_id == this->config->num_racks - 1) {
-        if (request.client_addr.sa_family == 0) {
-            // client_addr in request is empty: request is
-            // directly sent from client -- send back to
-            // src address
-            this->transport->send_message(msg_str, addr);
-        } else {
-            // request has been forwarded along the chain:
-            // send to original client address
-            this->transport->send_message(msg_str, request.client_addr);
-        }
+        this->transport->send_message(msg_str,
+                                      *this->config->client_addresses[request.client_id]);
     } else {
         this->transport->send_message_to_node(msg_str,
                                               this->config->rack_id+1,

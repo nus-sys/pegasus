@@ -1,28 +1,25 @@
-#ifndef __NODE_H__
-#define __NODE_H__
+#ifndef _NODE_H_
+#define _NODE_H_
 
 #include <thread>
 #include <list>
-#include "transport.h"
-#include "configuration.h"
-#include "application.h"
+
+#include <transport.h>
+#include <configuration.h>
+#include <application.h>
 
 class Node {
 public:
-    Node(const Configuration *config);
+    Node(const Configuration *config, Transport *transport);
     ~Node();
 
     void register_app(Application *app);
     void run(int duration);
 
 private:
-    void run_transport(int core_id);
-
     const Configuration *config;
     Transport *transport;
     Application *app;
-    std::list<TransportEventBase*> transport_ebs;
-    std::list<std::thread*> transport_threads;
 };
 
-#endif /* __NODE_H__ */
+#endif /* _NODE_H_ */

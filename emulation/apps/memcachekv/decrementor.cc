@@ -1,5 +1,7 @@
-#include "decrementor.h"
-#include "utils.h"
+#include <cstring>
+
+#include <utils.h>
+#include <apps/memcachekv/decrementor.h>
 
 namespace memcachekv {
 
@@ -18,8 +20,12 @@ Decrementor::Decrementor(Configuration *config, int interval, int n_dec)
 {
 }
 
+Decrementor::~Decrementor()
+{
+}
+
 void
-Decrementor::receive_message(const std::string &message, const sockaddr &src_addr)
+Decrementor::receive_message(const std::string &message, const Address &addr)
 {
     // Should never receive messages
     return;

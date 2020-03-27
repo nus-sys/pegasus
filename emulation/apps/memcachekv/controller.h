@@ -15,9 +15,9 @@ public:
                const ControllerMessage &msg);
     ~Controller() {};
 
-    void receive_message(const std::string &message,
-                         const sockaddr &src_addr) override;
-    void run(int duration) override;
+    virtual void receive_message(const std::string &message,
+                                 const Address &addr) override final;
+    virtual void run(int duration) override;
 
 private:
     Configuration *config;

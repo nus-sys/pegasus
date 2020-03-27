@@ -4,7 +4,6 @@
 #include <sys/socket.h>
 #include <list>
 #include <string>
-#include "memcachekv/memcachekv.pb.h"
 
 namespace memcachekv {
 
@@ -25,9 +24,6 @@ struct Operation {
     };
     Operation()
         : op_type(Type::GET), keyhash(0), ver(0), key(""), value("") {};
-    Operation(const proto::Operation &op)
-        : op_type(static_cast<Operation::Type>(op.op_type())),
-        key(op.key()), value(op.value()) {};
 
     Type op_type;
     keyhash_t keyhash;
@@ -40,14 +36,9 @@ struct Operation {
 struct MemcacheKVRequest {
     MemcacheKVRequest()
         : client_id(0), req_id(0), node_id(0) {};
-    MemcacheKVRequest(const proto::MemcacheKVRequest &request)
-        : client_id(request.client_id()),
-        req_id(request.req_id()),
-        op(request.op()) {};
 
     int client_id;
     uint32_t req_id;
-    struct sockaddr client_addr;
     int node_id;
     Operation op;
 };
@@ -65,12 +56,6 @@ struct MemcacheKVReply {
     MemcacheKVReply()
         : type(Type::READ), keyhash(0), key(""), node_id(0), load(0), ver(0),
         client_id(0), req_id(0), result(Result::OK), value("") {};
-    MemcacheKVReply(const proto::MemcacheKVReply &reply)
-        : node_id(reply.node_id()),
-        client_id(reply.client_id()),
-        req_id(reply.req_id()),
-        result(static_cast<Result>(reply.result())),
-        value(reply.value()) {};
 
     Type type;
     keyhash_t keyhash;
@@ -125,15 +110,6 @@ public:
     virtual bool encode(std::string &out, const MemcacheKVMessage &in) = 0;
 };
 
-class ProtobufCodec : public MessageCodec {
-public:
-    ProtobufCodec() {};
-    ~ProtobufCodec() {};
-
-    bool decode(const std::string &in, MemcacheKVMessage &out) override;
-    bool encode(std::string &out, const MemcacheKVMessage &in) override;
-};
-
 class WireCodec : public MessageCodec {
 public:
     WireCodec()
@@ -151,7 +127,7 @@ private:
      * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) + version (32) + debug_node (8) + debug_load (16) + message
      *
      * Request format:
-     * client_id (32) + req_id (32) + client_addr (16) + key_len (16) + key (+ value_len(16) + value)
+     * client_id (32) + req_id (32) + key_len (16) + key (+ value_len(16) + value)
      *
      * Reply format:
      * client_id (32) + req_id (32) + result (8) + value_len(16) + value

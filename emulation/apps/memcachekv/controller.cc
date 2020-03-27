@@ -7,8 +7,7 @@ Controller::Controller(Configuration *config,
     : config(config), msg(msg) {}
 
 
-void
-Controller::receive_message(const std::string &message, const sockaddr &src_addr)
+void Controller::receive_message(const std::string &message, const Address &addr)
 {
     ControllerMessage msg;
     if (!this->codec.decode(message, msg)) {
@@ -24,8 +23,7 @@ Controller::receive_message(const std::string &message, const sockaddr &src_addr
     }
 }
 
-void
-Controller::run(int duration)
+void Controller::run(int duration)
 {
     // Just send one message to the controller
     this->replied = false;

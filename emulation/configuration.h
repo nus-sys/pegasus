@@ -1,47 +1,35 @@
-#ifndef __CONFIGURATION_H__
-#define __CONFIGURATION_H__
+#ifndef _CONFIGURATION_H_
+#define _CONFIGURATION_H_
 
 #include <vector>
 #include <string>
-#include <sys/socket.h>
-#include <netinet/in.h>
 
-class NodeAddress {
+class Address {
 public:
-    NodeAddress();
-    NodeAddress(const std::string &address, const std::string &port);
-    ~NodeAddress() {};
-
-    struct sockaddr_in sin;
-    std::string address;
-    std::string port;
+    virtual ~Address() = 0;
 };
 
 class Configuration {
 public:
-    Configuration(const std::vector<std::vector<NodeAddress>> &addresses,
-                  const NodeAddress &router_address,
-                  const std::vector<NodeAddress> &controller_addresses,
-                  int rack_id,
-                  int node_id,
-                  int n_transport_threads,
-                  int core_id,
-                  bool terminating);
-    Configuration(const char *file_path);
-    virtual ~Configuration() {};
+    Configuration();
+    virtual ~Configuration() = 0;
 
-    virtual int key_to_node_id(const std::string &key) = 0;
+    virtual void load_from_file(const char *file_path) = 0;
 
     int num_racks;
     int num_nodes;
     int rack_id;
     int node_id;
+    int client_id;
     int n_transport_threads;
-    int core_id;
+    int transport_core;
+    int app_core;
+    bool is_server;
     bool terminating;
-    std::vector<std::vector<NodeAddress>> addresses;
-    NodeAddress router_address;
-    std::vector<NodeAddress> controller_addresses;
+    std::vector<std::vector<Address*>> node_addresses;
+    std::vector<Address*> client_addresses;
+    Address *router_address;
+    std::vector<Address*> controller_addresses;
 };
 
-#endif /* __CONFIGURATION_H__ */
+#endif /* _CONFIGURATION_H_ */

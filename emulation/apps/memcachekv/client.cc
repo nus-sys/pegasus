@@ -1,7 +1,10 @@
+#include <cassert>
 #include <sys/time.h>
-#include "utils.h"
-#include "logger.h"
-#include "memcachekv/client.h"
+
+#include <utils.h>
+#include <logger.h>
+#include <apps/memcachekv/client.h>
+#include <apps/memcachekv/utils.h>
 
 using std::string;
 
@@ -43,8 +46,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
     this->last_interval = time;
 }
 
-int
-KVWorkloadGenerator::next_zipf_key_index()
+int KVWorkloadGenerator::next_zipf_key_index()
 {
     float random = 0.0;
     while (random == 0.0) {
@@ -65,8 +67,7 @@ KVWorkloadGenerator::next_zipf_key_index()
     return mid;
 }
 
-Operation::Type
-KVWorkloadGenerator::next_op_type()
+Operation::Type KVWorkloadGenerator::next_op_type()
 {
     float op_choice = this->unif_real_dist(this->generator);
     Operation::Type op_type;
@@ -80,8 +81,7 @@ KVWorkloadGenerator::next_op_type()
     return op_type;
 }
 
-NextOperation
-KVWorkloadGenerator::next_operation()
+NextOperation KVWorkloadGenerator::next_operation()
 {
     if (this->d_type != DynamismType::NONE) {
         struct timeval tv;
@@ -114,8 +114,7 @@ KVWorkloadGenerator::next_operation()
     return NextOperation(this->poisson_dist(this->generator), op);
 }
 
-void
-KVWorkloadGenerator::change_keys()
+void KVWorkloadGenerator::change_keys()
 {
     switch (this->d_type) {
     case DynamismType::HOTIN: {
@@ -143,19 +142,21 @@ KVWorkloadGenerator::change_keys()
 Client::Client(Configuration *config,
                MemcacheKVStats *stats,
                KVWorkloadGenerator *gen,
-               MessageCodec *codec,
-               int client_id)
-    : config(config), stats(stats), gen(gen), codec(codec),
-    client_id(client_id), req_id(1),
-    phase(WARMUP) {}
+               MessageCodec *codec)
+    : config(config), stats(stats), gen(gen), codec(codec), req_id(1), phase(WARMUP)
+{
+}
 
-void
-Client::receive_message(const string &message, const sockaddr &src_addr)
+Client::~Client()
+{
+}
+
+void Client::receive_message(const string &message, const Address &addr)
 {
     MemcacheKVMessage msg;
     this->codec->decode(message, msg);
     assert(msg.type == MemcacheKVMessage::Type::REPLY);
-    assert(msg.reply.client_id == this->client_id);
+    assert(msg.reply.client_id == this->config->client_id);
     PendingRequest &pending_request = get_pending_request(msg.reply.req_id);
 
     if (pending_request.op_type == Operation::Type::GET) {
@@ -168,8 +169,7 @@ Client::receive_message(const string &message, const sockaddr &src_addr)
     }
 }
 
-void
-Client::run(int duration)
+void Client::run(int duration)
 {
     struct timeval start, now;
     gettimeofday(&start, nullptr);
@@ -204,8 +204,7 @@ Client::run(int duration)
     this->stats->dump();
 }
 
-void
-Client::execute_op(const Operation &op)
+void Client::execute_op(const Operation &op)
 {
     PendingRequest pending_request;
     gettimeofday(&pending_request.start_time, nullptr);
@@ -216,12 +215,10 @@ Client::execute_op(const Operation &op)
     MemcacheKVMessage msg;
     string msg_str;
     msg.type = MemcacheKVMessage::Type::REQUEST;
-    msg.request.client_id = this->client_id;
+    msg.request.client_id = this->config->client_id;
     msg.request.req_id = this->req_id;
-    msg.request.node_id = this->config->key_to_node_id(op.key);
+    msg.request.node_id = key_to_node_id(op.key, this->config->num_nodes);
     msg.request.op = op;
-    // client_addr filled by head rack
-    memset(&msg.request.client_addr, 0, sizeof(sockaddr));
     this->codec->encode(msg_str, msg);
 
     // Chain replication: send READs to tail rack and WRITEs to head rack
@@ -232,8 +229,7 @@ Client::execute_op(const Operation &op)
     this->stats->report_issue();
 }
 
-void
-Client::complete_op(uint32_t req_id, const PendingRequest &request, Result result)
+void Client::complete_op(uint32_t req_id, const PendingRequest &request, Result result)
 {
     struct timeval end_time;
     gettimeofday(&end_time, nullptr);
@@ -243,23 +239,20 @@ Client::complete_op(uint32_t req_id, const PendingRequest &request, Result resul
     delete_pending_request(req_id);
 }
 
-void
-Client::insert_pending_request(uint32_t req_id, const PendingRequest &request)
+void Client::insert_pending_request(uint32_t req_id, const PendingRequest &request)
 {
     std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
     this->pending_requests[req_id] = request;
 }
 
-PendingRequest&
-Client::get_pending_request(uint32_t req_id)
+PendingRequest& Client::get_pending_request(uint32_t req_id)
 {
     std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
     assert(this->pending_requests.count(req_id) > 0);
     return this->pending_requests.at(req_id);
 }
 
-void
-Client::delete_pending_request(uint32_t req_id)
+void Client::delete_pending_request(uint32_t req_id)
 {
     std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
     this->pending_requests.erase(req_id);

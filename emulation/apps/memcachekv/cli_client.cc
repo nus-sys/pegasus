@@ -1,6 +1,9 @@
 #include <iostream>
+#include <cassert>
 #include <unistd.h>
-#include "memcachekv/cli_client.h"
+
+#include <apps/memcachekv/cli_client.h>
+#include <apps/memcachekv/utils.h>
 
 using std::string;
 using std::cin;
@@ -13,8 +16,12 @@ CLIClient::CLIClient(Configuration *config,
 {
 }
 
+CLIClient::~CLIClient()
+{
+}
+
 void
-CLIClient::receive_message(const string &message, const sockaddr &src_addr)
+CLIClient::receive_message(const string &message, const Address &addr)
 {
     MemcacheKVMessage msg;
     this->codec->decode(message, msg);
@@ -33,7 +40,6 @@ CLIClient::run(int duration)
     msg.type = MemcacheKVMessage::Type::REQUEST;
     msg.request.client_id = 0;
     msg.request.req_id = 0;
-    memset(&msg.request.client_addr, 0, sizeof(sockaddr));
     while (true) {
         printf("op type (0-read, 1-write): ");
         getline(cin, input);
@@ -45,7 +51,7 @@ CLIClient::run(int duration)
         getline(cin, input);
         msg.request.op.value = input;
         msg.request.req_id++;
-        msg.request.node_id = this->config->key_to_node_id(msg.request.op.key);
+        msg.request.node_id = key_to_node_id(msg.request.op.key, this->config->num_nodes);
         this->codec->encode(msg_str, msg);
 
         int rack_id = msg.request.op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;

@@ -7,8 +7,9 @@
 #include <mutex>
 #include <vector>
 #include <tbb/concurrent_unordered_map.h>
-#include "application.h"
-#include "memcachekv/message.h"
+
+#include <application.h>
+#include <apps/memcachekv/message.h>
 
 namespace memcachekv {
 
@@ -17,19 +18,19 @@ public:
     Server(Configuration *config, MessageCodec *codec,
            ControllerCodec *ctrl_codec, int proc_latency,
            std::string default_value, bool report_load);
-    ~Server() {};
+    ~Server();
 
-    void receive_message(const std::string &message,
-                         const sockaddr &src_addr) override;
-    void run(int duration) override;
+    virtual void receive_message(const std::string &message,
+                                 const Address &addr) override final;
+    virtual void run(int duration) override final;
 
 private:
     void process_kv_message(const MemcacheKVMessage &msg,
-                            const sockaddr &addr);
+                            const Address &addr);
     void process_ctrl_message(const ControllerMessage &msg,
-                              const sockaddr &addr);
+                              const Address &addr);
     void process_kv_request(const MemcacheKVRequest &request,
-                            const sockaddr &addr);
+                            const Address &addr);
     void process_op(const Operation &op,
                     MemcacheKVReply &reply);
     void process_migration_request(const MigrationRequest &request);

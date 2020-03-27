@@ -1,6 +1,8 @@
-#include "logger.h"
-#include "memcachekv/message.h"
-#include "memcachekv/config.h"
+#include <cstring>
+
+#include <logger.h>
+#include <apps/memcachekv/message.h>
+#include <apps/memcachekv/utils.h>
 
 using std::string;
 
@@ -14,56 +16,6 @@ static void convert_endian(void *dst, const void *src, size_t size)
          size--) {
         *dptr++ = *sptr--;
     }
-}
-
-bool
-ProtobufCodec::decode(const string &in, MemcacheKVMessage &out)
-{
-    proto::MemcacheKVMessage msg;
-    msg.ParseFromString(in);
-
-    if (msg.has_request()) {
-        out.type = MemcacheKVMessage::Type::REQUEST;
-        out.request = MemcacheKVRequest(msg.request());
-    } else if (msg.has_reply()) {
-        out.type = MemcacheKVMessage::Type::REPLY;
-        out.reply = MemcacheKVReply(msg.reply());
-    } else {
-        panic("protobuf MemcacheKVMessage wrong format");
-    }
-    return true;
-}
-
-bool
-ProtobufCodec::encode(string &out, const MemcacheKVMessage &in)
-{
-    proto::MemcacheKVMessage msg;
-
-    switch (in.type) {
-    case MemcacheKVMessage::Type::REQUEST: {
-        msg.mutable_request()->set_client_id(in.request.client_id);
-        msg.mutable_request()->set_req_id(in.request.req_id);
-        proto::Operation op;
-        op.set_op_type(static_cast<proto::Operation_Type>(in.request.op.op_type));
-        op.set_key(in.request.op.key);
-        op.set_value(in.request.op.value);
-        *(msg.mutable_request()->mutable_op()) = op;
-        break;
-    }
-    case MemcacheKVMessage::Type::REPLY: {
-        msg.mutable_reply()->set_node_id(in.reply.node_id);
-        msg.mutable_reply()->set_client_id(in.reply.client_id);
-        msg.mutable_reply()->set_req_id(in.reply.req_id);
-        msg.mutable_reply()->set_result(static_cast<proto::Result>(in.reply.result));
-        msg.mutable_reply()->set_value(in.reply.value);
-        break;
-    }
-    default:
-        panic("MemcacheKVMessage wrong format");
-    }
-
-    msg.SerializeToString(&out);
-    return true;
 }
 
 bool
@@ -116,10 +68,6 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
         ptr += sizeof(client_id_t);
         out.request.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
-        out.request.client_addr.sa_family = *(sa_family_t*)ptr;
-        ptr += sizeof(sa_family_t);
-        memcpy(out.request.client_addr.sa_data, ptr, 14);
-        ptr += 14;
         out.request.node_id = node_id;
         switch (op_type) {
         case OP_GET:
@@ -346,10 +294,6 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.request.req_id;
         ptr += sizeof(req_id_t);
-        *(sa_family_t*)ptr = (sa_family_t)in.request.client_addr.sa_family;
-        ptr += sizeof(sa_family_t);
-        memcpy(ptr, in.request.client_addr.sa_data, 14);
-        ptr += 14;
         *(key_len_t*)ptr = (key_len_t)in.request.op.key.size();
         ptr += sizeof(key_len_t);
         memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
