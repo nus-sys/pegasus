@@ -69,6 +69,20 @@ void UDPConfiguration::load_from_file(const char *file_path)
                 panic("Configuration line format: 'node host:port'");
             }
             rack.push_back(new UDPAddress(std::string(host), std::string(port)));
+        } else if (strcasecmp(cmd, "client") == 0) {
+            char *arg = strtok(nullptr, " \t");
+            if (arg == nullptr) {
+                panic("'client' configuration line requires an argument");
+            }
+
+            char *host = strtok(arg, ":");
+            char *port = strtok(nullptr, "");
+
+            if (host == nullptr || port == nullptr) {
+                panic("Configuration line format: 'client host:port'");
+            }
+            this->client_addresses.push_back(new UDPAddress(std::string(host),
+                                                            std::string(port)));
         } else if (strcasecmp(cmd, "router") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
