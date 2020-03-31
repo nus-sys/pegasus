@@ -14,8 +14,7 @@ DEPS := $(shell find $(BUILD_DIR) -type f -name '*.d')
 EMULATOR_OBJS := $(OBJS) $(BUILD_DIR)/bin/emulator.o
 CLI_OBJS := $(OBJS) $(BUILD_DIR)/bin/cli.o
 
-INC_DIRS := $(shell find $(SRC_DIR) -type d)
-INC_DIRS += $(BUILD_DIR)/gen
+INC_DIRS := $(shell find $(SRC_DIR) -path $(BUILD_DIR) -prune -o -type d -print)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CPPFLAGS := $(INC_FLAGS) -MMD -MP
@@ -34,6 +33,9 @@ LDFLAGS += -ltbb
 
 # Pthread library
 LDFLAGS += -lpthread
+
+# DPDK library
+LDFLAGS += -lrte_eal
 
 # Object files
 $(BUILD_DIR)/%.o: %.cc

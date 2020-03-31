@@ -5,6 +5,7 @@
 #include <node.h>
 #include <logger.h>
 #include <transports/udp/transport.h>
+#include <transports/dpdk/transport.h>
 #include <apps/memcachekv/message.h>
 #include <apps/memcachekv/server.h>
 #include <apps/memcachekv/client.h>
@@ -17,6 +18,11 @@ enum NodeMode {
     CONTROLLER,
     DECREMENTOR,
     UNKNOWN
+};
+
+enum TransportMode {
+    UDP,
+    DPDK
 };
 
 enum ProtocolMode {
@@ -42,6 +48,7 @@ int main(int argc, char *argv[])
     int opt;
     NodeMode node_mode = UNKNOWN;
     ProtocolMode protocol_mode = STATIC;
+    TransportMode transport_mode = UDP;
     int n_transport_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, core_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     bool report_load = false;
@@ -52,9 +59,8 @@ int main(int argc, char *argv[])
 
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
-    //std::srand(unsigned(std::time(0)));
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:p:r:s:t:v:w:x:z:A:B:C:D:E:F:G:H:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:p:r:s:t:v:w:x:z:A:B:C:D:E:F:G:H:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -118,6 +124,17 @@ int main(int argc, char *argv[])
         }
         case 'n': {
             nkeys = stoi(std::string(optarg));
+            break;
+        }
+        case 'o': {
+            if (strcmp(optarg, "udp") == 0) {
+                transport_mode = UDP;
+            } else if (strcmp(optarg, "dpdk") == 0) {
+                transport_mode = DPDK;
+            } else {
+                printf("Unknown transport mode %s\n", optarg);
+                exit(1);
+            }
             break;
         }
         case 'p': {
@@ -355,7 +372,15 @@ int main(int argc, char *argv[])
         panic("Unknown application mode");
     }
 
-    Transport *transport = new UDPTransport(config);
+    Transport *transport;
+    switch (transport_mode) {
+    case UDP:
+        transport = new UDPTransport(config);
+        break;
+    case DPDK:
+        transport = new DPDKTransport(config);
+        break;
+    }
     node = new Node(config, transport);
     node->register_app(app);
     node->run(duration);
