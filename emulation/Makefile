@@ -18,7 +18,7 @@ INC_DIRS := $(shell find $(SRC_DIR) -path $(BUILD_DIR) -prune -o -type d -print)
 INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CPPFLAGS := $(INC_FLAGS) -MMD -MP
-CFLAGS := -g -Wall -pthread -O3
+CFLAGS := -g -Wall -Werror -pthread -O3
 CXXFLAGS := -std=c++0x -O3
 LDFLAGS := -levent_pthreads
 
@@ -35,7 +35,7 @@ LDFLAGS += -ltbb
 LDFLAGS += -lpthread
 
 # DPDK library
-LDFLAGS += -lrte_eal
+LDFLAGS += -lrte_eal -lrte_mempool -lrte_ethdev -lrte_mbuf
 
 # Object files
 $(BUILD_DIR)/%.o: %.cc
