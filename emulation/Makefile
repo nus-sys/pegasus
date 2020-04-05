@@ -35,7 +35,11 @@ LDFLAGS += -ltbb
 LDFLAGS += -lpthread
 
 # DPDK library
-LDFLAGS += -Wl,--whole-archive -ldpdk -Wl,--no-whole-archive -ldl -lrte_pmd_mlx5 -lmlx5 -libverbs -lnuma
+HAS_MLX5 := n
+LDFLAGS += -Wl,--whole-archive -ldpdk -Wl,--no-whole-archive -ldl -lnuma
+ifeq ($(HAS_MLX5), y)
+		LDFLAGS += -lrte_pmd_mlx5 -lmlx5 -libverbs
+endif
 
 # Object files
 $(BUILD_DIR)/%.o: %.cc
