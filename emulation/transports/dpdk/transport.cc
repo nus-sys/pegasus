@@ -79,7 +79,7 @@ DPDKTransport::DPDKTransport(const Configuration *config)
     }
 
     // Initialize port
-    port_conf.rxmode.split_hdr_size = 0;
+    memset(&port_conf, 0, sizeof(port_conf));
     port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
     if (rte_eth_dev_info_get(this->portid, &dev_info) != 0) {

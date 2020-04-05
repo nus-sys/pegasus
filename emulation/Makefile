@@ -35,7 +35,7 @@ LDFLAGS += -ltbb
 LDFLAGS += -lpthread
 
 # DPDK library
-LDFLAGS += -lrte_eal -lrte_mempool -lrte_ethdev -lrte_mbuf
+LDFLAGS += -Wl,--whole-archive -ldpdk -Wl,--no-whole-archive -ldl -lrte_pmd_mlx5 -lmlx5 -libverbs -lnuma
 
 # Object files
 $(BUILD_DIR)/%.o: %.cc
