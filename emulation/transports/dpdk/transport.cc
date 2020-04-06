@@ -22,32 +22,8 @@ static char *argv[] = {
 
 static int transport_thread(void *arg)
 {
-    uint16_t nb_rx, i;
-    struct rte_mbuf *pkt_burst[MAX_PKT_BURST];
-    struct rte_mbuf *m;
-    size_t offset;
     DPDKTransport *transport = (DPDKTransport*)arg;
-
-    while (transport->status == DPDKTransport::RUNNING) {
-        nb_rx = rte_eth_rx_burst(transport->portid, 0, pkt_burst, MAX_PKT_BURST);
-        for (i = 0; i < nb_rx; i++) {
-            m = pkt_burst[i];
-            /* Parse packet header */
-            struct rte_ether_hdr *ether_hdr;
-            struct rte_ipv4_hdr *ip_hdr;
-            struct rte_udp_hdr *udp_hdr;
-            offset = 0;
-            ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
-            offset += RTE_ETHER_ADDR_LEN;
-            ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
-            offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
-            udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
-            offset += sizeof(struct rte_udp_hdr);
-
-            /* Construct source address */
-            DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
-        }
-    }
+    transport->run_internal();
     return 0;
 }
 
@@ -162,6 +138,40 @@ void DPDKTransport::wait(void)
     RTE_LCORE_FOREACH_SLAVE(lcore_id) {
         if (rte_eal_wait_lcore(lcore_id) < 0) {
             printf("rte_eal_wait_lcore failed on core %d\n", lcore_id);
+        }
+    }
+}
+
+void DPDKTransport::run_internal()
+{
+    uint16_t nb_rx, i;
+    struct rte_mbuf *pkt_burst[MAX_PKT_BURST];
+    struct rte_mbuf *m;
+    size_t offset;
+
+    while (this->status == DPDKTransport::RUNNING) {
+        nb_rx = rte_eth_rx_burst(this->portid, 0, pkt_burst, MAX_PKT_BURST);
+        for (i = 0; i < nb_rx; i++) {
+            m = pkt_burst[i];
+            /* Parse packet header */
+            struct rte_ether_hdr *ether_hdr;
+            struct rte_ipv4_hdr *ip_hdr;
+            struct rte_udp_hdr *udp_hdr;
+            offset = 0;
+            ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
+            offset += RTE_ETHER_ADDR_LEN;
+            ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
+            offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
+            udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
+            offset += sizeof(struct rte_udp_hdr);
+
+            /* Construct source address */
+            DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
+
+            /* Upcall to transport receiver */
+            Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
+                        udp_hdr->dgram_len - sizeof(struct rte_udp_hdr));
+            this->receiver->receive_message(msg, addr);
         }
     }
 }

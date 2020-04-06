@@ -11,18 +11,19 @@ public:
     ~DPDKTransport();
 
     virtual void send_message(const Message &msg, const Address &addr) override final;
-    virtual void run(void) override final;
-    virtual void stop(void) override final;
-    virtual void wait(void) override final;
+    virtual void run() override final;
+    virtual void stop() override final;
+    virtual void wait() override final;
 
+    void run_internal();
+
+private:
+    struct rte_mempool *pktmbuf_pool;
     uint16_t portid;
     volatile enum {
         RUNNING,
         STOPPED,
     } status;
-
-private:
-    struct rte_mempool *pktmbuf_pool;
 };
 
 #endif /* _DPDK_TRANSPORT_H_ */
