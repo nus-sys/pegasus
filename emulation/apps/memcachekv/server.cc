@@ -28,19 +28,19 @@ Server::~Server()
 {
 }
 
-void Server::receive_message(const string &message, const Address &addr)
+void Server::receive_message(const Message &msg, const Address &addr)
 {
     // Check for controller message
-    ControllerMessage ctrl_msg;
-    if (this->ctrl_codec->decode(message, ctrl_msg)) {
-        process_ctrl_message(ctrl_msg, addr);
+    ControllerMessage ctrlmsg;
+    if (this->ctrl_codec->decode(msg, ctrlmsg)) {
+        process_ctrl_message(ctrlmsg, addr);
         return;
     }
 
     // KV message
-    MemcacheKVMessage kv_msg;
-    if (this->codec->decode(message, kv_msg)) {
-        process_kv_message(kv_msg, addr);
+    MemcacheKVMessage kvmsg;
+    if (this->codec->decode(msg, kvmsg)) {
+        process_kv_message(kvmsg, addr);
         return;
     }
 }
@@ -71,19 +71,19 @@ void Server::run(int duration)
         }
 
         // hk report has a max of MAX_HK_SIZE reports
-        ControllerMessage msg;
-        string msg_str;
-        msg.type = ControllerMessage::Type::HK_REPORT;
+        ControllerMessage ctrlmsg;
+        ctrlmsg.type = ControllerMessage::Type::HK_REPORT;
         int i = 0;
         for (const auto &hk : sorted_hk) {
             if (i >= MAX_HK_SIZE) {
                 break;
             }
-            msg.hk_report.reports.push_back(ControllerHKReport::Report(hk.first, hk.second));
+            ctrlmsg.hk_report.reports.push_back(ControllerHKReport::Report(hk.first, hk.second));
             i++;
         }
-        if (this->ctrl_codec->encode(msg_str, msg)) {
-            this->transport->send_message_to_controller(msg_str, this->config->rack_id);
+        Message msg;
+        if (this->ctrl_codec->encode(msg, ctrlmsg)) {
+            this->transport->send_message_to_controller(msg, this->config->rack_id);
         } else {
             printf("Failed to encode hk report\n");
         }
@@ -128,48 +128,32 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
         wait(this->proc_latency);
     }
 
-    MemcacheKVMessage msg;
-    string msg_str;
+    MemcacheKVMessage kvmsg;
+    process_op(request.op, kvmsg.reply);
 
-    // Check client table
-    if (this->client_table.count(request.client_id) == 0 ||
-        this->client_table.at(request.client_id).req_id < request.req_id) {
-        // New request from client
-        process_op(request.op, msg.reply);
-
-        // Chain replication: tail rack sends a reply; other racks forward the request
-        if (this->config->rack_id == this->config->num_racks - 1) {
-            msg.type = MemcacheKVMessage::Type::REPLY;
-            msg.reply.node_id = this->config->node_id;
-            msg.reply.client_id = request.client_id;
-            msg.reply.req_id = request.req_id;
-        } else {
-            msg.type = MemcacheKVMessage::Type::REQUEST;
-            msg.request = request;
-            msg.request.op.op_type = Operation::Type::PUTFWD;
-        }
-        if (!this->codec->encode(msg_str, msg)) {
-            printf("Failed to encode message\n");
-        }
-        // Update client table
-        // XXX need to fix this
-        //this->client_table[request.client_id] = ClientTableEntry(request.req_id, msg_str);
+    // Chain replication: tail rack sends a reply; other racks forward the request
+    if (this->config->rack_id == this->config->num_racks - 1) {
+        kvmsg.type = MemcacheKVMessage::Type::REPLY;
+        kvmsg.reply.node_id = this->config->node_id;
+        kvmsg.reply.client_id = request.client_id;
+        kvmsg.reply.req_id = request.req_id;
     } else {
-        if (this->client_table.at(request.client_id).req_id > request.req_id) {
-            // we can ignore old requests
-            return;
-        }
-        // This is (potentially) a client retry. Send the previous reply
-        msg_str = this->client_table.at(request.client_id).msg;
+        kvmsg.type = MemcacheKVMessage::Type::REQUEST;
+        kvmsg.request = request;
+        kvmsg.request.op.op_type = Operation::Type::PUTFWD;
+    }
+    Message msg;
+    if (!this->codec->encode(msg, kvmsg)) {
+        printf("Failed to encode message\n");
     }
 
     // Chain replication: tail rack replies to client; other racks forward
     // request to the next rack (same node id) in chain
     if (this->config->rack_id == this->config->num_racks - 1) {
-        this->transport->send_message(msg_str,
+        this->transport->send_message(msg,
                                       *this->config->client_addresses[request.client_id]);
     } else {
-        this->transport->send_message_to_node(msg_str,
+        this->transport->send_message_to_node(msg,
                                               this->config->rack_id+1,
                                               this->config->node_id);
     }
@@ -231,42 +215,42 @@ Server::process_migration_request(const MigrationRequest &request)
 
         this->store[request.key] = Item(request.value, request.ver);
 
-        MemcacheKVMessage msg;
-        string msg_str;
-        msg.type = MemcacheKVMessage::Type::MGR_ACK;
-        msg.migration_ack.keyhash = request.keyhash;
-        msg.migration_ack.ver = request.ver;
-        msg.migration_ack.node_id = this->config->node_id;
+        MemcacheKVMessage kvmsg;
+        kvmsg.type = MemcacheKVMessage::Type::MGR_ACK;
+        kvmsg.migration_ack.keyhash = request.keyhash;
+        kvmsg.migration_ack.ver = request.ver;
+        kvmsg.migration_ack.node_id = this->config->node_id;
 
-        if (!this->codec->encode(msg_str, msg)) {
+        Message msg;
+        if (!this->codec->encode(msg, kvmsg)) {
             printf("Failed to encode migration ack\n");
             return;
         }
-        this->transport->send_message_to_router(msg_str);
+        this->transport->send_message_to_router(msg);
     }
 }
 
 void
 Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
 {
-    MemcacheKVMessage msg;
-    string msg_str;
+    MemcacheKVMessage kvmsg;
 
     // Send migration request to all nodes in the rack (except itself)
-    msg.type = MemcacheKVMessage::Type::MGR_REQ;
-    msg.migration_request.keyhash = key_mgr.keyhash;
-    msg.migration_request.key = key_mgr.key;
+    kvmsg.type = MemcacheKVMessage::Type::MGR_REQ;
+    kvmsg.migration_request.keyhash = key_mgr.keyhash;
+    kvmsg.migration_request.key = key_mgr.key;
     if (this->store.count(key_mgr.key) == 0) {
-        msg.migration_request.value = this->default_value;
-        msg.migration_request.ver = 0;
+        kvmsg.migration_request.value = this->default_value;
+        kvmsg.migration_request.ver = 0;
     } else {
-        msg.migration_request.value = this->store.at(key_mgr.key).value;
-        msg.migration_request.ver = this->store.at(key_mgr.key).ver;
+        kvmsg.migration_request.value = this->store.at(key_mgr.key).value;
+        kvmsg.migration_request.ver = this->store.at(key_mgr.key).ver;
     }
-    this->codec->encode(msg_str, msg);
+    Message msg;
+    this->codec->encode(msg, kvmsg);
     for (int node_id = 0; node_id < this->config->num_nodes; node_id++) {
         if (node_id != this->config->node_id) {
-            this->transport->send_message_to_local_node(msg_str, node_id);
+            this->transport->send_message_to_local_node(msg, node_id);
         }
     }
 }

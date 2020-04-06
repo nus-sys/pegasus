@@ -4,6 +4,7 @@
 
 #include <logger.h>
 #include <transports/dpdk/transport.h>
+#include <transports/dpdk/configuration.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wwrite-strings"
@@ -21,26 +22,30 @@ static char *argv[] = {
 
 static int transport_thread(void *arg)
 {
-    uint16_t nb_rx, i, j;
+    uint16_t nb_rx, i;
     struct rte_mbuf *pkt_burst[MAX_PKT_BURST];
     struct rte_mbuf *m;
+    size_t offset;
     DPDKTransport *transport = (DPDKTransport*)arg;
 
     while (transport->status == DPDKTransport::RUNNING) {
         nb_rx = rte_eth_rx_burst(transport->portid, 0, pkt_burst, MAX_PKT_BURST);
         for (i = 0; i < nb_rx; i++) {
             m = pkt_burst[i];
-            struct rte_ether_hdr *eth_hdr;
-            eth_hdr = rte_pktmbuf_mtod(m, struct rte_ether_hdr*);
-            printf("SRC: ");
-            for (j = 0; j < RTE_ETHER_ADDR_LEN; j++) {
-                printf("%x ", eth_hdr->s_addr.addr_bytes[j]);
-            }
-            printf("DST: ");
-            for (j = 0; j < RTE_ETHER_ADDR_LEN; j++) {
-                printf("%x ", eth_hdr->d_addr.addr_bytes[j]);
-            }
-            printf("\n");
+            /* Parse packet header */
+            struct rte_ether_hdr *ether_hdr;
+            struct rte_ipv4_hdr *ip_hdr;
+            struct rte_udp_hdr *udp_hdr;
+            offset = 0;
+            ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
+            offset += RTE_ETHER_ADDR_LEN;
+            ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
+            offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
+            udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
+            offset += sizeof(struct rte_udp_hdr);
+
+            /* Construct source address */
+            DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
         }
     }
     return 0;
@@ -134,7 +139,7 @@ DPDKTransport::~DPDKTransport()
     rte_eth_dev_close(this->portid);
 }
 
-void DPDKTransport::send_message(const std::string &msg, const Address &addr)
+void DPDKTransport::send_message(const Message &msg, const Address &addr)
 {
 }
 

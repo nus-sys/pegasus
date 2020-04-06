@@ -5,6 +5,48 @@
 #include <transport.h>
 #include <logger.h>
 
+Message::Message()
+    : buf_(nullptr), len_(0)
+{
+}
+
+Message::Message(void *buf, size_t len)
+    : buf_(buf), len_(len)
+{
+}
+
+Message::Message(const std::string &str)
+{
+    this->buf_ = malloc(str.size());
+    memcpy(this->buf_, str.data(), str.size());
+}
+
+Message::~Message()
+{
+    if (this->buf_ != nullptr) {
+        free(this->buf_);
+    }
+}
+
+const void *Message::buf() const
+{
+    return this->buf_;
+}
+
+size_t Message::len() const
+{
+    return this->len_;
+}
+
+void Message::set_message(void *buf, size_t len)
+{
+    if (this->buf_ != nullptr) {
+        free(this->buf_);
+    }
+    this->buf_ = buf;
+    this->len_ = len;
+}
+
 TransportReceiver::~TransportReceiver()
 {
 }
@@ -27,7 +69,7 @@ void Transport::register_receiver(TransportReceiver *receiver)
     this->receiver = receiver;
 }
 
-void Transport::send_message_to_node(const std::string &msg, int rack_id, int node_id)
+void Transport::send_message_to_node(const Message &msg, int rack_id, int node_id)
 {
     assert(rack_id < this->config->num_racks && rack_id >= 0);
     assert(node_id < this->config->num_nodes && node_id >= 0);
@@ -35,7 +77,7 @@ void Transport::send_message_to_node(const std::string &msg, int rack_id, int no
                  *this->config->node_addresses.at(rack_id).at(node_id));
 }
 
-void Transport::send_message_to_local_node(const std::string &msg, int node_id)
+void Transport::send_message_to_local_node(const Message &msg, int node_id)
 {
     assert(this->config->rack_id >= 0);
     assert(node_id < this->config->num_nodes && node_id >= 0);
@@ -43,12 +85,12 @@ void Transport::send_message_to_local_node(const std::string &msg, int node_id)
                  *this->config->node_addresses.at(this->config->rack_id).at(node_id));
 }
 
-void Transport::send_message_to_router(const std::string &msg)
+void Transport::send_message_to_router(const Message &msg)
 {
     send_message(msg, *this->config->router_address);
 }
 
-void Transport::send_message_to_controller(const std::string &msg, int rack_id)
+void Transport::send_message_to_controller(const Message &msg, int rack_id)
 {
     assert(rack_id >= 0 && rack_id < (int)this->config->controller_addresses.size());
     send_message(msg, *this->config->controller_addresses.at(rack_id));

@@ -21,41 +21,44 @@ CLIClient::~CLIClient()
 }
 
 void
-CLIClient::receive_message(const string &message, const Address &addr)
+CLIClient::receive_message(const Message &msg, const Address &addr)
 {
-    MemcacheKVMessage msg;
-    this->codec->decode(message, msg);
-    assert(msg.type == MemcacheKVMessage::Type::REPLY);
+    MemcacheKVMessage kvmsg;
+    this->codec->decode(msg, kvmsg);
+    assert(kvmsg.type == MemcacheKVMessage::Type::REPLY);
     printf("Reply type %u keyhash %u node %u ver %u result %u value %s\n",
-           (unsigned int)msg.reply.type, msg.reply.keyhash, msg.reply.node_id,
-           msg.reply.ver, (unsigned int)msg.reply.result, msg.reply.value.c_str());
+           (unsigned int)kvmsg.reply.type, kvmsg.reply.keyhash, kvmsg.reply.node_id,
+           kvmsg.reply.ver, (unsigned int)kvmsg.reply.result, kvmsg.reply.value.c_str());
 }
 
 void
 CLIClient::run(int duration)
 {
-    MemcacheKVMessage msg;
-    string input, msg_str;
+    MemcacheKVMessage kvmsg;
+    string input;
 
-    msg.type = MemcacheKVMessage::Type::REQUEST;
-    msg.request.client_id = 0;
-    msg.request.req_id = 0;
+    kvmsg.type = MemcacheKVMessage::Type::REQUEST;
+    kvmsg.request.client_id = 0;
+    kvmsg.request.req_id = 0;
     while (true) {
         printf("op type (0-read, 1-write): ");
         getline(cin, input);
-        msg.request.op.op_type = static_cast<Operation::Type>(stoi(input));
+        kvmsg.request.op.op_type = static_cast<Operation::Type>(stoi(input));
         printf("key: ");
         getline(cin, input);
-        msg.request.op.key = input;
+        kvmsg.request.op.key = input;
         printf("value: ");
         getline(cin, input);
-        msg.request.op.value = input;
-        msg.request.req_id++;
-        msg.request.node_id = key_to_node_id(msg.request.op.key, this->config->num_nodes);
-        this->codec->encode(msg_str, msg);
+        kvmsg.request.op.value = input;
+        kvmsg.request.req_id++;
+        kvmsg.request.node_id = key_to_node_id(kvmsg.request.op.key,
+                                               this->config->num_nodes);
 
-        int rack_id = msg.request.op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
-        this->transport->send_message_to_node(msg_str, rack_id, msg.request.node_id);
+        Message msg;
+        this->codec->encode(msg, kvmsg);
+
+        int rack_id = kvmsg.request.op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
+        this->transport->send_message_to_node(msg, rack_id, kvmsg.request.node_id);
         sleep(1);
     }
 }

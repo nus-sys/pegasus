@@ -8,11 +8,27 @@
 
 class Transport;
 
+class Message {
+public:
+    Message();
+    Message(void *buf, size_t len);
+    Message(const std::string &str);
+    ~Message();
+
+    const void *buf() const;
+    size_t len() const;
+    void set_message(void *buf, size_t len);
+
+private:
+    void *buf_;
+    size_t len_;
+};
+
 class TransportReceiver {
 public:
     virtual ~TransportReceiver() = 0;
     void register_transport(Transport *transport);
-    virtual void receive_message(const std::string &msg,
+    virtual void receive_message(const Message &msg,
                                  const Address &addr) = 0;
 protected:
     Transport *transport;
@@ -24,12 +40,12 @@ public:
     virtual ~Transport() = 0;
 
     void register_receiver(TransportReceiver *receiver);
-    void send_message_to_node(const std::string &msg, int rack_id, int node_id);
-    void send_message_to_local_node(const std::string &msg, int node_id);
-    void send_message_to_router(const std::string &msg);
-    void send_message_to_controller(const std::string &msg, int rack_id);
+    void send_message_to_node(const Message &msg, int rack_id, int node_id);
+    void send_message_to_local_node(const Message &msg, int node_id);
+    void send_message_to_router(const Message &msg);
+    void send_message_to_controller(const Message &msg, int rack_id);
 
-    virtual void send_message(const std::string &msg, const Address &addr) = 0;
+    virtual void send_message(const Message &msg, const Address &addr) = 0;
     virtual void run(void) = 0;
     virtual void stop(void) = 0;
     virtual void wait(void) = 0;

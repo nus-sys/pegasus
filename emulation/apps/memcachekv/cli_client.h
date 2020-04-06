@@ -13,7 +13,7 @@ public:
               MessageCodec *codec);
     ~CLIClient();
 
-    virtual void receive_message(const std::string &message,
+    virtual void receive_message(const Message &msg,
                                  const Address &addr) override final;
     virtual void run(int duration) override final;
 

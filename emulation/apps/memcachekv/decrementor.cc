@@ -25,7 +25,7 @@ Decrementor::~Decrementor()
 }
 
 void
-Decrementor::receive_message(const std::string &message, const Address &addr)
+Decrementor::receive_message(const Message &msg, const Address &addr)
 {
     // Should never receive messages
     return;
@@ -47,10 +47,10 @@ Decrementor::run(int duration)
     convert_endian(ptr, &this->n_dec, sizeof(load_t));
     ptr -= sizeof(node_t);
 
-    std::string msgs[this->config->num_nodes/2];
+    Message msgs[this->config->num_nodes/2];
     for (int i = 0; i < this->config->num_nodes/2; i++) {
         *(node_t*)ptr = i * 2;
-        msgs[i] = std::string(buf, BUFSIZE);
+        msgs[i] = Message(std::string(buf, BUFSIZE));
     }
 
     gettimeofday(&prev, nullptr);

@@ -15,7 +15,7 @@ public:
     UDPTransport(const Configuration *config);
     ~UDPTransport();
 
-    virtual void send_message(const std::string &msg, const Address &addr) override final;
+    virtual void send_message(const Message &msg, const Address &addr) override final;
     virtual void run(void) override final;
     virtual void stop(void) override final;
     virtual void wait(void) override final;

@@ -45,11 +45,11 @@ UDPTransport::~UDPTransport()
     }
 }
 
-void UDPTransport::send_message(const std::string &msg, const Address &addr)
+void UDPTransport::send_message(const Message &msg, const Address &addr)
 {
     const UDPAddress &udp_addr = static_cast<const UDPAddress&>(addr);
 
-    if (sendto(this->socket_fd, msg.c_str(), msg.size(), 0,
+    if (sendto(this->socket_fd, msg.buf(), msg.len(), 0,
                &udp_addr.saddr, sizeof(udp_addr.saddr)) == -1) {
         printf("Failed to send message\n");
     }
@@ -151,7 +151,7 @@ void UDPTransport::register_controller()
 void UDPTransport::on_readable(int fd)
 {
     const int BUFSIZE = 65535;
-    char buf[BUFSIZE];
+    void *buf = malloc(BUFSIZE);
     struct sockaddr src_addr;
     socklen_t addrlen = sizeof(src_addr);
     ssize_t ret;
@@ -165,7 +165,7 @@ void UDPTransport::on_readable(int fd)
     }
 
     assert(this->receiver);
-    this->receiver->receive_message(std::string(buf, ret),
+    this->receiver->receive_message(Message(buf, ret),
                                     UDPAddress(src_addr));
 }
 

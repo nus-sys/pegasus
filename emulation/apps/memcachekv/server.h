@@ -20,7 +20,7 @@ public:
            std::string default_value, bool report_load);
     ~Server();
 
-    virtual void receive_message(const std::string &message,
+    virtual void receive_message(const Message &msg,
                                  const Address &addr) override final;
     virtual void run(int duration) override final;
 
@@ -51,16 +51,6 @@ private:
         ver_t ver;
     };
     tbb::concurrent_unordered_map<std::string, Item> store;
-
-    struct ClientTableEntry {
-        ClientTableEntry()
-            : req_id(0), msg("") {};
-        ClientTableEntry(uint32_t req_id, const std::string &msg)
-            : req_id(req_id), msg(msg) {};
-        uint32_t req_id;
-        std::string msg;
-    };
-    tbb::concurrent_unordered_map<int, ClientTableEntry> client_table; // client id -> table entry
 
     int proc_latency;
     std::string default_value;

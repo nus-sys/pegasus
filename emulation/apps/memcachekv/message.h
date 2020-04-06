@@ -5,6 +5,8 @@
 #include <list>
 #include <string>
 
+#include <transport.h>
+
 namespace memcachekv {
 
 typedef uint32_t keyhash_t;
@@ -106,8 +108,8 @@ class MessageCodec {
 public:
     virtual ~MessageCodec() {};
 
-    virtual bool decode(const std::string &in, MemcacheKVMessage &out) = 0;
-    virtual bool encode(std::string &out, const MemcacheKVMessage &in) = 0;
+    virtual bool decode(const Message &in, MemcacheKVMessage &out) = 0;
+    virtual bool encode(Message &out, const MemcacheKVMessage &in) = 0;
 };
 
 class WireCodec : public MessageCodec {
@@ -118,8 +120,8 @@ public:
         : proto_enable(proto_enable) {};
     ~WireCodec() {};
 
-    bool decode(const std::string &in, MemcacheKVMessage &out) override;
-    bool encode(std::string &out, const MemcacheKVMessage &in) override;
+    virtual bool decode(const Message &in, MemcacheKVMessage &out) override final;
+    virtual bool encode(Message &out, const MemcacheKVMessage &in) override final;
 
 private:
     bool proto_enable;
@@ -177,8 +179,8 @@ public:
     NetcacheCodec() {};
     ~NetcacheCodec() {};
 
-    bool decode(const std::string &in, MemcacheKVMessage &out) override;
-    bool encode(std::string &out, const MemcacheKVMessage &in) override;
+    virtual bool decode(const Message &in, MemcacheKVMessage &out) override final;
+    virtual bool encode(Message &out, const MemcacheKVMessage &in) override final;
 
 private:
     /* Wire format:
@@ -262,15 +264,12 @@ struct ControllerMessage {
 };
 
 class ControllerCodec {
-    /*
-     * Currently only use wire codec for controller
-     */
 public:
     ControllerCodec() {};
     ~ControllerCodec() {};
 
-    bool encode(std::string &out, const ControllerMessage &in);
-    bool decode(const std::string &in, ControllerMessage &out);
+    bool decode(const Message &in, ControllerMessage &out);
+    bool encode(Message &out, const ControllerMessage &in);
 
 private:
     /* Wire format:

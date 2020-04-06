@@ -19,11 +19,10 @@ static void convert_endian(void *dst, const void *src, size_t size)
 }
 
 bool
-WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
+WireCodec::decode(const Message &in, MemcacheKVMessage &out)
 {
-    const char *buf = in.data();
-    const char *ptr = buf;
-    size_t buf_size = in.size();
+    const char *ptr = (const char*)in.buf();
+    size_t buf_size = in.len();
 
     if (buf_size < PACKET_BASE_SIZE) {
         return false;
@@ -160,7 +159,7 @@ WireCodec::decode(const std::string &in, MemcacheKVMessage &out)
 }
 
 bool
-WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
+WireCodec::encode(Message &out, const MemcacheKVMessage &in)
 {
     // First determine buffer size
     size_t buf_size;
@@ -189,7 +188,7 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         return false;
     }
 
-    char *buf = new char[buf_size];
+    char *buf = (char*)malloc(buf_size);
     char *ptr = buf;
     // Header
     if (this->proto_enable) {
@@ -341,17 +340,15 @@ WireCodec::encode(std::string &out, const MemcacheKVMessage &in)
         return false;
     }
 
-    out = string(buf, buf_size);
-    delete[] buf;
+    out.set_message(buf, buf_size);
     return true;
 }
 
 bool
-NetcacheCodec::decode(const std::string &in, MemcacheKVMessage &out)
+NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
 {
-    const char *buf = in.data();
-    const char *ptr = buf;
-    size_t buf_size = in.size();
+    const char *ptr = (const char*)in.buf();
+    size_t buf_size = in.len();
 
     if (buf_size < PACKET_BASE_SIZE) {
         return false;
@@ -445,7 +442,7 @@ NetcacheCodec::decode(const std::string &in, MemcacheKVMessage &out)
 }
 
 bool
-NetcacheCodec::encode(std::string &out, const MemcacheKVMessage &in)
+NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
 {
     // First determine buffer size
     size_t buf_size;
@@ -465,7 +462,7 @@ NetcacheCodec::encode(std::string &out, const MemcacheKVMessage &in)
         return false;
     }
 
-    char *buf = new char[buf_size];
+    char *buf = (char*)malloc(buf_size);
     char *ptr = buf;
     // App header
     *(identifier_t*)ptr = NETCACHE;
@@ -560,77 +557,15 @@ NetcacheCodec::encode(std::string &out, const MemcacheKVMessage &in)
         return false;
     }
 
-    out = string(buf, buf_size);
-    delete[] buf;
+    out.set_message(buf, buf_size);
     return true;
 }
 
 bool
-ControllerCodec::encode(std::string &out, const ControllerMessage &in)
+ControllerCodec::decode(const Message &in, ControllerMessage &out)
 {
-    size_t buf_size;
-    switch (in.type) {
-    case ControllerMessage::Type::RESET_REQ:
-        buf_size = RESET_REQ_SIZE;
-        break;
-    case ControllerMessage::Type::RESET_REPLY:
-        buf_size = RESET_REPLY_SIZE;
-        break;
-    case ControllerMessage::Type::HK_REPORT:
-        buf_size = HK_REPORT_BASE_SIZE + in.hk_report.reports.size() * (sizeof(keyhash_t) + sizeof(load_t));
-        break;
-    case ControllerMessage::Type::KEY_MGR:
-        buf_size = KEY_MGR_BASE_SIZE + in.key_mgr.key.size();
-        break;
-    default:
-        return false;
-    }
-
-    char *buf = new char[buf_size];
-    char *ptr = buf;
-    *(identifier_t*)ptr = CONTROLLER;
-    ptr += sizeof(identifier_t);
-    *(type_t*)ptr = static_cast<type_t>(in.type);
-    ptr += sizeof(type_t);
-
-    switch (in.type) {
-    case ControllerMessage::Type::RESET_REQ:
-        *(nnodes_t*)ptr = in.reset_req.num_nodes;
-        ptr += sizeof(nnodes_t);
-        *(nrkeys_t*)ptr = in.reset_req.num_rkeys;
-        break;
-    case ControllerMessage::Type::RESET_REPLY:
-        *(ack_t*)ptr = static_cast<ack_t>(in.reset_reply.ack);
-        break;
-    case ControllerMessage::Type::HK_REPORT:
-        *(nkeys_t*)ptr = in.hk_report.reports.size();
-        ptr += sizeof(nkeys_t);
-        for (const auto &report : in.hk_report.reports) {
-            *(keyhash_t*)ptr = report.keyhash;
-            ptr += sizeof(keyhash_t);
-            *(load_t*)ptr = report.load;
-            ptr += sizeof(load_t);
-        }
-        break;
-    case ControllerMessage::Type::KEY_MGR:
-        *(keyhash_t*)ptr = in.key_mgr.keyhash;
-        ptr += sizeof(keyhash_t);
-        *(key_len_t*)ptr = in.key_mgr.key.size();
-        ptr += sizeof(key_len_t);
-        memcpy(ptr, in.key_mgr.key.data(), in.key_mgr.key.size());
-        break;
-    }
-
-    out = string(buf, buf_size);
-    delete[] buf;
-    return true;
-}
-
-bool
-ControllerCodec::decode(const std::string &in, ControllerMessage &out)
-{
-    const char *ptr = in.data();
-    size_t buf_size = in.size();
+    const char *ptr = (const char*)in.buf();
+    size_t buf_size = in.len();
 
     if (buf_size < PACKET_BASE_SIZE) {
         return false;
@@ -692,6 +627,66 @@ ControllerCodec::decode(const std::string &in, ControllerMessage &out)
     default:
         return false;
     }
+    return true;
+}
+
+bool
+ControllerCodec::encode(Message &out, const ControllerMessage &in)
+{
+    size_t buf_size;
+    switch (in.type) {
+    case ControllerMessage::Type::RESET_REQ:
+        buf_size = RESET_REQ_SIZE;
+        break;
+    case ControllerMessage::Type::RESET_REPLY:
+        buf_size = RESET_REPLY_SIZE;
+        break;
+    case ControllerMessage::Type::HK_REPORT:
+        buf_size = HK_REPORT_BASE_SIZE + in.hk_report.reports.size() * (sizeof(keyhash_t) + sizeof(load_t));
+        break;
+    case ControllerMessage::Type::KEY_MGR:
+        buf_size = KEY_MGR_BASE_SIZE + in.key_mgr.key.size();
+        break;
+    default:
+        return false;
+    }
+
+    char *buf = (char*)malloc(buf_size);
+    char *ptr = buf;
+    *(identifier_t*)ptr = CONTROLLER;
+    ptr += sizeof(identifier_t);
+    *(type_t*)ptr = static_cast<type_t>(in.type);
+    ptr += sizeof(type_t);
+
+    switch (in.type) {
+    case ControllerMessage::Type::RESET_REQ:
+        *(nnodes_t*)ptr = in.reset_req.num_nodes;
+        ptr += sizeof(nnodes_t);
+        *(nrkeys_t*)ptr = in.reset_req.num_rkeys;
+        break;
+    case ControllerMessage::Type::RESET_REPLY:
+        *(ack_t*)ptr = static_cast<ack_t>(in.reset_reply.ack);
+        break;
+    case ControllerMessage::Type::HK_REPORT:
+        *(nkeys_t*)ptr = in.hk_report.reports.size();
+        ptr += sizeof(nkeys_t);
+        for (const auto &report : in.hk_report.reports) {
+            *(keyhash_t*)ptr = report.keyhash;
+            ptr += sizeof(keyhash_t);
+            *(load_t*)ptr = report.load;
+            ptr += sizeof(load_t);
+        }
+        break;
+    case ControllerMessage::Type::KEY_MGR:
+        *(keyhash_t*)ptr = in.key_mgr.keyhash;
+        ptr += sizeof(keyhash_t);
+        *(key_len_t*)ptr = in.key_mgr.key.size();
+        ptr += sizeof(key_len_t);
+        memcpy(ptr, in.key_mgr.key.data(), in.key_mgr.key.size());
+        break;
+    }
+
+    out.set_message(buf, buf_size);
     return true;
 }
 

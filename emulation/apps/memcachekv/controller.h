@@ -1,5 +1,5 @@
-#ifndef __MEMCACHEKV_CONTROLLER_H__
-#define __MEMCACHEKV_CONTROLLER_H__
+#ifndef _MEMCACHEKV_CONTROLLER_H_
+#define _MEMCACHEKV_CONTROLLER_H_
 
 #include <mutex>
 #include <condition_variable>
@@ -15,14 +15,14 @@ public:
                const ControllerMessage &msg);
     ~Controller() {};
 
-    virtual void receive_message(const std::string &message,
+    virtual void receive_message(const Message &msg,
                                  const Address &addr) override final;
-    virtual void run(int duration) override;
+    virtual void run(int duration) override final;
 
 private:
     Configuration *config;
     ControllerCodec codec;
-    ControllerMessage msg;
+    ControllerMessage ctrlmsg;
     std::mutex mtx;
     std::condition_variable cv;
     bool replied;
@@ -30,4 +30,4 @@ private:
 
 } // namespace memcachekv
 
-#endif /* __MEMCACHEKV_CONTROLLER_H__ */
+#endif /* _MEMCACHEKV_CONTROLLER_H_ */

@@ -151,20 +151,20 @@ Client::~Client()
 {
 }
 
-void Client::receive_message(const string &message, const Address &addr)
+void Client::receive_message(const Message &msg, const Address &addr)
 {
-    MemcacheKVMessage msg;
-    this->codec->decode(message, msg);
-    assert(msg.type == MemcacheKVMessage::Type::REPLY);
-    assert(msg.reply.client_id == this->config->client_id);
-    PendingRequest &pending_request = get_pending_request(msg.reply.req_id);
+    MemcacheKVMessage kvmsg;
+    this->codec->decode(msg, kvmsg);
+    assert(kvmsg.type == MemcacheKVMessage::Type::REPLY);
+    assert(kvmsg.reply.client_id == this->config->client_id);
+    PendingRequest &pending_request = get_pending_request(kvmsg.reply.req_id);
 
     if (pending_request.op_type == Operation::Type::GET) {
-        complete_op(msg.reply.req_id, pending_request, msg.reply.result);
+        complete_op(kvmsg.reply.req_id, pending_request, kvmsg.reply.result);
     } else {
         pending_request.received_acks += 1;
         if (pending_request.received_acks >= pending_request.expected_acks) {
-            complete_op(msg.reply.req_id, pending_request, msg.reply.result);
+            complete_op(kvmsg.reply.req_id, pending_request, kvmsg.reply.result);
         }
     }
 }
@@ -212,18 +212,19 @@ void Client::execute_op(const Operation &op)
     pending_request.expected_acks = 1;
     insert_pending_request(this->req_id, pending_request);
 
-    MemcacheKVMessage msg;
-    string msg_str;
-    msg.type = MemcacheKVMessage::Type::REQUEST;
-    msg.request.client_id = this->config->client_id;
-    msg.request.req_id = this->req_id;
-    msg.request.node_id = key_to_node_id(op.key, this->config->num_nodes);
-    msg.request.op = op;
-    this->codec->encode(msg_str, msg);
+    MemcacheKVMessage kvmsg;
+    kvmsg.type = MemcacheKVMessage::Type::REQUEST;
+    kvmsg.request.client_id = this->config->client_id;
+    kvmsg.request.req_id = this->req_id;
+    kvmsg.request.node_id = key_to_node_id(op.key, this->config->num_nodes);
+    kvmsg.request.op = op;
+
+    Message msg;
+    this->codec->encode(msg, kvmsg);
 
     // Chain replication: send READs to tail rack and WRITEs to head rack
     int rack_id = op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
-    this->transport->send_message_to_node(msg_str, rack_id, msg.request.node_id);
+    this->transport->send_message_to_node(msg, rack_id, kvmsg.request.node_id);
 
     this->req_id++;
     this->stats->report_issue();
