@@ -29,8 +29,7 @@ int main(int argc, char *argv[])
         codec = new NetcacheCodec();
         break;
     }
-    Configuration *config = new UDPConfiguration();
-    config->load_from_file(config_file_path);
+    Configuration *config = new UDPConfiguration(config_file_path);
     config->n_transport_threads = 1;
     config->rack_id = -1;
     config->client_id = 0;

@@ -265,8 +265,7 @@ int main(int argc, char *argv[])
         panic("Option -c <config file> required");
     }
 
-    Configuration *config = new UDPConfiguration();
-    config->load_from_file(config_file_path);
+    Configuration *config = new UDPConfiguration(config_file_path);
     config->n_transport_threads = n_transport_threads;
     config->num_racks = num_racks;
     config->num_nodes = num_nodes;

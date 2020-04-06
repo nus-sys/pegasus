@@ -14,8 +14,6 @@ public:
     Configuration();
     virtual ~Configuration() = 0;
 
-    virtual void load_from_file(const char *file_path) = 0;
-
     int num_racks;
     int num_nodes;
     int rack_id;

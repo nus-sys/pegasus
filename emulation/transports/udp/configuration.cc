@@ -31,7 +31,8 @@ UDPAddress::UDPAddress(const struct sockaddr &saddr)
 {
 }
 
-void UDPConfiguration::load_from_file(const char *file_path)
+UDPConfiguration::UDPConfiguration(const char *file_path)
+    : Configuration()
 {
     std::ifstream file;
     std::vector<Address*> rack;

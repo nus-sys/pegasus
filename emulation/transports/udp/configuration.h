@@ -15,7 +15,7 @@ public:
 
 class UDPConfiguration : public Configuration {
 public:
-    virtual void load_from_file(const char *file_path) override final;
+    UDPConfiguration(const char *file_path);
 };
 
 #endif /* _UDP_CONFIGURATION_H_ */
