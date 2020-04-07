@@ -11,17 +11,18 @@ class Transport;
 class Message {
 public:
     Message();
-    Message(void *buf, size_t len);
+    Message(void *buf, size_t len, bool dealloc);
     Message(const std::string &str);
     ~Message();
 
     const void *buf() const;
     size_t len() const;
-    void set_message(void *buf, size_t len);
+    void set_message(void *buf, size_t len, bool dealloc);
 
 private:
     void *buf_;
     size_t len_;
+    bool dealloc_;
 };
 
 class TransportReceiver {

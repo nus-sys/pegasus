@@ -340,7 +340,7 @@ WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         return false;
     }
 
-    out.set_message(buf, buf_size);
+    out.set_message(buf, buf_size, true);
     return true;
 }
 
@@ -557,7 +557,7 @@ NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
         return false;
     }
 
-    out.set_message(buf, buf_size);
+    out.set_message(buf, buf_size, true);
     return true;
 }
 
@@ -686,7 +686,7 @@ ControllerCodec::encode(Message &out, const ControllerMessage &in)
         break;
     }
 
-    out.set_message(buf, buf_size);
+    out.set_message(buf, buf_size, true);
     return true;
 }
 

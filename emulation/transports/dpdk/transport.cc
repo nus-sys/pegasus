@@ -170,7 +170,8 @@ void DPDKTransport::run_internal()
 
             /* Upcall to transport receiver */
             Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
-                        udp_hdr->dgram_len - sizeof(struct rte_udp_hdr));
+                        udp_hdr->dgram_len - sizeof(struct rte_udp_hdr),
+                        false);
             this->receiver->receive_message(msg, addr);
         }
     }

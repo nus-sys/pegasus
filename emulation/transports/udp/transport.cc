@@ -151,7 +151,7 @@ void UDPTransport::register_controller()
 void UDPTransport::on_readable(int fd)
 {
     const int BUFSIZE = 65535;
-    void *buf = malloc(BUFSIZE);
+    char buf[BUFSIZE];
     struct sockaddr src_addr;
     socklen_t addrlen = sizeof(src_addr);
     ssize_t ret;
@@ -165,7 +165,7 @@ void UDPTransport::on_readable(int fd)
     }
 
     assert(this->receiver);
-    this->receiver->receive_message(Message(buf, ret),
+    this->receiver->receive_message(Message(buf, ret, false),
                                     UDPAddress(src_addr));
 }
 

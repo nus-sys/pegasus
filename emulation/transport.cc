@@ -6,12 +6,12 @@
 #include <logger.h>
 
 Message::Message()
-    : buf_(nullptr), len_(0)
+    : buf_(nullptr), len_(0), dealloc_(false)
 {
 }
 
-Message::Message(void *buf, size_t len)
-    : buf_(buf), len_(len)
+Message::Message(void *buf, size_t len, bool dealloc)
+    : buf_(buf), len_(len), dealloc_(dealloc)
 {
 }
 
@@ -19,11 +19,13 @@ Message::Message(const std::string &str)
 {
     this->buf_ = malloc(str.size());
     memcpy(this->buf_, str.data(), str.size());
+    this->len_ = str.size();
+    this->dealloc_ = true;
 }
 
 Message::~Message()
 {
-    if (this->buf_ != nullptr) {
+    if (this->dealloc_ && this->buf_ != nullptr) {
         free(this->buf_);
     }
 }
@@ -38,13 +40,14 @@ size_t Message::len() const
     return this->len_;
 }
 
-void Message::set_message(void *buf, size_t len)
+void Message::set_message(void *buf, size_t len, bool dealloc)
 {
     if (this->buf_ != nullptr) {
         free(this->buf_);
     }
     this->buf_ = buf;
     this->len_ = len;
+    this->dealloc_ = dealloc;
 }
 
 TransportReceiver::~TransportReceiver()
