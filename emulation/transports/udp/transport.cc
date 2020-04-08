@@ -6,6 +6,7 @@
 #include <event2/thread.h>
 #include <event2/event.h>
 
+#include <transports/udp/configuration.h>
 #include <transports/udp/transport.h>
 #include <utils.h>
 

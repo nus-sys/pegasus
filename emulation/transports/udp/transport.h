@@ -6,7 +6,6 @@
 #include <event2/util.h>
 
 #include <transport.h>
-#include <transports/udp/configuration.h>
 
 class TransportEventBase;
 
