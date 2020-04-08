@@ -1,6 +1,18 @@
-#ifndef __LOGGER_H__
-#define __LOGGER_H__
+#ifndef _LOGGER_H_
+#define _LOGGER_H_
 
-void panic(const char *msg) __attribute__ ((noreturn));
+enum LogLevel : int {
+    LOG_NONE = 0,
+    LOG_ERROR,
+    LOG_INFO,
+    LOG_DEBUG
+};
 
-#endif /* __LOGGER_H__ */
+void logger_init(LogLevel level);
+
+void debug(const char *fmt, ...);
+void info(const char *fmt, ...);
+void error(const char *fmt, ...);
+void panic(const char *fmt, ...) __attribute__ ((noreturn));
+
+#endif /* _LOGGER_H_ */
