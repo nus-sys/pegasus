@@ -1,6 +1,7 @@
 #include <rte_eal.h>
 #include <rte_lcore.h>
 #include <rte_ethdev.h>
+#include <rte_mbuf.h>
 
 #include <logger.h>
 #include <transports/dpdk/transport.h>
@@ -19,6 +20,11 @@ static char *argv[] = {
 #define RTE_TX_DESC 1024
 #define MAX_PKT_BURST 32
 #define MEMPOOL_CACHE_SIZE 256
+
+#define IPV4_VER 4
+#define IPV4_HDR_SIZE 5
+#define IPV4_TTL 0xFF
+#define IPV4_PROTO_UDP 0x11
 
 static int transport_thread(void *arg)
 {
@@ -117,6 +123,72 @@ DPDKTransport::~DPDKTransport()
 
 void DPDKTransport::send_message(const Message &msg, const Address &addr)
 {
+    struct rte_mbuf *m;
+    struct rte_ether_hdr *ether_hdr;
+    struct rte_ipv4_hdr *ip_hdr;
+    struct rte_udp_hdr *udp_hdr;
+    void *dgram;
+    uint16_t sent;
+    const DPDKAddress &dst_addr = static_cast<const DPDKAddress&>(addr);
+    Address *my_addr;
+    if (this->config->is_server) {
+        my_addr = this->config->node_addresses[this->config->rack_id][this->config->node_id];
+    } else {
+        my_addr = this->config->client_addresses[this->config->client_id];
+    }
+    const DPDKAddress &src_addr = static_cast<const DPDKAddress&>(*my_addr);
+
+    /* Allocate mbuf */
+    m = rte_pktmbuf_alloc(this->pktmbuf_pool);
+    if (m == nullptr) {
+        panic("Failed to allocate rte_mbuf");
+    }
+    /* Ethernet header */
+    ether_hdr = (struct rte_ether_hdr*)rte_pktmbuf_append(m, RTE_ETHER_ADDR_LEN);
+    if (ether_hdr == nullptr) {
+        panic("Failed to allocate Ethernet header");
+    }
+    ether_hdr->ether_type = rte_cpu_to_be_16(RTE_ETHER_TYPE_IPV4);
+    memcpy(&ether_hdr->d_addr, &dst_addr.ether_addr, sizeof(struct rte_ether_addr));
+    memcpy(&ether_hdr->s_addr, &src_addr.ether_addr, sizeof(struct rte_ether_addr));
+    /* IP header */
+    ip_hdr = (struct rte_ipv4_hdr*)rte_pktmbuf_append(m, IPV4_HDR_SIZE * RTE_IPV4_IHL_MULTIPLIER);
+    if (ip_hdr == nullptr) {
+        panic("Failed to allocated IP header");
+    }
+    ip_hdr->version_ihl = (IPV4_VER << 4) | IPV4_HDR_SIZE;
+    ip_hdr->type_of_service = 0;
+    ip_hdr->total_length = rte_cpu_to_be_16(IPV4_HDR_SIZE * RTE_IPV4_IHL_MULTIPLIER +
+                                            sizeof(struct rte_udp_hdr) +
+                                            msg.len());
+    ip_hdr->packet_id = 0;
+    ip_hdr->fragment_offset = 0;
+    ip_hdr->time_to_live = IPV4_TTL;
+    ip_hdr->next_proto_id = IPV4_PROTO_UDP;
+    ip_hdr->hdr_checksum = 0;
+    ip_hdr->src_addr = src_addr.ip_addr;
+    ip_hdr->dst_addr = dst_addr.ip_addr;
+    ip_hdr->hdr_checksum = rte_cpu_to_be_16(rte_ipv4_cksum(ip_hdr));
+    /* UDP header */
+    udp_hdr = (struct rte_udp_hdr*)rte_pktmbuf_append(m, sizeof(struct rte_udp_hdr));
+    if (udp_hdr == nullptr) {
+        panic("Failed to allocate UDP header");
+    }
+    udp_hdr->src_port = src_addr.udp_port;
+    udp_hdr->dst_port = dst_addr.udp_port;
+    udp_hdr->dgram_len = sizeof(struct rte_udp_hdr) + msg.len();
+    udp_hdr->dgram_cksum = 0;
+    /* Datagram */
+    dgram = rte_pktmbuf_append(m, msg.len());
+    if (dgram == nullptr) {
+        panic("Failed to allocate data gram");
+    }
+    memcpy(dgram, msg.buf(), msg.len());
+    /* Send packet */
+    sent = rte_eth_tx_burst(this->portid, 0, &m, 1);
+    if (sent < 1) {
+        panic("Failed to send packet");
+    }
 }
 
 void DPDKTransport::run(void)
@@ -173,6 +245,7 @@ void DPDKTransport::run_internal()
                         udp_hdr->dgram_len - sizeof(struct rte_udp_hdr),
                         false);
             this->receiver->receive_message(msg, addr);
+            rte_pktmbuf_free(m);
         }
     }
 }
