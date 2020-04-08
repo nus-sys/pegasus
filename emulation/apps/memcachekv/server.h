@@ -1,5 +1,5 @@
-#ifndef __MEMCACHEKV_SERVER_H__
-#define __MEMCACHEKV_SERVER_H__
+#ifndef _MEMCACHEKV_SERVER_H_
+#define _MEMCACHEKV_SERVER_H_
 
 #include <string>
 #include <unordered_map>
@@ -73,4 +73,4 @@ private:
 
 } // namespace memcachekv
 
-#endif /* __MEMCACHEKV_SERVER_H__ */
+#endif /* _MEMCACHEKV_SERVER_H_ */
