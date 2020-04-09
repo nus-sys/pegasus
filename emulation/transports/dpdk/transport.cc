@@ -177,7 +177,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     }
     udp_hdr->src_port = src_addr.udp_port;
     udp_hdr->dst_port = dst_addr.udp_port;
-    udp_hdr->dgram_len = sizeof(struct rte_udp_hdr) + msg.len();
+    udp_hdr->dgram_len = rte_cpu_to_be_16(sizeof(struct rte_udp_hdr) + msg.len());
     udp_hdr->dgram_cksum = 0;
     /* Datagram */
     dgram = rte_pktmbuf_append(m, msg.len());
@@ -244,7 +244,7 @@ void DPDKTransport::run_internal()
 
                 /* Upcall to transport receiver */
                 Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
-                        udp_hdr->dgram_len - sizeof(struct rte_udp_hdr),
+                        rte_be_to_cpu_16(udp_hdr->dgram_len) - sizeof(struct rte_udp_hdr),
                         false);
                 this->receiver->receive_message(msg, addr);
             }
