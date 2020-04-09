@@ -169,7 +169,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     ip_hdr->hdr_checksum = 0;
     ip_hdr->src_addr = src_addr.ip_addr;
     ip_hdr->dst_addr = dst_addr.ip_addr;
-    ip_hdr->hdr_checksum = rte_cpu_to_be_16(rte_ipv4_cksum(ip_hdr));
+    ip_hdr->hdr_checksum = rte_ipv4_cksum(ip_hdr);
     /* UDP header */
     udp_hdr = (struct rte_udp_hdr*)rte_pktmbuf_append(m, sizeof(struct rte_udp_hdr));
     if (udp_hdr == nullptr) {
