@@ -237,15 +237,38 @@ void DPDKTransport::run_internal()
             udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
             offset += sizeof(struct rte_udp_hdr);
 
-            /* Construct source address */
-            DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
+            if (filter_packet(DPDKAddress(ether_hdr->d_addr, ip_hdr->dst_addr, udp_hdr->dst_port))) {
+                /* Construct source address */
+                DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
 
-            /* Upcall to transport receiver */
-            Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
+                /* Upcall to transport receiver */
+                Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
                         udp_hdr->dgram_len - sizeof(struct rte_udp_hdr),
                         false);
-            this->receiver->receive_message(msg, addr);
+                this->receiver->receive_message(msg, addr);
+            }
             rte_pktmbuf_free(m);
         }
     }
+}
+
+bool DPDKTransport::filter_packet(const DPDKAddress &addr) const
+{
+    DPDKAddress *my_addr;
+    if (this->config->is_server) {
+        my_addr = static_cast<DPDKAddress*>(this->config->node_addresses[this->config->rack_id][this->config->node_id]);
+    } else {
+        my_addr = static_cast<DPDKAddress*>(this->config->client_addresses[this->config->node_id]);
+    }
+
+    if (memcmp(&addr.ether_addr, &my_addr->ether_addr, sizeof(struct rte_ether_addr)) != 0) {
+        return false;
+    }
+    if (addr.ip_addr != my_addr->ip_addr) {
+        return false;
+    }
+    if (addr.udp_port != my_addr->udp_port) {
+        return false;
+    }
+    return true;
 }

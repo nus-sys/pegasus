@@ -4,6 +4,7 @@
 #include <rte_mempool.h>
 
 #include <transport.h>
+#include <transports/dpdk/configuration.h>
 
 class DPDKTransport : public Transport {
 public:
@@ -18,6 +19,8 @@ public:
     void run_internal();
 
 private:
+    bool filter_packet(const DPDKAddress &addr) const;
+
     struct rte_mempool *pktmbuf_pool;
     uint16_t portid;
     volatile enum {
