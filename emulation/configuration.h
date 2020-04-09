@@ -14,6 +14,8 @@ public:
     Configuration();
     virtual ~Configuration() = 0;
 
+    const Address *my_address() const;
+
     int num_racks;
     int num_nodes;
     int rack_id;

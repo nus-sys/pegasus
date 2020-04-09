@@ -130,13 +130,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     void *dgram;
     uint16_t sent;
     const DPDKAddress &dst_addr = static_cast<const DPDKAddress&>(addr);
-    Address *my_addr;
-    if (this->config->is_server) {
-        my_addr = this->config->node_addresses[this->config->rack_id][this->config->node_id];
-    } else {
-        my_addr = this->config->client_addresses[this->config->client_id];
-    }
-    const DPDKAddress &src_addr = static_cast<const DPDKAddress&>(*my_addr);
+    const DPDKAddress &src_addr = static_cast<const DPDKAddress&>(*this->config->my_address());
 
     /* Allocate mbuf */
     m = rte_pktmbuf_alloc(this->pktmbuf_pool);
@@ -254,12 +248,7 @@ void DPDKTransport::run_internal()
 
 bool DPDKTransport::filter_packet(const DPDKAddress &addr) const
 {
-    DPDKAddress *my_addr;
-    if (this->config->is_server) {
-        my_addr = static_cast<DPDKAddress*>(this->config->node_addresses[this->config->rack_id][this->config->node_id]);
-    } else {
-        my_addr = static_cast<DPDKAddress*>(this->config->client_addresses[this->config->client_id]);
-    }
+    const DPDKAddress *my_addr = static_cast<const DPDKAddress*>(this->config->my_address());
 
     if (memcmp(&addr.ether_addr, &my_addr->ether_addr, sizeof(struct rte_ether_addr)) != 0) {
         return false;

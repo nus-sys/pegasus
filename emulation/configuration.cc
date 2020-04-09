@@ -27,3 +27,12 @@ Configuration::~Configuration()
         delete addr;
     }
 }
+
+const Address *Configuration::my_address() const
+{
+    if (this->is_server) {
+        return this->node_addresses.at(this->rack_id).at(this->node_id);
+    } else {
+        return this->client_addresses.at(this->client_id);
+    }
+}
