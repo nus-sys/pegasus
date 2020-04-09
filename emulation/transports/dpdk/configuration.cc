@@ -57,12 +57,12 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
                 panic("'node' configuration line requires an argument");
             }
 
-            char *ether = strtok(arg, ":");
-            char *ip = strtok(nullptr, ":");
+            char *ether = strtok(arg, "|");
+            char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "");
 
             if (ether == nullptr || ip == nullptr || port == nullptr) {
-                panic("Configuration line format: 'node ether:ip:port'");
+                panic("Configuration line format: 'node ether|ip|port'");
             }
             rack.push_back(new DPDKAddress(ether, ip, port));
         } else if (strcasecmp(cmd, "client") == 0) {
@@ -71,12 +71,12 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
                 panic("'client' configuration line requires an argument");
             }
 
-            char *ether = strtok(arg, ":");
-            char *ip = strtok(nullptr, ":");
+            char *ether = strtok(arg, "|");
+            char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "");
 
             if (ether == nullptr || ip == nullptr || port == nullptr) {
-                panic("Configuration line format: 'client ether:ip:port'");
+                panic("Configuration line format: 'client ether|ip|port'");
             }
             this->client_addresses.push_back(new DPDKAddress(ether,
                                                              ip,
@@ -87,12 +87,12 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
                 panic("'router' configuration line requires an argument");
             }
 
-            char *ether = strtok(arg, ":");
-            char *ip = strtok(nullptr, ":");
+            char *ether = strtok(arg, "|");
+            char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "");
 
             if (ether == nullptr || ip == nullptr || port == nullptr) {
-                panic("Configuration line format: 'router ether:ip:port'");
+                panic("Configuration line format: 'router ether|ip|port'");
             }
             this->router_address = new DPDKAddress(ether, ip, port);
         } else if (strcasecmp(cmd, "controller") == 0) {
@@ -101,12 +101,12 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
                 panic("'controller' configuration line requires an argument");
             }
 
-            char *ether = strtok(arg, ":");
-            char *ip = strtok(nullptr, ":");
+            char *ether = strtok(arg, "|");
+            char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "");
 
             if (ether == nullptr || ip == nullptr || port == nullptr) {
-                panic("Configuration line format: 'controller ether:ip:port'");
+                panic("Configuration line format: 'controller ether|ip|port'");
             }
 
             this->controller_addresses.push_back(new DPDKAddress(ether,
