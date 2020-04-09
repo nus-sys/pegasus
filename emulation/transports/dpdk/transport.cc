@@ -21,6 +21,7 @@ static char *argv[] = {
 #define MAX_PKT_BURST 32
 #define MEMPOOL_CACHE_SIZE 256
 
+#define ETHER_HDR_SIZE 14
 #define IPV4_VER 4
 #define IPV4_HDR_SIZE 5
 #define IPV4_TTL 0xFF
@@ -144,7 +145,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
         panic("Failed to allocate rte_mbuf");
     }
     /* Ethernet header */
-    ether_hdr = (struct rte_ether_hdr*)rte_pktmbuf_append(m, RTE_ETHER_ADDR_LEN);
+    ether_hdr = (struct rte_ether_hdr*)rte_pktmbuf_append(m, ETHER_HDR_SIZE);
     if (ether_hdr == nullptr) {
         panic("Failed to allocate Ethernet header");
     }
@@ -231,7 +232,7 @@ void DPDKTransport::run_internal()
             struct rte_udp_hdr *udp_hdr;
             offset = 0;
             ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
-            offset += RTE_ETHER_ADDR_LEN;
+            offset += ETHER_HDR_SIZE;
             ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
             offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
             udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
