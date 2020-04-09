@@ -117,7 +117,6 @@ DPDKTransport::DPDKTransport(const Configuration *config)
 
 DPDKTransport::~DPDKTransport()
 {
-    rte_mempool_free(this->pktmbuf_pool);
     rte_eth_dev_stop(this->portid);
     rte_eth_dev_close(this->portid);
 }
@@ -259,7 +258,7 @@ bool DPDKTransport::filter_packet(const DPDKAddress &addr) const
     if (this->config->is_server) {
         my_addr = static_cast<DPDKAddress*>(this->config->node_addresses[this->config->rack_id][this->config->node_id]);
     } else {
-        my_addr = static_cast<DPDKAddress*>(this->config->client_addresses[this->config->node_id]);
+        my_addr = static_cast<DPDKAddress*>(this->config->client_addresses[this->config->client_id]);
     }
 
     if (memcmp(&addr.ether_addr, &my_addr->ether_addr, sizeof(struct rte_ether_addr)) != 0) {
