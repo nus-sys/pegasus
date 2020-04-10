@@ -1,9 +1,9 @@
-#ifndef __MEMCACHEKV_STATS_H__
-#define __MEMCACHEKV_STATS_H__
+#ifndef _MEMCACHEKV_STATS_H_
+#define _MEMCACHEKV_STATS_H_
 
 #include <map>
-#include "appstats.h"
-#include "memcachekv/message.h"
+#include <stats.h>
+#include <memcachekv/message.h>
 
 namespace memcachekv {
 
@@ -26,4 +26,4 @@ private:
 
 } // namespace memcachekv
 
-#endif /* __MEMCACHEKV_STATS_H__ */
+#endif /* _MEMCACHEKV_STATS_H_ */

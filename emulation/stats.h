@@ -1,5 +1,5 @@
-#ifndef __APP_STATS_H__
-#define __APP_STATS_H__
+#ifndef _STATS_H_
+#define _STATS_H_
 
 #include <sys/time.h>
 #include <fstream>
@@ -35,4 +35,4 @@ private:
     std::vector<std::map<int, uint64_t> > interval_latencies;
 };
 
-#endif /* __APP_STATS_H__ */
+#endif /* _STATS_H_ */
