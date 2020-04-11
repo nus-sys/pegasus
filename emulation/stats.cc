@@ -1,3 +1,5 @@
+#include <cassert>
+
 #include <stats.h>
 #include <logger.h>
 #include <utils.h>
@@ -28,16 +30,14 @@ Stats::~Stats()
     }
 }
 
-void
-Stats::report_issue()
+void Stats::report_issue()
 {
     if (this->record) {
         this->issued_ops++;
     }
 }
 
-void
-Stats::report_latency(int l)
+void Stats::report_latency(int l)
 {
     if (this->record) {
         this->latencies[l]++;
@@ -54,8 +54,21 @@ Stats::report_latency(int l)
     }
 }
 
-void
-Stats::start()
+int Stats::get_latency(float percentile)
+{
+    uint64_t count = 0;
+
+    assert(percentile >= 0 && percentile < 1);
+    for (const auto &latency : this->latencies) {
+        count += latency.second;
+        if (count >= (uint64_t)(this->completed_ops * percentile)) {
+            return latency.first;
+        }
+    }
+    panic("Unreachable");
+}
+
+void Stats::start()
 {
     gettimeofday(&this->start_time, nullptr);
     if (this->interval > 0) {
@@ -65,30 +78,28 @@ Stats::start()
     this->record = true;
 }
 
-void
-Stats::done()
+void Stats::done()
 {
     gettimeofday(&this->end_time, nullptr);
     this->record = false;
 }
 
-void
-Stats::dump()
+void Stats::dump()
 {
     uint64_t duration = (this->end_time.tv_sec - this->start_time.tv_sec) * 1000000 +
         (this->end_time.tv_usec - this->start_time.tv_usec);
     uint64_t total_latency = 0, count = 0;
     int med_latency = -1, n_latency = -1, nn_latency = -1;
-    for (auto latency : this->latencies) {
+    for (const auto &latency : this->latencies) {
         total_latency += (latency.first * latency.second);
         count += latency.second;
         if (count >= this->completed_ops / 2 && med_latency == -1) {
             med_latency = latency.first;
         }
-        if (count >= (int)(this->completed_ops * 0.9) && n_latency == -1) {
+        if (count >= (uint64_t)(this->completed_ops * 0.9) && n_latency == -1) {
             n_latency = latency.first;
         }
-        if (count >= (int)(this->completed_ops * 0.99) && nn_latency == -1) {
+        if (count >= (uint64_t)(this->completed_ops * 0.99) && nn_latency == -1) {
             nn_latency = latency.first;
         }
     }

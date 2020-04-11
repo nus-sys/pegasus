@@ -14,6 +14,7 @@ public:
 
     void report_issue();
     void report_latency(int latency);
+    int get_latency(float percentile);
     void start();
     void done();
     void dump();
