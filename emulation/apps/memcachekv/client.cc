@@ -6,6 +6,9 @@
 #include <apps/memcachekv/client.h>
 #include <apps/memcachekv/utils.h>
 
+#define LATENCY_CHECK_COUNT 100
+#define LATENCY_CHECK_PTILE 0.99
+
 using std::string;
 
 namespace memcachekv {
@@ -21,10 +24,13 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
                                          SendMode send_mode,
                                          DynamismType d_type,
                                          int d_interval,
-                                         int d_nkeys)
+                                         int d_nkeys,
+                                         Stats *stats)
     : keys(keys), get_ratio(get_ratio), put_ratio(put_ratio),
-    target_latency(target_latency), key_type(key_type), send_mode(send_mode),
-    d_type(d_type), d_interval(d_interval), d_nkeys(d_nkeys)
+    mean_interval(mean_interval), target_latency(target_latency),
+    key_type(key_type), send_mode(send_mode),
+    d_type(d_type), d_interval(d_interval), d_nkeys(d_nkeys), op_count(0),
+    stats(stats)
 {
     this->value = string(value_len, 'v');
     if (key_type == KeyType::ZIPF) {
@@ -42,14 +48,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
     }
     this->unif_real_dist = std::uniform_real_distribution<float>(0.0, 1.0);
     this->unif_int_dist = std::uniform_int_distribution<int>(0, keys->size()-1);
-    switch (send_mode) {
-    case SendMode::FIXED:
-        this->poisson_dist = std::poisson_distribution<int>(mean_interval);
-        break;
-    case SendMode::DYNAMIC:
-        this->poisson_dist = std::poisson_distribution<int>(0);
-        break;
-    }
+    this->poisson_dist = std::poisson_distribution<int>(mean_interval);
     struct timeval time;
     gettimeofday(&time, nullptr);
     this->generator.seed(time.tv_sec * 1000000 + time.tv_usec);
@@ -117,6 +116,13 @@ const NextOperation &KVWorkloadGenerator::next_operation()
         op.value = this->value;
     }
 
+    switch (this->send_mode) {
+    case SendMode::FIXED:
+        break;
+    case SendMode::DYNAMIC:
+        adjust_send_rate();
+        break;
+    }
     this->next_op.time = this->poisson_dist(this->generator);
     return this->next_op;
 }
@@ -143,6 +149,19 @@ void KVWorkloadGenerator::change_keys()
     }
     default:
         panic("Unknown dynamism type");
+    }
+}
+
+void KVWorkloadGenerator::adjust_send_rate()
+{
+    if (++this->op_count >= LATENCY_CHECK_COUNT) {
+        this->op_count = 0;
+        if (this->stats->get_latency(LATENCY_CHECK_PTILE) > this->target_latency) {
+            this->mean_interval += 1;
+        } else {
+            this->mean_interval = std::max(0, this->mean_interval - 1);
+        }
+        this->poisson_dist = std::poisson_distribution<int>(this->mean_interval);
     }
 }
 

@@ -53,7 +53,8 @@ public:
                         SendMode send_mode,
                         DynamismType d_type,
                         int d_interval,
-                        int d_nkeys);
+                        int d_nkeys,
+                        Stats *stats);
     ~KVWorkloadGenerator() {};
 
     const NextOperation &next_operation();
@@ -62,16 +63,20 @@ private:
     int next_zipf_key_index();
     Operation::Type next_op_type();
     void change_keys();
+    void adjust_send_rate();
 
     std::deque<std::string> *keys;
     float get_ratio;
     float put_ratio;
+    int mean_interval;
     int target_latency;
     KeyType key_type;
     SendMode send_mode;
     DynamismType d_type;
     int d_interval;
     int d_nkeys;
+    int op_count;
+    Stats *stats;
 
     NextOperation next_op;
 

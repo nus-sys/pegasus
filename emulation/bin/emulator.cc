@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:p:q:r:s:t:v:w:x:z:A:B:C:D:E:F:G:H:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -179,6 +179,10 @@ int main(int argc, char *argv[])
             }
             break;
         }
+        case 'u': {
+            target_latency = stoi(std::string(optarg));
+            break;
+        }
         case 'v': {
             value_len = stoi(std::string(optarg));
             break;
@@ -199,6 +203,16 @@ int main(int argc, char *argv[])
             num_racks = stoi(std::string(optarg));
             if (num_racks < 1) {
                 panic("Number of racks should be > 0");
+            }
+            break;
+        }
+        case 'y': {
+            if (strcmp(optarg, "fixed") == 0) {
+                send_mode = memcachekv::SendMode::FIXED;
+            } else if (strcmp(optarg, "dynamic") == 0) {
+                send_mode = memcachekv::SendMode::DYNAMIC;
+            } else {
+                panic("Unknown send mode %s", optarg);
             }
             break;
         }
@@ -385,7 +399,8 @@ int main(int argc, char *argv[])
                                                       send_mode,
                                                       d_type,
                                                       d_interval,
-                                                      d_nkeys);
+                                                      d_nkeys,
+                                                      stats);
 
             app = new memcachekv::Client(config, stats, gen, codec);
             break;
