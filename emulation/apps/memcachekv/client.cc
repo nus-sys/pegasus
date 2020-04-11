@@ -15,16 +15,19 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
                                          float get_ratio,
                                          float put_ratio,
                                          int mean_interval,
+                                         int target_latency,
                                          float alpha,
                                          KeyType key_type,
+                                         SendMode send_mode,
                                          DynamismType d_type,
                                          int d_interval,
                                          int d_nkeys)
-    : keys(keys), get_ratio(get_ratio), put_ratio(put_ratio), key_type(key_type),
+    : keys(keys), get_ratio(get_ratio), put_ratio(put_ratio),
+    target_latency(target_latency), key_type(key_type), send_mode(send_mode),
     d_type(d_type), d_interval(d_interval), d_nkeys(d_nkeys)
 {
     this->value = string(value_len, 'v');
-    if (key_type == ZIPF) {
+    if (key_type == KeyType::ZIPF) {
         // Generate zipf distribution data
         float c = 0;
         for (unsigned int i = 0; i < keys->size(); i++) {
@@ -39,7 +42,14 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
     }
     this->unif_real_dist = std::uniform_real_distribution<float>(0.0, 1.0);
     this->unif_int_dist = std::uniform_int_distribution<int>(0, keys->size()-1);
-    this->poisson_dist = std::poisson_distribution<int>(mean_interval);
+    switch (send_mode) {
+    case SendMode::FIXED:
+        this->poisson_dist = std::poisson_distribution<int>(mean_interval);
+        break;
+    case SendMode::DYNAMIC:
+        this->poisson_dist = std::poisson_distribution<int>(0);
+        break;
+    }
     struct timeval time;
     gettimeofday(&time, nullptr);
     this->generator.seed(time.tv_sec * 1000000 + time.tv_usec);
@@ -81,7 +91,7 @@ Operation::Type KVWorkloadGenerator::next_op_type()
     return op_type;
 }
 
-NextOperation KVWorkloadGenerator::next_operation()
+const NextOperation &KVWorkloadGenerator::next_operation()
 {
     if (this->d_type != DynamismType::NONE) {
         struct timeval tv;
@@ -92,18 +102,14 @@ NextOperation KVWorkloadGenerator::next_operation()
         }
     }
 
-    Operation op;
+    Operation &op = this->next_op.op;
     switch (this->key_type) {
-    case UNIFORM: {
+    case KeyType::UNIFORM:
         op.key = this->keys->at(this->unif_int_dist(this->generator));
         break;
-    }
-    case ZIPF: {
+    case KeyType::ZIPF:
         op.key = this->keys->at(next_zipf_key_index());
         break;
-    }
-    default:
-        panic("Unknown key distribution type");
     }
 
     op.op_type = next_op_type();
@@ -111,7 +117,8 @@ NextOperation KVWorkloadGenerator::next_operation()
         op.value = this->value;
     }
 
-    return NextOperation(this->poisson_dist(this->generator), op);
+    this->next_op.time = this->poisson_dist(this->generator);
+    return this->next_op;
 }
 
 void KVWorkloadGenerator::change_keys()
@@ -176,7 +183,7 @@ void Client::run(int duration)
     gettimeofday(&now, nullptr);
 
     do {
-        NextOperation next_op = this->gen->next_operation();
+        const NextOperation &next_op = this->gen->next_operation();
         wait(now, next_op.time);
         execute_op(next_op.op);
         gettimeofday(&now, nullptr);
