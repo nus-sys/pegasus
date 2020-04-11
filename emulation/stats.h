@@ -17,7 +17,7 @@ public:
     void start();
     void done();
     void dump();
-    virtual void _dump() {};
+    virtual void _dump();
 
 protected:
     uint64_t issued_ops;

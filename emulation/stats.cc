@@ -129,3 +129,7 @@ Stats::dump()
 
     _dump();
 }
+
+void Stats::_dump()
+{
+}

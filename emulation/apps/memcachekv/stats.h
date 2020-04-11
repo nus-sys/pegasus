@@ -16,7 +16,7 @@ public:
     ~MemcacheKVStats() {};
 
     void report_op(Operation::Type op_type, int latency, bool hit);
-    void _dump() override;
+    virtual void _dump() override;
 
 private:
     uint64_t cache_hits;
