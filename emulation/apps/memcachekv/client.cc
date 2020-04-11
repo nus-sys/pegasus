@@ -8,6 +8,7 @@
 
 #define LATENCY_CHECK_COUNT 100
 #define LATENCY_CHECK_PTILE 0.99
+#define MIN_INTERVAL 1
 
 using std::string;
 
@@ -159,7 +160,7 @@ void KVWorkloadGenerator::adjust_send_rate()
         if (this->stats->get_latency(LATENCY_CHECK_PTILE) > this->target_latency) {
             this->mean_interval += 1;
         } else {
-            this->mean_interval = std::max(0, this->mean_interval - 1);
+            this->mean_interval = std::max(MIN_INTERVAL, this->mean_interval - 1);
         }
         this->poisson_dist = std::poisson_distribution<int>(this->mean_interval);
     }
