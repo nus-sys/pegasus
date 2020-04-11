@@ -109,11 +109,6 @@ public:
     virtual void run(int duration) override final;
 
 private:
-    enum Phase {
-        WARMUP,
-        RECORD,
-        COOLDOWN
-    };
     void execute_op(const Operation &op);
     void complete_op(uint32_t req_id, const PendingRequest &request, Result result);
     void insert_pending_request(uint32_t req_id, const PendingRequest &request);
@@ -126,7 +121,6 @@ private:
     MessageCodec *codec;
 
     uint32_t req_id;
-    Phase phase;
     std::unordered_map<uint32_t, PendingRequest> pending_requests;
     std::mutex pending_requests_mutex;
 };
