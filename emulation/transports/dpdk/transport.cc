@@ -27,12 +27,19 @@ static int transport_thread(void *arg)
 
 static void construct_arguments(const Configuration *config, int argc, char **argv)
 {
-    argv[0] = new char[16];
+    argv[0] = new char[strlen("command")+1];
     strcpy(argv[0], "command");
-    argv[1] = new char[16];
+    argv[1] = new char[strlen("-l")+1];
     strcpy(argv[1], "-l");
-    argv[2] = new char[16];
-    strcpy(argv[2], "0-1");
+    std::string cores;
+    char app_core[16], transport_core[16];
+    sprintf(app_core, "%d", config->app_core);
+    sprintf(transport_core, "%d", config->transport_core);
+    cores.append(app_core);
+    cores.append(",");
+    cores.append(transport_core);
+    argv[2] = new char[cores.length()+1];
+    strcpy(argv[2], cores.c_str());
 }
 
 DPDKTransport::DPDKTransport(const Configuration *config)
