@@ -34,23 +34,23 @@ inline int timeval_cmp(const struct timeval &t1, const struct timeval &t2)
     return (int64_t)t1.tv_usec - (int64_t)t2.tv_usec;
 }
 
-inline void wait(const struct timeval &start, int time)
+inline void wait(struct timeval &t, int usec)
 {
-    struct timeval now;
+    struct timeval start = t;
 
     while (true) {
-        gettimeofday(&now, nullptr);
-        if (latency(start, now) >= time) {
+        gettimeofday(&t, nullptr);
+        if (latency(start, t) >= usec) {
             break;
         }
     }
 }
 
-inline void wait(int time)
+inline void wait(int usec)
 {
     struct timeval start;
     gettimeofday(&start, nullptr);
-    wait(start, time);
+    wait(start, usec);
 }
 
 inline void pin_to_core(int core_id) {

@@ -207,7 +207,6 @@ void Client::run(int duration)
         const NextOperation &next_op = this->gen->next_operation();
         wait(now, next_op.time);
         execute_op(next_op.op);
-        gettimeofday(&now, nullptr);
     } while (latency(start, now) < duration * 1000000);
 
     this->stats->done();
