@@ -7,15 +7,6 @@
 #include <transports/dpdk/transport.h>
 #include <transports/dpdk/configuration.h>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wwrite-strings"
-static char *argv[] = {
-    "command",
-    "-l",
-    "0-1",
-};
-#pragma GCC diagnostic pop
-
 #define RTE_RX_DESC 1024
 #define RTE_TX_DESC 1024
 #define MAX_PKT_BURST 32
@@ -34,10 +25,21 @@ static int transport_thread(void *arg)
     return 0;
 }
 
+static void construct_arguments(const Configuration *config, int argc, char **argv)
+{
+    argv[0] = new char[16];
+    strcpy(argv[0], "command");
+    argv[1] = new char[16];
+    strcpy(argv[1], "-l");
+    argv[2] = new char[16];
+    strcpy(argv[2], "0-1");
+}
+
 DPDKTransport::DPDKTransport(const Configuration *config)
     : Transport(config), portid(0), status(STOPPED)
 {
-    int argc = sizeof(argv) / sizeof(const char*);
+    this->argc = 3;
+    this->argv = new char*[this->argc];
     unsigned nb_mbufs;
     uint16_t nb_ports, nb_rxd = RTE_RX_DESC, nb_txd = RTE_TX_DESC;
     struct rte_eth_rxconf rxconf;
@@ -46,6 +48,7 @@ DPDKTransport::DPDKTransport(const Configuration *config)
     struct rte_eth_dev_info dev_info;
 
     // Initialize
+    construct_arguments(config, this->argc, this->argv);
     if (rte_eal_init(argc, argv) < 0) {
         panic("rte_eal_init failed");
     }
@@ -119,6 +122,12 @@ DPDKTransport::~DPDKTransport()
 {
     rte_eth_dev_stop(this->portid);
     rte_eth_dev_close(this->portid);
+    if (this->argv != nullptr) {
+        for (int i = 0; i < this->argc; i++) {
+            delete this->argv[i];
+        }
+        delete [] this->argv;
+    }
 }
 
 void DPDKTransport::send_message(const Message &msg, const Address &addr)

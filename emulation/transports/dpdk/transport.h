@@ -21,6 +21,8 @@ public:
 private:
     bool filter_packet(const DPDKAddress &addr) const;
 
+    int argc;
+    char **argv;
     struct rte_mempool *pktmbuf_pool;
     uint16_t portid;
     volatile enum {
