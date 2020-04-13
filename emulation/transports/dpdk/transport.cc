@@ -56,6 +56,9 @@ DPDKTransport::DPDKTransport(const Configuration *config)
     struct rte_eth_conf port_conf;
     struct rte_eth_dev_info dev_info;
     rte_proc_type_t proc_type;
+    const DPDKConfiguration *dpdkconfig = static_cast<const DPDKConfiguration*>(config);
+    this->rx_queue_id = dpdkconfig->queue_id;
+    this->tx_queue_id = dpdkconfig->queue_id;
 
     // Initialize
     construct_arguments(config, this->argc, this->argv);
@@ -97,7 +100,10 @@ DPDKTransport::DPDKTransport(const Configuration *config)
         if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
             port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
         }
-        if (rte_eth_dev_configure(this->portid, 1, 1, &port_conf) < 0) {
+        if (rte_eth_dev_configure(this->portid,
+                                  dpdkconfig->num_queues,
+                                  dpdkconfig->num_queues,
+                                  &port_conf) < 0) {
             panic("rte_eth_dev_configure failed");
         }
         if (rte_eth_dev_adjust_nb_rx_tx_desc(this->portid, &nb_rxd, &nb_txd) < 0) {
@@ -107,24 +113,28 @@ DPDKTransport::DPDKTransport(const Configuration *config)
         // Initialize RX queue
         rxconf = dev_info.default_rxconf;
         rxconf.offloads = port_conf.rxmode.offloads;
-        if (rte_eth_rx_queue_setup(this->portid,
-                                   0,
-                                   nb_rxd,
-                                   rte_eth_dev_socket_id(this->portid),
-                                   &rxconf,
-                                   this->pktmbuf_pool) < 0) {
-            panic("rte_eth_rx_queue_setup failed");
+        for (int qid = 0; qid < dpdkconfig->num_queues; qid++) {
+            if (rte_eth_rx_queue_setup(this->portid,
+                                       qid,
+                                       nb_rxd,
+                                       rte_eth_dev_socket_id(this->portid),
+                                       &rxconf,
+                                       this->pktmbuf_pool) < 0) {
+                panic("rte_eth_rx_queue_setup failed");
+            }
         }
 
         // Initialize TX queue
         txconf = dev_info.default_txconf;
         txconf.offloads = port_conf.txmode.offloads;
-        if (rte_eth_tx_queue_setup(this->portid,
-                                   0,
-                                   nb_txd,
-                                   rte_eth_dev_socket_id(this->portid),
-                                   &txconf) < 0) {
-            panic("rte_eth_tx_queue_setup failed");
+        for (int qid = 0; qid < dpdkconfig->num_queues; qid++) {
+            if (rte_eth_tx_queue_setup(this->portid,
+                                       qid,
+                                       nb_txd,
+                                       rte_eth_dev_socket_id(this->portid),
+                                       &txconf) < 0) {
+                panic("rte_eth_tx_queue_setup failed");
+            }
         }
 
         // Start device
@@ -207,7 +217,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     }
     memcpy(dgram, msg.buf(), msg.len());
     /* Send packet */
-    sent = rte_eth_tx_burst(this->portid, 0, &m, 1);
+    sent = rte_eth_tx_burst(this->portid, this->tx_queue_id, &m, 1);
     if (sent < 1) {
         panic("Failed to send packet");
     }
@@ -244,7 +254,7 @@ void DPDKTransport::run_internal()
     size_t offset;
 
     while (this->status == DPDKTransport::RUNNING) {
-        nb_rx = rte_eth_rx_burst(this->portid, 0, pkt_burst, MAX_PKT_BURST);
+        nb_rx = rte_eth_rx_burst(this->portid, this->rx_queue_id, pkt_burst, MAX_PKT_BURST);
         for (i = 0; i < nb_rx; i++) {
             m = pkt_burst[i];
             /* Parse packet header */

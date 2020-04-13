@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     ProtocolMode protocol_mode = ProtocolMode::STATIC;
     TransportMode transport_mode = TransportMode::UDP;
     AppMode app_mode = AppMode::UNKNOWN;
-    int n_transport_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1;
+    int n_transport_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, num_queues = 1, queue_id = 0;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     bool report_load = false;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -280,6 +280,14 @@ int main(int argc, char *argv[])
             transport_core = stoi(std::string(optarg));
             break;
         }
+        case 'K': {
+            num_queues = stoi(std::string(optarg));
+            break;
+        }
+        case 'L': {
+            queue_id = stoi(std::string(optarg));
+            break;
+        }
         default:
             panic("Unknown argument %s", argv[optind]);
         }
@@ -305,7 +313,10 @@ int main(int argc, char *argv[])
         config = new UDPConfiguration(config_file_path);
         break;
     case TransportMode::DPDK:
-        config = new DPDKConfiguration(config_file_path);
+        DPDKConfiguration *dpdkconfig = new DPDKConfiguration(config_file_path);
+        dpdkconfig->num_queues = num_queues;
+        dpdkconfig->queue_id = queue_id;
+        config = dpdkconfig;
         break;
     }
     config->n_transport_threads = n_transport_threads;

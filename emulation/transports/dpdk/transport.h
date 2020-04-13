@@ -25,6 +25,8 @@ private:
     char **argv;
     struct rte_mempool *pktmbuf_pool;
     uint16_t portid;
+    uint16_t rx_queue_id;
+    uint16_t tx_queue_id;
     volatile enum {
         RUNNING,
         STOPPED,
