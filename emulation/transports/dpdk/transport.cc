@@ -18,6 +18,13 @@
 #define IPV4_TTL 0xFF
 #define IPV4_PROTO_UDP 0x11
 
+#define FLOW_DEFAULT_PRIORITY 1
+#define FLOW_TRANSPORT_PRIORITY 0
+#define FLOW_PATTERN_NUM 4
+#define FLOW_ACTION_NUM 2
+#define FLOW_IPV4_ADDR_MASK 0xFFFFFFFF
+#define FLOW_UDP_PORT_MASK 0xFFFF
+
 static int transport_thread(void *arg)
 {
     DPDKTransport *transport = (DPDKTransport*)arg;
@@ -25,7 +32,7 @@ static int transport_thread(void *arg)
     return 0;
 }
 
-static void construct_arguments(const Configuration *config, int argc, char **argv)
+static void construct_arguments(const DPDKConfiguration *config, int argc, char **argv)
 {
     argv[0] = new char[strlen("command")+1];
     strcpy(argv[0], "command");
@@ -42,6 +49,106 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     strcpy(argv[2], cores.c_str());
     argv[3] = new char[strlen("--proc-type=auto")+1];
     strcpy(argv[3], "--proc-type=auto");
+}
+
+static void generate_flow_rules(const DPDKConfiguration *config, uint16_t port_id)
+{
+
+    {
+        /* Default flow rule: drop */
+        struct rte_flow_attr attr;
+        memset(&attr, 0, sizeof(struct rte_flow_attr));
+        attr.priority = FLOW_DEFAULT_PRIORITY;
+        attr.ingress = 1;
+        struct rte_flow_item patterns[2];
+        memset(patterns, 0, sizeof(patterns));
+        struct rte_flow_item_eth eth_spec;
+        struct rte_flow_item_eth eth_mask;
+        memset(&eth_spec, 0, sizeof(struct rte_flow_item_eth));
+        memset(&eth_mask, 0, sizeof(struct rte_flow_item_eth));
+        patterns[0].type = RTE_FLOW_ITEM_TYPE_ETH;
+        patterns[0].spec = &eth_spec;
+        patterns[0].mask = &eth_mask;
+        patterns[1].type = RTE_FLOW_ITEM_TYPE_END;
+        struct rte_flow_action actions[2];
+        actions[0].type = RTE_FLOW_ACTION_TYPE_DROP;
+        actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+        if (rte_flow_validate(port_id, &attr, patterns, actions, nullptr) != 0) {
+            panic("Default flow rule is not valid");
+        }
+        if (rte_flow_create(port_id, &attr, patterns, actions, nullptr) == nullptr) {
+            panic("rte_flow_create failed");
+        }
+    }
+
+    for (uint16_t queue_id = 0; queue_id < config->num_queues; queue_id++) {
+        /* Node address */
+        const DPDKAddress *addr;
+        if (config->is_server) {
+            addr = static_cast<const DPDKAddress*>(config->node_addresses.at(config->rack_id).at(config->node_id+queue_id));
+        } else {
+            addr = static_cast<const DPDKAddress*>(config->client_addresses.at(config->client_id+queue_id));
+        }
+
+        /* Attributes */
+        struct rte_flow_attr attr;
+        memset(&attr, 0, sizeof(struct rte_flow_attr));
+        attr.priority = FLOW_TRANSPORT_PRIORITY;
+        attr.ingress = 1;
+
+        /* Header match */
+        // Ethernet
+        struct rte_flow_item patterns[FLOW_PATTERN_NUM];
+        memset(patterns, 0, sizeof(patterns));
+        struct rte_flow_item_eth eth_spec;
+        struct rte_flow_item_eth eth_mask;
+        memset(&eth_spec, 0, sizeof(struct rte_flow_item_eth));
+        memset(&eth_mask, 0, sizeof(struct rte_flow_item_eth));
+        memcpy(&eth_spec.dst, &addr->ether_addr, sizeof(struct rte_ether_addr));
+        memset(&eth_mask.dst, 0xFF, sizeof(struct rte_ether_addr));
+        patterns[0].type = RTE_FLOW_ITEM_TYPE_ETH;
+        patterns[0].spec = &eth_spec;
+        patterns[0].mask = &eth_mask;
+        // IPv4
+        struct rte_flow_item_ipv4 ip_spec;
+        struct rte_flow_item_ipv4 ip_mask;
+        memset(&ip_spec, 0, sizeof(struct rte_flow_item_ipv4));
+        memset(&ip_mask, 0, sizeof(struct rte_flow_item_ipv4));
+        ip_spec.hdr.dst_addr = addr->ip_addr;
+        ip_mask.hdr.dst_addr = FLOW_IPV4_ADDR_MASK;
+        patterns[1].type = RTE_FLOW_ITEM_TYPE_IPV4;
+        patterns[1].spec = &ip_spec;
+        patterns[1].mask = &ip_mask;
+        // UDP
+        struct rte_flow_item_udp udp_spec;
+        struct rte_flow_item_udp udp_mask;
+        memset(&udp_spec, 0, sizeof(struct rte_flow_item_udp));
+        memset(&udp_mask, 0, sizeof(struct rte_flow_item_udp));
+        udp_spec.hdr.dst_port = addr->udp_port;
+        udp_mask.hdr.dst_port = FLOW_UDP_PORT_MASK;
+        patterns[2].type = RTE_FLOW_ITEM_TYPE_UDP;
+        patterns[2].spec = &udp_spec;
+        patterns[2].mask = &udp_mask;
+
+        patterns[3].type = RTE_FLOW_ITEM_TYPE_END;
+
+        /* Actions: forward to queues */
+        struct rte_flow_action actions[FLOW_ACTION_NUM];
+        struct rte_flow_action_queue action_queue;
+        memset(actions, 0, sizeof(actions));
+        action_queue.index = queue_id;
+        actions[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
+        actions[0].conf = &action_queue;
+        actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+
+        /* Validate and install flow rules */
+        if (rte_flow_validate(port_id, &attr, patterns, actions, nullptr) != 0) {
+            panic("Flow rule is not valid");
+        }
+        if (rte_flow_create(port_id, &attr, patterns, actions, nullptr) == nullptr) {
+            panic("rte_flow_create failed");
+        }
+    }
 }
 
 DPDKTransport::DPDKTransport(const Configuration *config)
@@ -61,7 +168,7 @@ DPDKTransport::DPDKTransport(const Configuration *config)
     this->tx_queue_id = dpdkconfig->queue_id;
 
     // Initialize
-    construct_arguments(config, this->argc, this->argv);
+    construct_arguments(dpdkconfig, this->argc, this->argv);
     if (rte_eal_init(argc, argv) < 0) {
         panic("rte_eal_init failed");
     }
@@ -144,13 +251,19 @@ DPDKTransport::DPDKTransport(const Configuration *config)
         if (rte_eth_promiscuous_enable(this->portid) != 0) {
             panic("rte_eth_promiscuous_enable failed");
         }
+
+        // Create flow rules
+        generate_flow_rules(dpdkconfig, this->portid);
     }
 }
 
 DPDKTransport::~DPDKTransport()
 {
-    rte_eth_dev_stop(this->portid);
-    rte_eth_dev_close(this->portid);
+    if (rte_eal_process_type() == RTE_PROC_PRIMARY) {
+        rte_flow_flush(this->portid, nullptr);
+        rte_eth_dev_stop(this->portid);
+        rte_eth_dev_close(this->portid);
+    }
     if (this->argv != nullptr) {
         for (int i = 0; i < this->argc; i++) {
             delete this->argv[i];
@@ -269,16 +382,14 @@ void DPDKTransport::run_internal()
             udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
             offset += sizeof(struct rte_udp_hdr);
 
-            if (filter_packet(DPDKAddress(ether_hdr->d_addr, ip_hdr->dst_addr, udp_hdr->dst_port))) {
-                /* Construct source address */
-                DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
+            /* Construct source address */
+            DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
 
-                /* Upcall to transport receiver */
-                Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
-                        rte_be_to_cpu_16(udp_hdr->dgram_len) - sizeof(struct rte_udp_hdr),
+            /* Upcall to transport receiver */
+            Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
+                        rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),
                         false);
-                this->receiver->receive_message(msg, addr);
-            }
+            this->receiver->receive_message(msg, addr);
             rte_pktmbuf_free(m);
         }
     }
