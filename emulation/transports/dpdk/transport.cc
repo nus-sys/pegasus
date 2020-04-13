@@ -40,12 +40,14 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     cores.append(transport_core);
     argv[2] = new char[cores.length()+1];
     strcpy(argv[2], cores.c_str());
+    argv[3] = new char[strlen("--proc-type=auto")+1];
+    strcpy(argv[3], "--proc-type=auto");
 }
 
 DPDKTransport::DPDKTransport(const Configuration *config)
     : Transport(config), portid(0), status(STOPPED)
 {
-    this->argc = 3;
+    this->argc = 4;
     this->argv = new char*[this->argc];
     unsigned nb_mbufs;
     uint16_t nb_ports, nb_rxd = RTE_RX_DESC, nb_txd = RTE_TX_DESC;
@@ -53,6 +55,7 @@ DPDKTransport::DPDKTransport(const Configuration *config)
     struct rte_eth_txconf txconf;
     struct rte_eth_conf port_conf;
     struct rte_eth_dev_info dev_info;
+    rte_proc_type_t proc_type;
 
     // Initialize
     construct_arguments(config, this->argc, this->argv);
@@ -60,68 +63,77 @@ DPDKTransport::DPDKTransport(const Configuration *config)
         panic("rte_eal_init failed");
     }
 
+    proc_type = rte_eal_process_type();
+
     if ((nb_ports = rte_eth_dev_count_avail()) == 0) {
         panic("No available Ethernet ports");
     }
 
     // Create mbuf pool
     nb_mbufs = nb_rxd + nb_txd + MAX_PKT_BURST + MEMPOOL_CACHE_SIZE;
-    this->pktmbuf_pool = rte_pktmbuf_pool_create("pktmbuf_pool",
-                                                 nb_mbufs,
-                                                 MEMPOOL_CACHE_SIZE,
-                                                 0,
-                                                 RTE_MBUF_DEFAULT_BUF_SIZE,
-                                                 rte_socket_id());
+    if (proc_type == RTE_PROC_PRIMARY) {
+        this->pktmbuf_pool = rte_pktmbuf_pool_create("pktmbuf_pool",
+                                                     nb_mbufs,
+                                                     MEMPOOL_CACHE_SIZE,
+                                                     0,
+                                                     RTE_MBUF_DEFAULT_BUF_SIZE,
+                                                     rte_socket_id());
+    } else {
+        this->pktmbuf_pool = rte_mempool_lookup("pktmbuf_pool");
+    }
+
     if (this->pktmbuf_pool == nullptr) {
         panic("rte_pktmbuf_pool_create failed");
     }
 
-    // Initialize port
-    memset(&port_conf, 0, sizeof(port_conf));
-    port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
+    if (proc_type == RTE_PROC_PRIMARY) {
+        // Initialize port
+        memset(&port_conf, 0, sizeof(port_conf));
+        port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
-    if (rte_eth_dev_info_get(this->portid, &dev_info) != 0) {
-        panic("rte_eth_dev_info_get failed");
-    }
-    if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
-        port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
-    }
-    if (rte_eth_dev_configure(this->portid, 1, 1, &port_conf) < 0) {
-        panic("rte_eth_dev_configure failed");
-    }
-    if (rte_eth_dev_adjust_nb_rx_tx_desc(this->portid, &nb_rxd, &nb_txd) < 0) {
-        panic("rte_eth_dev_adjust_nb_rx_tx_desc failed");
-    }
+        if (rte_eth_dev_info_get(this->portid, &dev_info) != 0) {
+            panic("rte_eth_dev_info_get failed");
+        }
+        if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
+            port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
+        }
+        if (rte_eth_dev_configure(this->portid, 1, 1, &port_conf) < 0) {
+            panic("rte_eth_dev_configure failed");
+        }
+        if (rte_eth_dev_adjust_nb_rx_tx_desc(this->portid, &nb_rxd, &nb_txd) < 0) {
+            panic("rte_eth_dev_adjust_nb_rx_tx_desc failed");
+        }
 
-    // Initialize RX queue
-    rxconf = dev_info.default_rxconf;
-    rxconf.offloads = port_conf.rxmode.offloads;
-    if (rte_eth_rx_queue_setup(this->portid,
-                               0,
-                               nb_rxd,
-                               rte_eth_dev_socket_id(this->portid),
-                               &rxconf,
-                               this->pktmbuf_pool) < 0) {
-        panic("rte_eth_rx_queue_setup failed");
-    }
+        // Initialize RX queue
+        rxconf = dev_info.default_rxconf;
+        rxconf.offloads = port_conf.rxmode.offloads;
+        if (rte_eth_rx_queue_setup(this->portid,
+                                   0,
+                                   nb_rxd,
+                                   rte_eth_dev_socket_id(this->portid),
+                                   &rxconf,
+                                   this->pktmbuf_pool) < 0) {
+            panic("rte_eth_rx_queue_setup failed");
+        }
 
-    // Initialize TX queue
-    txconf = dev_info.default_txconf;
-    txconf.offloads = port_conf.txmode.offloads;
-    if (rte_eth_tx_queue_setup(this->portid,
-                               0,
-                               nb_txd,
-                               rte_eth_dev_socket_id(this->portid),
-                               &txconf) < 0) {
-        panic("rte_eth_tx_queue_setup failed");
-    }
+        // Initialize TX queue
+        txconf = dev_info.default_txconf;
+        txconf.offloads = port_conf.txmode.offloads;
+        if (rte_eth_tx_queue_setup(this->portid,
+                                   0,
+                                   nb_txd,
+                                   rte_eth_dev_socket_id(this->portid),
+                                   &txconf) < 0) {
+            panic("rte_eth_tx_queue_setup failed");
+        }
 
-    // Start device
-    if (rte_eth_dev_start(this->portid) < 0) {
-        panic("rte_eth_dev_start failed");
-    }
-    if (rte_eth_promiscuous_enable(this->portid) != 0) {
-        panic("rte_eth_promiscuous_enable failed");
+        // Start device
+        if (rte_eth_dev_start(this->portid) < 0) {
+            panic("rte_eth_dev_start failed");
+        }
+        if (rte_eth_promiscuous_enable(this->portid) != 0) {
+            panic("rte_eth_promiscuous_enable failed");
+        }
     }
 }
 
