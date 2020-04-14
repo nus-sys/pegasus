@@ -181,16 +181,14 @@ DPDKTransport::DPDKTransport(const Configuration *config)
 
     // Create mbuf pool
     nb_mbufs = nb_rxd + nb_txd + MAX_PKT_BURST + MEMPOOL_CACHE_SIZE;
-    if (proc_type == RTE_PROC_PRIMARY) {
-        this->pktmbuf_pool = rte_pktmbuf_pool_create("pktmbuf_pool",
-                                                     nb_mbufs,
-                                                     MEMPOOL_CACHE_SIZE,
-                                                     0,
-                                                     RTE_MBUF_DEFAULT_BUF_SIZE,
-                                                     rte_socket_id());
-    } else {
-        this->pktmbuf_pool = rte_mempool_lookup("pktmbuf_pool");
-    }
+    char pool_name[32];
+    sprintf(pool_name, "pktmbuf_pool_%d", dpdkconfig->queue_id);
+    this->pktmbuf_pool = rte_pktmbuf_pool_create(pool_name,
+                                                 nb_mbufs,
+                                                 MEMPOOL_CACHE_SIZE,
+                                                 0,
+                                                 RTE_MBUF_DEFAULT_BUF_SIZE,
+                                                 rte_socket_id());
 
     if (this->pktmbuf_pool == nullptr) {
         panic("rte_pktmbuf_pool_create failed");
