@@ -27,9 +27,6 @@ Node::run(int duration)
 {
     this->transport->run();
 
-    // Pin app thread to core
-    pin_to_core(this->config->app_core);
-
     // Run application logic
     this->app->run(duration);
 
