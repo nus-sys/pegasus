@@ -4,6 +4,8 @@
 #include <logger.h>
 #include <utils.h>
 
+#define DEFAULT_LATENCY 100
+
 Stats::Stats()
     : issued_ops(0), completed_ops(0), record(false), interval(0)
 {
@@ -59,6 +61,9 @@ int Stats::get_latency(float percentile)
     uint64_t count = 0;
 
     assert(percentile >= 0 && percentile < 1);
+    if (this->latencies.empty()) {
+        return DEFAULT_LATENCY;
+    }
     for (const auto &latency : this->latencies) {
         count += latency.second;
         if (count >= (uint64_t)(this->completed_ops * percentile)) {
