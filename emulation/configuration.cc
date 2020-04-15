@@ -4,8 +4,8 @@ Address::~Address() { }
 
 Configuration::Configuration()
     : num_racks(0), num_nodes(0), rack_id(-1),
-    node_id(-1), client_id(-1), n_transport_threads(0),
-    transport_core(-1), app_core(-1), is_server(false),
+    node_id(-1), client_id(-1), transport_core(-1), n_transport_threads(0),
+    app_core(-1), n_app_threads(0), is_server(false),
     terminating(false), router_address(nullptr)
 {
 }

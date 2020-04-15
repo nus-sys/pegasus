@@ -5,6 +5,8 @@
 #include <fstream>
 #include <map>
 #include <vector>
+#include <atomic>
+#include <mutex>
 
 class Stats {
 public:
@@ -21,13 +23,13 @@ public:
     virtual void _dump();
 
 protected:
-    uint64_t issued_ops;
+    std::atomic_ullong issued_ops;
     uint64_t completed_ops;
-    bool record;
     std::ofstream file_stream;
 
 private:
     int interval;
+    std::mutex mtx;
     std::string interval_file;
     struct timeval start_time;
     struct timeval end_time;

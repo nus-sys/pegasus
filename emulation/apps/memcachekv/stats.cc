@@ -6,7 +6,8 @@ void
 MemcacheKVStats::report_op(Operation::Type op_type, int latency, bool hit)
 {
     report_latency(latency);
-    if (this->record) {
+    {
+        std::lock_guard<std::mutex> lck(this->mtx);
         this->received_replies[op_type] += 1;
 
         if (op_type == Operation::Type::GET) {

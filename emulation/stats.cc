@@ -7,12 +7,12 @@
 #define DEFAULT_LATENCY 100
 
 Stats::Stats()
-    : issued_ops(0), completed_ops(0), record(false), interval(0)
+    : issued_ops(0), completed_ops(0), interval(0)
 {
 }
 
 Stats::Stats(const char *stats_file, int interval, const char *interval_file)
-    : issued_ops(0), completed_ops(0), record(false), interval(interval)
+    : issued_ops(0), completed_ops(0), interval(interval)
 {
     if (stats_file != nullptr) {
         this->file_stream.open(stats_file, std::ofstream::out | std::ofstream::trunc);
@@ -34,30 +34,28 @@ Stats::~Stats()
 
 void Stats::report_issue()
 {
-    if (this->record) {
-        this->issued_ops++;
-    }
+    std::atomic_fetch_add(&this->issued_ops, 1);
 }
 
 void Stats::report_latency(int l)
 {
-    if (this->record) {
-        this->latencies[l]++;
-        this->completed_ops++;
-        if (this->interval > 0) {
-            struct timeval tv;
-            gettimeofday(&tv, nullptr);
-            if (latency(this->last_interval, tv) >= this->interval) {
-                this->last_interval = tv;
-                this->interval_latencies.push_back(std::map<int, uint64_t>());
-            }
-            this->interval_latencies.back()[l]++;
+    std::lock_guard<std::mutex> lck(this->mtx);
+    this->latencies[l]++;
+    this->completed_ops++;
+    if (this->interval > 0) {
+        struct timeval tv;
+        gettimeofday(&tv, nullptr);
+        if (latency(this->last_interval, tv) >= this->interval) {
+            this->last_interval = tv;
+            this->interval_latencies.push_back(std::map<int, uint64_t>());
         }
+        this->interval_latencies.back()[l]++;
     }
 }
 
 int Stats::get_latency(float percentile)
 {
+    std::lock_guard<std::mutex> lck(this->mtx);
     uint64_t count = 0;
 
     assert(percentile >= 0 && percentile < 1);
@@ -80,13 +78,11 @@ void Stats::start()
         this->last_interval = this->start_time;
         this->interval_latencies.push_back(std::map<int, uint64_t>());
     }
-    this->record = true;
 }
 
 void Stats::done()
 {
     gettimeofday(&this->end_time, nullptr);
-    this->record = false;
 }
 
 void Stats::dump()
@@ -110,14 +106,14 @@ void Stats::dump()
     }
 
     printf("Throughput: %d\n", (int)(this->completed_ops / ((float)duration / 1000000)));
-    printf("Completed ops: %lu, issued ops: %lu\n", this->completed_ops, this->issued_ops);
+    printf("Completed ops: %lu, issued ops: %llu\n", this->completed_ops, std::atomic_load(&this->issued_ops));
     printf("Average Latency: %d\n", (int)(total_latency / this->completed_ops));
     printf("Median Latency: %d\n", med_latency);
     printf("90%% Latency: %d\n", n_latency);
     printf("99%% Latency: %d\n", nn_latency);
 
     if (this->file_stream.is_open()) {
-        this->file_stream << this->completed_ops << " " << this->issued_ops << std::endl;
+        this->file_stream << this->completed_ops << " " << std::atomic_load(&this->issued_ops) << std::endl;
         for (auto latency : this->latencies) {
             this->file_stream << latency.first << " " << latency.second << std::endl;
         }

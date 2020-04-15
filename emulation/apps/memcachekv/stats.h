@@ -21,6 +21,7 @@ public:
 private:
     uint64_t cache_hits;
     uint64_t cache_misses;
+    std::mutex mtx;
     std::map<Operation::Type, uint64_t> received_replies;
 };
 

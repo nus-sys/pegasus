@@ -54,39 +54,42 @@ public:
                         DynamismType d_type,
                         int d_interval,
                         int d_nkeys,
+                        int n_threads,
                         Stats *stats);
     ~KVWorkloadGenerator() {};
 
-    const NextOperation &next_operation();
+    const NextOperation &next_operation(int tid);
 
 private:
-    int next_zipf_key_index();
-    Operation::Type next_op_type();
+    int next_zipf_key_index(int tid);
+    Operation::Type next_op_type(int tid);
     void change_keys();
-    void adjust_send_rate();
+    void adjust_send_rate(int tid);
 
     std::deque<std::string> *keys;
     float get_ratio;
     float put_ratio;
-    int mean_interval;
     int target_latency;
     KeyType key_type;
     SendMode send_mode;
     DynamismType d_type;
     int d_interval;
     int d_nkeys;
-    int op_count;
     Stats *stats;
 
     NextOperation next_op;
 
     std::string value;
     std::vector<float> zipfs;
-    std::default_random_engine generator;
-    std::uniform_real_distribution<float> unif_real_dist;
-    std::uniform_int_distribution<int> unif_int_dist;
-    std::poisson_distribution<int> poisson_dist;
     struct timeval last_interval;
+
+    // Per thread
+    std::vector<int> op_count;
+    std::vector<int> mean_interval;
+    std::vector<std::default_random_engine> generator;
+    std::vector<std::uniform_real_distribution<float>> unif_real_dist;
+    std::vector<std::uniform_int_distribution<int>> unif_int_dist;
+    std::vector<std::poisson_distribution<int>> poisson_dist;
 };
 
 struct PendingRequest {
@@ -114,6 +117,7 @@ public:
     virtual void run(int duration) override final;
 
 private:
+    void client_thread(int tid, int duration);
     void execute_op(const Operation &op);
     void complete_op(uint32_t req_id, const PendingRequest &request, Result result);
     void insert_pending_request(uint32_t req_id, const PendingRequest &request);
@@ -125,7 +129,7 @@ private:
     KVWorkloadGenerator *gen;
     MessageCodec *codec;
 
-    uint32_t req_id;
+    std::atomic_uint req_id;
     std::unordered_map<uint32_t, PendingRequest> pending_requests;
     std::mutex pending_requests_mutex;
 };
