@@ -241,12 +241,13 @@ void Client::execute_op(const Operation &op)
     gettimeofday(&pending_request.start_time, nullptr);
     pending_request.op_type = op.op_type;
     pending_request.expected_acks = 1;
-    insert_pending_request(this->req_id, pending_request);
+    uint32_t req_id = std::atomic_fetch_add(&this->req_id, {1});
+    insert_pending_request(req_id, pending_request);
 
     MemcacheKVMessage kvmsg;
     kvmsg.type = MemcacheKVMessage::Type::REQUEST;
     kvmsg.request.client_id = this->config->client_id;
-    kvmsg.request.req_id = std::atomic_fetch_add(&this->req_id, 1);
+    kvmsg.request.req_id = req_id;
     kvmsg.request.node_id = key_to_node_id(op.key, this->config->num_nodes);
     kvmsg.request.op = op;
 

@@ -34,7 +34,7 @@ Stats::~Stats()
 
 void Stats::report_issue()
 {
-    std::atomic_fetch_add(&this->issued_ops, 1);
+    std::atomic_fetch_add(&this->issued_ops, {1});
 }
 
 void Stats::report_latency(int l)
