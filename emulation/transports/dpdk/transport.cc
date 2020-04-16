@@ -4,6 +4,7 @@
 #include <rte_mbuf.h>
 
 #include <logger.h>
+#include <application.h>
 #include <transports/dpdk/transport.h>
 #include <transports/dpdk/configuration.h>
 
@@ -25,10 +26,22 @@
 #define FLOW_IPV4_ADDR_MASK 0xFFFFFFFF
 #define FLOW_UDP_PORT_MASK 0xFFFF
 
+struct AppArg {
+    Application *app;
+    int tid;
+};
+
 static int transport_thread(void *arg)
 {
     DPDKTransport *transport = (DPDKTransport*)arg;
     transport->run_internal();
+    return 0;
+}
+
+static int app_thread(void *arg)
+{
+    struct AppArg *app_arg = (struct AppArg*)arg;
+    app_arg->app->run_thread(app_arg->tid);
     return 0;
 }
 
@@ -337,8 +350,8 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
 void DPDKTransport::run(void)
 {
     this->status = RUNNING;
-    if (rte_eal_mp_remote_launch(transport_thread, this, SKIP_MASTER) != 0) {
-        panic("rte_eal_mp_remote_launch failed");
+    if (rte_eal_remote_launch(transport_thread, this, this->config->transport_core) != 0) {
+        panic("transport thread rte_eal_remote_launch failed");
     }
 }
 
@@ -349,10 +362,29 @@ void DPDKTransport::stop(void)
 
 void DPDKTransport::wait(void)
 {
-    uint16_t lcore_id;
-    RTE_LCORE_FOREACH_SLAVE(lcore_id) {
-        if (rte_eal_wait_lcore(lcore_id) < 0) {
-            printf("rte_eal_wait_lcore failed on core %d\n", lcore_id);
+    if (rte_eal_wait_lcore(this->config->transport_core) < 0) {
+        panic("rte_eal_wait_lcore failed on transport core");
+    }
+}
+
+void DPDKTransport::run_app_threads(Application *app)
+{
+    struct AppArg args[this->config->n_app_threads];
+
+    // Launch app on slave cores first
+    for (int i = 1; i < this->config->n_app_threads; i++) {
+        args[i].app = app;
+        args[i].tid = i;
+        if (rte_eal_remote_launch(app_thread, &args[i], this->config->app_core + i) != 0) {
+            panic("app thread rte_eal_remote_launch failed");
+        }
+    }
+    // Run on master core
+    app->run_thread(0);
+    // Wait for app slave cores to finish
+    for (int i = 1; i < this->config->n_app_threads; i++) {
+        if (rte_eal_wait_lcore(this->config->app_core + i) < 0) {
+            panic("rte_eal_wait_lcore failed on app core");
         }
     }
 }

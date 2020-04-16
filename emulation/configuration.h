@@ -16,6 +16,7 @@ public:
 
     const Address *my_address() const;
 
+    int duration;
     int num_racks;
     int num_nodes;
     int rack_id;

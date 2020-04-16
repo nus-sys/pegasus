@@ -23,7 +23,7 @@ void Controller::receive_message(const Message &msg, const Address &addr)
     }
 }
 
-void Controller::run(int duration)
+void Controller::run()
 {
     // Just send one message to the controller
     this->replied = false;
@@ -39,6 +39,10 @@ void Controller::run(int duration)
         this->cv.wait(lck);
     }
     */
+}
+
+void Controller::run_thread(int tid)
+{
 }
 
 } // namespace memcachekv

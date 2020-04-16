@@ -32,7 +32,12 @@ Decrementor::receive_message(const Message &msg, const Address &addr)
 }
 
 void
-Decrementor::run(int duration)
+Decrementor::run()
+{
+    this->transport->run_app_threads(this);
+}
+
+void Decrementor::run_thread(int tid)
 {
     struct timeval prev, now;
     char buf[BUFSIZE];

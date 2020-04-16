@@ -23,12 +23,12 @@ Node::register_app(Application *app)
 }
 
 void
-Node::run(int duration)
+Node::run()
 {
     this->transport->run();
 
     // Run application logic
-    this->app->run(duration);
+    this->app->run();
 
     if (this->config->terminating) {
         this->transport->stop();

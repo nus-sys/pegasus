@@ -15,6 +15,7 @@ public:
     virtual void run() override final;
     virtual void stop() override final;
     virtual void wait() override final;
+    virtual void run_app_threads(Application *app) override final;
 
     void run_internal();
 

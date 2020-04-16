@@ -114,10 +114,10 @@ public:
 
     virtual void receive_message(const Message &msg,
                                  const Address &addr) override final;
-    virtual void run(int duration) override final;
+    virtual void run() override final;
+    virtual void run_thread(int tid) override final;
 
 private:
-    void client_thread(int tid, int duration);
     void execute_op(const Operation &op);
     void complete_op(uint32_t req_id, const PendingRequest &request, Result result);
     void insert_pending_request(uint32_t req_id, const PendingRequest &request);

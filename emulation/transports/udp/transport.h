@@ -18,6 +18,7 @@ public:
     virtual void run(void) override final;
     virtual void stop(void) override final;
     virtual void wait(void) override final;
+    virtual void run_app_threads(Application *app) override final;
 
 private:
     void register_address(const Address *addr);

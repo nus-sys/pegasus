@@ -14,7 +14,8 @@ public:
 
     virtual void receive_message(const Message &msg,
                                  const Address &addr) override final;
-    virtual void run(int duration) override final;
+    virtual void run() override final;
+    virtual void run_thread(int tid) override final;
 
 private:
     Configuration *config;

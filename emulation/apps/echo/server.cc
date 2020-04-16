@@ -15,9 +15,13 @@ void Server::receive_message(const Message &msg, const Address &addr)
     this->transport->send_message(msg, addr);
 }
 
-void Server::run(int duration)
+void Server::run()
 {
     // Do nothing
+}
+
+void Server::run_thread(int tid)
+{
 }
 
 } // namespace cho

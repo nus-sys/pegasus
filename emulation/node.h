@@ -14,7 +14,7 @@ public:
     ~Node();
 
     void register_app(Application *app);
-    void run(int duration);
+    void run();
 
 private:
     const Configuration *config;

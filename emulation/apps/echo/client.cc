@@ -24,7 +24,7 @@ void Client::receive_message(const Message &msg, const Address &addr)
     this->cv.notify_all();
 }
 
-void Client::run(int duration)
+void Client::run()
 {
     Message msg(std::string("echo"));
     std::unique_lock<std::mutex> lck(this->mtx);
@@ -36,6 +36,10 @@ void Client::run(int duration)
             this->cv.wait(lck);
         }
     }
+}
+
+void Client::run_thread(int tid)
+{
 }
 
 } // namespace echo

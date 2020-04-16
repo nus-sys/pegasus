@@ -20,8 +20,7 @@ CLIClient::~CLIClient()
 {
 }
 
-void
-CLIClient::receive_message(const Message &msg, const Address &addr)
+void CLIClient::receive_message(const Message &msg, const Address &addr)
 {
     MemcacheKVMessage kvmsg;
     this->codec->decode(msg, kvmsg);
@@ -31,8 +30,7 @@ CLIClient::receive_message(const Message &msg, const Address &addr)
            kvmsg.reply.ver, (unsigned int)kvmsg.reply.result, kvmsg.reply.value.c_str());
 }
 
-void
-CLIClient::run(int duration)
+void CLIClient::run()
 {
     MemcacheKVMessage kvmsg;
     string input;
@@ -61,6 +59,10 @@ CLIClient::run(int duration)
         this->transport->send_message_to_node(msg, rack_id, kvmsg.request.node_id);
         sleep(1);
     }
+}
+
+void CLIClient::run_thread(int tid)
+{
 }
 
 } // namespace memcahcekv

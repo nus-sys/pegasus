@@ -202,27 +202,16 @@ void Client::receive_message(const Message &msg, const Address &addr)
     }
 }
 
-void Client::run(int duration)
+void Client::run()
 {
-    std::vector<std::thread*> threads;
-
-    for (int i = 0; i < this->config->n_app_threads; i++) {
-        threads.push_back(new std::thread(&Client::client_thread, this, i, duration));
-    }
-
     this->stats->start();
-
-    for (auto thread : threads) {
-        thread->join();
-        delete thread;
-    }
-
+    this->transport->run_app_threads(this);
     this->stats->done();
     this->stats->dump();
 
 }
 
-void Client::client_thread(int tid, int duration)
+void Client::run_thread(int tid)
 {
     struct timeval start, now;
     gettimeofday(&start, nullptr);
@@ -232,7 +221,7 @@ void Client::client_thread(int tid, int duration)
         const NextOperation &next_op = this->gen->next_operation(tid);
         wait(now, next_op.time);
         execute_op(next_op.op);
-    } while (latency(start, now) < duration * 1000000);
+    } while (latency(start, now) < this->config->duration * 1000000);
 }
 
 void Client::execute_op(const Operation &op)

@@ -323,6 +323,7 @@ int main(int argc, char *argv[])
         config = dpdkconfig;
         break;
     }
+    config->duration = duration;
     config->transport_core = transport_core;
     config->n_transport_threads = n_transport_threads;
     config->app_core = app_core;
@@ -486,7 +487,7 @@ int main(int argc, char *argv[])
 
     /* Run application */
     node->register_app(app);
-    node->run(duration);
+    node->run();
 
     /* Clean up */
     delete transport;

@@ -30,6 +30,7 @@ int main(int argc, char *argv[])
         break;
     }
     Configuration *config = new UDPConfiguration(config_file_path);
+    config->duration = 0;
     config->n_transport_threads = 1;
     config->rack_id = -1;
     config->client_id = 0;
@@ -40,7 +41,7 @@ int main(int argc, char *argv[])
     Node node(config, transport);
     node.register_app(&cli);
 
-    node.run(0);
+    node.run();
 
     delete transport;
     delete config;

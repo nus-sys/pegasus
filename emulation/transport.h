@@ -7,6 +7,7 @@
 #include <configuration.h>
 
 class Transport;
+class Application;
 
 class Message {
 public:
@@ -50,6 +51,7 @@ public:
     virtual void run(void) = 0;
     virtual void stop(void) = 0;
     virtual void wait(void) = 0;
+    virtual void run_app_threads(Application *app) = 0;
 
 protected:
     const Configuration *config;

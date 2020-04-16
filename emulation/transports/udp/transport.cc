@@ -6,6 +6,7 @@
 #include <event2/thread.h>
 #include <event2/event.h>
 
+#include <application.h>
 #include <transports/udp/configuration.h>
 #include <transports/udp/transport.h>
 #include <utils.h>
@@ -70,6 +71,20 @@ void UDPTransport::wait(void)
 {
     this->transport_thread->join();
     delete this->transport_thread;
+}
+
+void UDPTransport::run_app_threads(Application *app)
+{
+    std::thread *app_threads[this->config->n_app_threads];
+
+    for (int i = 1; i < this->config->n_app_threads; i++) {
+        app_threads[i] = new std::thread(&Application::run_thread, app, i);
+    }
+    app->run_thread(0);
+    for (int i = 1; i < this->config->n_app_threads; i++) {
+        app_threads[i]->join();
+        delete app_threads[i];
+    }
 }
 
 void UDPTransport::register_address(const Address *addr)

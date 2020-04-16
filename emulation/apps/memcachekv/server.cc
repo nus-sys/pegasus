@@ -54,7 +54,12 @@ static Comparator comp =
     return a.second > b.second;
 };
 
-void Server::run(int duration)
+void Server::run()
+{
+    this->transport->run_app_threads(this);
+}
+
+void Server::run_thread(int tid)
 {
     // Send HK report periodically
     while (true) {
@@ -82,11 +87,10 @@ void Server::run(int duration)
             i++;
         }
         Message msg;
-        if (this->ctrl_codec->encode(msg, ctrlmsg)) {
-            this->transport->send_message_to_controller(msg, this->config->rack_id);
-        } else {
-            printf("Failed to encode hk report\n");
+        if (!this->ctrl_codec->encode(msg, ctrlmsg)) {
+            panic("Failed to encode hk report\n");
         }
+        this->transport->send_message_to_controller(msg, this->config->rack_id);
     }
 }
 
