@@ -52,12 +52,12 @@ static void construct_arguments(const DPDKConfiguration *config, int argc, char 
     argv[1] = new char[strlen("-l")+1];
     strcpy(argv[1], "-l");
     std::string cores;
-    char app_core[16], transport_core[16];
-    sprintf(app_core, "%d", config->app_core);
-    sprintf(transport_core, "%d", config->transport_core);
-    cores.append(app_core);
+    char app_cores[16], transport_cores[16];
+    sprintf(app_cores, "%d-%d", config->app_core, config->app_core+config->n_app_threads-1);
+    sprintf(transport_cores, "%d-%d", config->transport_core, config->transport_core+config->n_transport_threads-1);
+    cores.append(app_cores);
     cores.append(",");
-    cores.append(transport_core);
+    cores.append(transport_cores);
     argv[2] = new char[cores.length()+1];
     strcpy(argv[2], cores.c_str());
     argv[3] = new char[strlen("--proc-type=auto")+1];
