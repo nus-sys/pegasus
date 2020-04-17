@@ -21,9 +21,6 @@ public:
 class DPDKConfiguration : public Configuration {
 public:
     DPDKConfiguration(const char *file_path);
-
-    int num_queues;
-    int queue_id;
 };
 
 #endif /* _DPDK_CONFIGURATION_H_ */

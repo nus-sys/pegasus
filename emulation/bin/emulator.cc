@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     ProtocolMode protocol_mode = ProtocolMode::STATIC;
     TransportMode transport_mode = TransportMode::UDP;
     AppMode app_mode = AppMode::UNKNOWN;
-    int n_transport_threads = 1, n_app_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, num_queues = 1, queue_id = 0;
+    int n_transport_threads = 1, n_app_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, colocate_id = 0, n_colocate_nodes = 1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     bool report_load = false;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
@@ -285,11 +285,11 @@ int main(int argc, char *argv[])
             break;
         }
         case 'M': {
-            num_queues = stoi(std::string(optarg));
+            colocate_id = stoi(std::string(optarg));
             break;
         }
         case 'N': {
-            queue_id = stoi(std::string(optarg));
+            n_colocate_nodes = stoi(std::string(optarg));
             break;
         }
         default:
@@ -317,19 +317,18 @@ int main(int argc, char *argv[])
         config = new UDPConfiguration(config_file_path);
         break;
     case TransportMode::DPDK:
-        DPDKConfiguration *dpdkconfig = new DPDKConfiguration(config_file_path);
-        dpdkconfig->num_queues = num_queues;
-        dpdkconfig->queue_id = queue_id;
-        config = dpdkconfig;
+        config = new DPDKConfiguration(config_file_path);
         break;
     }
     config->duration = duration;
+    config->num_racks = num_racks;
+    config->num_nodes = num_nodes;
     config->transport_core = transport_core;
     config->n_transport_threads = n_transport_threads;
     config->app_core = app_core;
     config->n_app_threads = n_app_threads;
-    config->num_racks = num_racks;
-    config->num_nodes = num_nodes;
+    config->colocate_id = colocate_id;
+    config->n_colocate_nodes = n_colocate_nodes;
 
     memcachekv::MemcacheKVStats *stats = nullptr;
     memcachekv::KVWorkloadGenerator *gen = nullptr;

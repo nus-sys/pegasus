@@ -26,6 +26,8 @@ public:
     int n_transport_threads;
     int app_core;
     int n_app_threads;
+    int colocate_id;
+    int n_colocate_nodes;
     bool is_server;
     bool terminating;
     std::vector<std::vector<Address*>> node_addresses;
