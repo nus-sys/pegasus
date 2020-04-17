@@ -1,5 +1,5 @@
-#ifndef __APPLICATION_H__
-#define __APPLICATION_H__
+#ifndef _APPLICATION_H_
+#define _APPLICATION_H_
 
 #include "transport.h"
 
@@ -10,4 +10,4 @@ public:
     virtual void run_thread(int tid) = 0;
 };
 
-#endif /* __APPLICATION_H__ */
+#endif /* _APPLICATION_H_ */
