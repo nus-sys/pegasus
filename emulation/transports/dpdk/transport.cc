@@ -208,7 +208,7 @@ DPDKTransport::DPDKTransport(const Configuration *config)
     }
 
     // Create mbuf pool
-    nb_mbufs = nb_rxd + nb_txd + MAX_PKT_BURST + MEMPOOL_CACHE_SIZE;
+    nb_mbufs = config->n_transport_threads * (nb_rxd + nb_txd + MAX_PKT_BURST + MEMPOOL_CACHE_SIZE);
     char pool_name[32];
     sprintf(pool_name, "pktmbuf_pool_%d", config->colocate_id);
     this->pktmbuf_pool = rte_pktmbuf_pool_create(pool_name,
