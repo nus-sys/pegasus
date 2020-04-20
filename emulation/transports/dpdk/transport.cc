@@ -3,6 +3,7 @@
 #include <rte_lcore.h>
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
+#include <rte_distributor.h>
 
 #include <logger.h>
 #include <application.h>
@@ -27,17 +28,18 @@
 #define FLOW_IPV4_ADDR_MASK 0xFFFFFFFF
 #define FLOW_UDP_PORT_MASK 0xFFFF
 
-thread_local static int queue_id;
+thread_local static int tx_queue_id;
 
 struct AppArg {
     Application *app;
     int tid;
-    int queue_id;
+    int tx_queue_id;
 };
 
 struct TransportArg {
     DPDKTransport *transport;
-    int queue_id;
+    int tid;
+    int tx_queue_id;
 };
 
 #define MAX_THREADS 128
@@ -45,18 +47,25 @@ struct TransportArg {
 static struct TransportArg transport_args[MAX_THREADS];
 static struct AppArg app_args[MAX_THREADS];
 
-static int transport_thread(void *arg)
+static int transport_thread_(void *arg)
 {
-    TransportArg *t_arg = (struct TransportArg*)arg;
-    queue_id = t_arg->queue_id;
-    t_arg->transport->run_internal();
+    struct TransportArg *targ = (struct TransportArg*)arg;
+    tx_queue_id = targ->tx_queue_id;
+    targ->transport->transport_thread(targ->tid);
+    return 0;
+}
+
+static int distributor_thread_(void *arg)
+{
+    DPDKTransport *transport = (DPDKTransport*)arg;
+    transport->distributor_thread();
     return 0;
 }
 
 static int app_thread(void *arg)
 {
     struct AppArg *app_arg = (struct AppArg*)arg;
-    queue_id = app_arg->queue_id;
+    tx_queue_id = app_arg->tx_queue_id;
     app_arg->app->run_thread(app_arg->tid);
     return 0;
 }
@@ -70,7 +79,7 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     std::string cores;
     char app_cores[16], transport_cores[16];
     sprintf(app_cores, "%d-%d", config->app_core, config->app_core+config->n_app_threads-1);
-    sprintf(transport_cores, "%d-%d", config->transport_core, config->transport_core+config->n_transport_threads-1);
+    sprintf(transport_cores, "%d-%d", config->transport_core, config->transport_core+config->n_transport_threads); // add 1 core for distributor
     cores.append(app_cores);
     cores.append(",");
     cores.append(transport_cores);
@@ -119,7 +128,8 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
         } else {
             addr = static_cast<const DPDKAddress*>(config->client_addresses.at(config->client_id+colocate_id));
         }
-        uint16_t qid = colocate_id * config->n_transport_threads;
+        // Each node gets one rx queue
+        uint16_t rx_queue_id = colocate_id;
 
         /* Attributes */
         struct rte_flow_attr attr;
@@ -167,7 +177,7 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
         struct rte_flow_action actions[FLOW_ACTION_NUM];
         struct rte_flow_action_queue action_queue;
         memset(actions, 0, sizeof(actions));
-        action_queue.index = qid;
+        action_queue.index = rx_queue_id;
         actions[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
         actions[0].conf = &action_queue;
         actions[1].type = RTE_FLOW_ACTION_TYPE_END;
@@ -183,7 +193,7 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
 }
 
 DPDKTransport::DPDKTransport(const Configuration *config)
-    : Transport(config), portid(0), status(STOPPED)
+    : Transport(config), port_id(0), rx_queue_id(config->colocate_id), status(STOPPED)
 {
     this->argc = 4;
     this->argv = new char*[this->argc];
@@ -222,36 +232,48 @@ DPDKTransport::DPDKTransport(const Configuration *config)
         panic("rte_pktmbuf_pool_create failed");
     }
 
+    // Create distributor
+    char distributor_name[32];
+    sprintf(distributor_name, "distributor_%d", config->colocate_id);
+    this->distributor = rte_distributor_create(distributor_name,
+                                               rte_socket_id(),
+                                               config->n_transport_threads,
+                                               RTE_DIST_ALG_BURST);
+    if (this->distributor == nullptr) {
+        panic("rte_distributor_create failed");
+    }
+
     if (proc_type == RTE_PROC_PRIMARY) {
         // Initialize port
         memset(&port_conf, 0, sizeof(port_conf));
         port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
-        if (rte_eth_dev_info_get(this->portid, &dev_info) != 0) {
+        if (rte_eth_dev_info_get(this->port_id, &dev_info) != 0) {
             panic("rte_eth_dev_info_get failed");
         }
         if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
             port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
         }
-        int num_queues = config->n_colocate_nodes * config->n_transport_threads;
-        if (rte_eth_dev_configure(this->portid,
-                                  num_queues,
-                                  num_queues,
+        int num_rx_queues = config->n_colocate_nodes;
+        int num_tx_queues = config->n_colocate_nodes * config->n_transport_threads;
+        if (rte_eth_dev_configure(this->port_id,
+                                  num_rx_queues,
+                                  num_tx_queues,
                                   &port_conf) < 0) {
             panic("rte_eth_dev_configure failed");
         }
-        if (rte_eth_dev_adjust_nb_rx_tx_desc(this->portid, &nb_rxd, &nb_txd) < 0) {
+        if (rte_eth_dev_adjust_nb_rx_tx_desc(this->port_id, &nb_rxd, &nb_txd) < 0) {
             panic("rte_eth_dev_adjust_nb_rx_tx_desc failed");
         }
 
         // Initialize RX queue
         rxconf = dev_info.default_rxconf;
         rxconf.offloads = port_conf.rxmode.offloads;
-        for (int qid = 0; qid < num_queues; qid++) {
-            if (rte_eth_rx_queue_setup(this->portid,
+        for (int qid = 0; qid < num_rx_queues; qid++) {
+            if (rte_eth_rx_queue_setup(this->port_id,
                                        qid,
                                        nb_rxd,
-                                       rte_eth_dev_socket_id(this->portid),
+                                       rte_eth_dev_socket_id(this->port_id),
                                        &rxconf,
                                        this->pktmbuf_pool) < 0) {
                 panic("rte_eth_rx_queue_setup failed");
@@ -261,35 +283,35 @@ DPDKTransport::DPDKTransport(const Configuration *config)
         // Initialize TX queue
         txconf = dev_info.default_txconf;
         txconf.offloads = port_conf.txmode.offloads;
-        for (int qid = 0; qid < num_queues; qid++) {
-            if (rte_eth_tx_queue_setup(this->portid,
+        for (int qid = 0; qid < num_tx_queues; qid++) {
+            if (rte_eth_tx_queue_setup(this->port_id,
                                        qid,
                                        nb_txd,
-                                       rte_eth_dev_socket_id(this->portid),
+                                       rte_eth_dev_socket_id(this->port_id),
                                        &txconf) < 0) {
                 panic("rte_eth_tx_queue_setup failed");
             }
         }
 
         // Start device
-        if (rte_eth_dev_start(this->portid) < 0) {
+        if (rte_eth_dev_start(this->port_id) < 0) {
             panic("rte_eth_dev_start failed");
         }
-        if (rte_eth_promiscuous_enable(this->portid) != 0) {
+        if (rte_eth_promiscuous_enable(this->port_id) != 0) {
             panic("rte_eth_promiscuous_enable failed");
         }
 
         // Create flow rules
-        generate_flow_rules(config, this->portid);
+        generate_flow_rules(config, this->port_id);
     }
 }
 
 DPDKTransport::~DPDKTransport()
 {
     if (rte_eal_process_type() == RTE_PROC_PRIMARY) {
-        rte_flow_flush(this->portid, nullptr);
-        rte_eth_dev_stop(this->portid);
-        rte_eth_dev_close(this->portid);
+        rte_flow_flush(this->port_id, nullptr);
+        rte_eth_dev_stop(this->port_id);
+        rte_eth_dev_close(this->port_id);
     }
     if (this->argv != nullptr) {
         for (int i = 0; i < this->argc; i++) {
@@ -357,7 +379,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     }
     memcpy(dgram, msg.buf(), msg.len());
     /* Send packet */
-    sent = rte_eth_tx_burst(this->portid, queue_id, &m, 1);
+    sent = rte_eth_tx_burst(this->port_id, tx_queue_id, &m, 1);
     if (sent < 1) {
         panic("Failed to send packet");
     }
@@ -366,12 +388,23 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
 void DPDKTransport::run(void)
 {
     this->status = RUNNING;
+    // Start all transport threads
     for (int tid = 0; tid < this->config->n_transport_threads; tid++) {
         transport_args[tid].transport = this;
-        transport_args[tid].queue_id = this->config->colocate_id * this->config->n_transport_threads + tid;
-        if (rte_eal_remote_launch(transport_thread, &transport_args[tid], this->config->transport_core + tid) != 0) {
+        transport_args[tid].tid = tid;
+        transport_args[tid].tx_queue_id = this->config->colocate_id * this->config->n_transport_threads + tid;
+        if (rte_eal_remote_launch(transport_thread_,
+                                  &transport_args[tid],
+                                  this->config->transport_core + tid) != 0) {
             panic("transport thread rte_eal_remote_launch failed");
         }
+    }
+    // Start distributor thread
+    int distributor_core = this->config->transport_core + this->config->n_transport_threads;
+    if (rte_eal_remote_launch(distributor_thread_,
+                              this,
+                              distributor_core) != 0) {
+        panic("distributor thread rte_eal_remote_launch failed");
     }
 }
 
@@ -387,6 +420,10 @@ void DPDKTransport::wait(void)
             panic("rte_eal_wait_lcore failed on transport core");
         }
     }
+    int distributor_core = this->config->transport_core + this->config->n_transport_threads;
+    if (rte_eal_wait_lcore(distributor_core) < 0) {
+        panic("rte_eal_wait_lcore failed on distributor core");
+    }
 }
 
 void DPDKTransport::run_app_threads(Application *app)
@@ -396,8 +433,10 @@ void DPDKTransport::run_app_threads(Application *app)
     for (int tid = 1; tid < this->config->n_app_threads; tid++) {
         app_args[tid].app = app;
         app_args[tid].tid = tid;
-        app_args[tid].queue_id = this->config->colocate_id * this->config->n_transport_threads + tid;
-        if (rte_eal_remote_launch(app_thread, &app_args[tid], this->config->app_core + tid) != 0) {
+        app_args[tid].tx_queue_id = this->config->colocate_id * this->config->n_transport_threads + tid;
+        if (rte_eal_remote_launch(app_thread,
+                                  &app_args[tid],
+                                  this->config->app_core + tid) != 0) {
             panic("app thread rte_eal_remote_launch failed");
         }
     }
@@ -405,7 +444,7 @@ void DPDKTransport::run_app_threads(Application *app)
     // Run on master core
     app_args[0].app = app;
     app_args[0].tid = 0;
-    app_args[0].queue_id = this->config->colocate_id * this->config->n_transport_threads;
+    app_args[0].tx_queue_id = this->config->colocate_id * this->config->n_transport_threads;
     app_thread(&app_args[0]);
 
     // Wait for app slave cores to finish
@@ -416,16 +455,37 @@ void DPDKTransport::run_app_threads(Application *app)
     }
 }
 
-void DPDKTransport::run_internal()
+void DPDKTransport::distributor_thread()
 {
-    uint16_t nb_rx, i;
+    uint16_t n_rx;
+    struct rte_mbuf *pkt_burst[MAX_PKT_BURST];
+
+    while(this->status == DPDKTransport::RUNNING) {
+        n_rx = rte_eth_rx_burst(this->port_id,
+                                this->rx_queue_id,
+                                pkt_burst,
+                                MAX_PKT_BURST);
+        rte_distributor_process(this->distributor, pkt_burst, n_rx);
+    }
+    rte_distributor_flush(this->distributor);
+    rte_distributor_clear_returns(this->distributor);
+}
+
+void DPDKTransport::transport_thread(int tid)
+{
+    int npkts, i;
     struct rte_mbuf *pkt_burst[MAX_PKT_BURST];
     struct rte_mbuf *m;
     size_t offset;
 
+    npkts = 0;
     while (this->status == DPDKTransport::RUNNING) {
-        nb_rx = rte_eth_rx_burst(this->portid, queue_id, pkt_burst, MAX_PKT_BURST);
-        for (i = 0; i < nb_rx; i++) {
+        npkts = rte_distributor_get_pkt(this->distributor,
+                                        tid,
+                                        pkt_burst,
+                                        pkt_burst,
+                                        npkts);
+        for (i = 0; i < npkts; i++) {
             m = pkt_burst[i];
             /* Parse packet header */
             struct rte_ether_hdr *ether_hdr;

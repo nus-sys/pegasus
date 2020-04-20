@@ -17,19 +17,22 @@ public:
     virtual void wait() override final;
     virtual void run_app_threads(Application *app) override final;
 
-    void run_internal();
+    void distributor_thread();
+    void transport_thread(int tid);
 
 private:
     bool filter_packet(const DPDKAddress &addr) const;
 
     int argc;
     char **argv;
-    struct rte_mempool *pktmbuf_pool;
-    uint16_t portid;
+    uint16_t port_id;
+    uint16_t rx_queue_id;
     volatile enum {
         RUNNING,
         STOPPED,
     } status;
+    struct rte_mempool *pktmbuf_pool;
+    struct rte_distributor *distributor;
 };
 
 #endif /* _DPDK_TRANSPORT_H_ */
