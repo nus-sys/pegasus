@@ -346,7 +346,7 @@ int main(int argc, char *argv[])
             config->client_id = node_id;
             config->is_server = false;
             config->terminating = true;
-            stats = new Stats();
+            stats = new Stats(stats_file_path, 0);
             app = new echo::Client(config, stats, mean_interval);
             break;
         }
