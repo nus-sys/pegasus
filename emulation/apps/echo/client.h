@@ -5,13 +5,13 @@
 #include <condition_variable>
 
 #include <application.h>
-#include <configuration.h>
+#include <stats.h>
 
 namespace echo {
 
 class Client : public Application {
 public:
-    Client();
+    Client(Configuration *config, Stats *stats, int interval);
     ~Client();
 
     virtual void receive_message(const Message &msg,
@@ -20,9 +20,9 @@ public:
     virtual void run_thread(int tid) override final;
 
 private:
-    std::mutex mtx;
-    std::condition_variable cv;
-    bool received;
+    Configuration *config;
+    Stats *stats;
+    int interval;
 };
 
 } // namespace echo

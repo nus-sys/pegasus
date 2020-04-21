@@ -330,7 +330,7 @@ int main(int argc, char *argv[])
     config->colocate_id = colocate_id;
     config->n_colocate_nodes = n_colocate_nodes;
 
-    memcachekv::MemcacheKVStats *stats = nullptr;
+    Stats *stats = nullptr;
     memcachekv::KVWorkloadGenerator *gen = nullptr;
     memcachekv::MessageCodec *codec = nullptr;
     memcachekv::ControllerCodec *ctrl_codec = nullptr;
@@ -346,7 +346,8 @@ int main(int argc, char *argv[])
             config->client_id = node_id;
             config->is_server = false;
             config->terminating = true;
-            app = new echo::Client();
+            stats = new Stats();
+            app = new echo::Client(config, stats, mean_interval);
             break;
         }
         case NodeMode::SERVER: {
@@ -423,7 +424,7 @@ int main(int argc, char *argv[])
                                                       n_app_threads,
                                                       stats);
 
-            app = new memcachekv::Client(config, stats, gen, codec);
+            app = new memcachekv::Client(config, (memcachekv::MemcacheKVStats*)stats, gen, codec);
             break;
         }
         case NodeMode::SERVER: {
