@@ -17,17 +17,17 @@ typedef uint32_t ver_t;
 /*
  * KV messages
  */
+enum class OpType {
+    GET,
+    PUT,
+    DEL,
+    PUTFWD,
+};
 struct Operation {
-    enum class Type {
-        GET,
-        PUT,
-        DEL,
-        PUTFWD,
-    };
     Operation()
-        : op_type(Type::GET), keyhash(0), ver(0), key(""), value("") {};
+        : op_type(OpType::GET), keyhash(0), ver(0), key(""), value("") {};
 
-    Type op_type;
+    OpType op_type;
     keyhash_t keyhash;
     ver_t ver;
 
@@ -41,6 +41,7 @@ struct MemcacheKVRequest {
 
     int client_id;
     uint32_t req_id;
+    uint32_t req_time;
     int node_id;
     Operation op;
 };
@@ -51,24 +52,22 @@ enum class Result {
 };
 
 struct MemcacheKVReply {
-    enum class Type {
-        READ,
-        WRITE
-    };
     MemcacheKVReply()
-        : type(Type::READ), keyhash(0), key(""), node_id(0), load(0), ver(0),
-        client_id(0), req_id(0), result(Result::OK), value("") {};
+        : keyhash(0), node_id(0), load(0), ver(0), client_id(0),
+        req_id(0), req_time(0), op_type(OpType::GET),
+        result(Result::OK), value("") {};
 
-    Type type;
     keyhash_t keyhash;
-    std::string key;
     int node_id;
     load_t load;
     ver_t ver;
 
     int client_id;
     uint32_t req_id;
+    uint32_t req_time;
+    OpType op_type;
     Result result;
+    std::string key;
     std::string value;
 };
 
@@ -126,18 +125,23 @@ public:
 private:
     bool proto_enable;
     /* Wire format:
-     * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) + version (32) + debug_node (8) + debug_load (16) + message
+     * Header:
+     * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) +
+     * version (32) + debug_node (8) + debug_load (16) + message payload
      *
-     * Request format:
-     * client_id (32) + req_id (32) + key_len (16) + key (+ value_len(16) + value)
+     * Message payload:
+     * Request:
+     * client_id (32) + req_id (32) + req_time (32) + op_type (8) + key_len (16)
+     * + key (+ value_len(16) + value)
      *
-     * Reply format:
-     * client_id (32) + req_id (32) + result (8) + value_len(16) + value
+     * Reply:
+     * client_id (32) + req_id (32) + req_time (32) + op_type (8) + result (8) +
+     * value_len(16) + value
      *
-     * Migration request format:
+     * Migration request:
      * key_len (16) + key + value_len (16) + value
      *
-     * Migration ack format:
+     * Migration ack:
      * empty
      */
     typedef uint16_t identifier_t;
@@ -148,6 +152,7 @@ private:
     typedef uint32_t ver_t;
     typedef uint32_t client_id_t;
     typedef uint32_t req_id_t;
+    typedef uint32_t req_time_t;
     typedef uint16_t key_len_t;
     typedef uint8_t result_t;
     typedef uint16_t value_len_t;
@@ -165,8 +170,8 @@ private:
     static const op_type_t OP_PUT_FWD   = 0x7;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
-    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + 16 + sizeof(key_len_t);
-    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
+    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(key_len_t);
+    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(result_t) + sizeof(value_len_t);
     static const size_t MGR_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
     static const size_t MGR_ACK_BASE_SIZE = PACKET_BASE_SIZE;
 };
@@ -184,19 +189,23 @@ public:
 
 private:
     /* Wire format:
-     * identifier (16) + op_type (8) + key (48) + value (32) + message
+     * Header:
+     * identifier (16) + op_type (8) + key (48) + value (32) + message payload
      *
-     * Request format:
-     * client_id (32) + req_id (32) + op_type (8) + key_len (16) + key (+ value_len(16) + value)
+     * Message payload:
+     * Request:
+     * client_id (32) + req_id (32) + req_time (32) + op_type (8) + key_len (16)
+     * + key (+ value_len(16) + value)
      *
-     * Reply format:
-     * client_id (32) + req_id (32) + result (8) + value_len(16) + value
-     *
+     * Reply:
+     * client_id (32) + req_id (32) + req_time (32) + op_type (8) + result (8) +
+     * value_len(16) + value
      */
     typedef uint16_t identifier_t;
     typedef uint8_t op_type_t;
     typedef uint32_t client_id_t;
     typedef uint32_t req_id_t;
+    typedef uint32_t req_time_t;
     typedef uint16_t key_len_t;
     typedef uint8_t result_t;
     typedef uint16_t value_len_t;
@@ -211,8 +220,8 @@ private:
     static const op_type_t OP_CACHE_HIT = 0x5;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + KEY_SIZE + VALUE_SIZE;
-    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(op_type_t) + sizeof(key_len_t);
-    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(result_t) + sizeof(value_len_t);
+    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(key_len_t);
+    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(result_t) + sizeof(value_len_t);
 };
 
 /*

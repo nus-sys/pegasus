@@ -83,16 +83,16 @@ int KVWorkloadGenerator::next_zipf_key_index(int tid)
     return mid;
 }
 
-Operation::Type KVWorkloadGenerator::next_op_type(int tid)
+OpType KVWorkloadGenerator::next_op_type(int tid)
 {
     float op_choice = this->unif_real_dist[tid](this->generator[tid]);
-    Operation::Type op_type;
+    OpType op_type;
     if (op_choice < this->get_ratio) {
-        op_type = Operation::Type::GET;
+        op_type = OpType::GET;
     } else if (op_choice < this->get_ratio + this->put_ratio) {
-        op_type = Operation::Type::PUT;
+        op_type = OpType::PUT;
     } else {
-        op_type = Operation::Type::DEL;
+        op_type = OpType::DEL;
     }
     return op_type;
 }
@@ -119,7 +119,7 @@ const NextOperation &KVWorkloadGenerator::next_operation(int tid)
     }
 
     op.op_type = next_op_type(tid);
-    if (op.op_type == Operation::Type::PUT) {
+    if (op.op_type == OpType::PUT) {
         op.value = this->value;
     }
 
@@ -187,19 +187,13 @@ Client::~Client()
 void Client::receive_message(const Message &msg, const Address &addr)
 {
     MemcacheKVMessage kvmsg;
-    this->codec->decode(msg, kvmsg);
+    if (!this->codec->decode(msg, kvmsg)) {
+        panic("Failed to decode message");
+    }
     assert(kvmsg.type == MemcacheKVMessage::Type::REPLY);
     assert(kvmsg.reply.client_id == this->config->client_id);
-    PendingRequest &pending_request = get_pending_request(kvmsg.reply.req_id);
 
-    if (pending_request.op_type == Operation::Type::GET) {
-        complete_op(kvmsg.reply.req_id, pending_request, kvmsg.reply.result);
-    } else {
-        pending_request.received_acks += 1;
-        if (pending_request.received_acks >= pending_request.expected_acks) {
-            complete_op(kvmsg.reply.req_id, pending_request, kvmsg.reply.result);
-        }
-    }
+    complete_op(kvmsg.reply);
 }
 
 void Client::run()
@@ -226,38 +220,42 @@ void Client::run_thread(int tid)
 
 void Client::execute_op(const Operation &op)
 {
-    PendingRequest pending_request;
-    gettimeofday(&pending_request.start_time, nullptr);
-    pending_request.op_type = op.op_type;
-    pending_request.expected_acks = 1;
+    struct timeval time;
+    gettimeofday(&time, nullptr);
     uint32_t req_id = std::atomic_fetch_add(&this->req_id, {1});
-    insert_pending_request(req_id, pending_request);
 
     MemcacheKVMessage kvmsg;
     kvmsg.type = MemcacheKVMessage::Type::REQUEST;
     kvmsg.request.client_id = this->config->client_id;
     kvmsg.request.req_id = req_id;
+    kvmsg.request.req_time = (uint32_t)time.tv_usec;
     kvmsg.request.node_id = key_to_node_id(op.key, this->config->num_nodes);
     kvmsg.request.op = op;
 
     Message msg;
-    this->codec->encode(msg, kvmsg);
+    if (!this->codec->encode(msg, kvmsg)) {
+        panic("Failed to encode message");
+    }
 
     // Chain replication: send READs to tail rack and WRITEs to head rack
-    int rack_id = op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
+    int rack_id = op.op_type == OpType::GET ? this->config->num_racks-1 : 0;
     this->transport->send_message_to_node(msg, rack_id, kvmsg.request.node_id);
 
     this->stats->report_issue();
 }
 
-void Client::complete_op(uint32_t req_id, const PendingRequest &request, Result result)
+void Client::complete_op(const MemcacheKVReply &reply)
 {
-    struct timeval end_time;
+    struct timeval start_time, end_time;
     gettimeofday(&end_time, nullptr);
-    this->stats->report_op(request.op_type,
-                           latency(request.start_time, end_time),
-                           result == Result::OK);
-    delete_pending_request(req_id);
+    start_time.tv_sec = end_time.tv_sec;
+    start_time.tv_usec = reply.req_time;
+    if (end_time.tv_usec < start_time.tv_usec) {
+        start_time.tv_sec -= 1; // assume request won't take > 1 sec
+    }
+    this->stats->report_op(reply.op_type,
+                           latency(start_time, end_time),
+                           reply.result == Result::OK);
 }
 
 void Client::insert_pending_request(uint32_t req_id, const PendingRequest &request)

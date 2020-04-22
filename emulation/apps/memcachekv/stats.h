@@ -15,14 +15,14 @@ public:
         : Stats(stats_file, interval, interval_file), cache_hits(0), cache_misses(0) {};
     ~MemcacheKVStats() {};
 
-    void report_op(Operation::Type op_type, int latency, bool hit);
+    void report_op(OpType op_type, int latency, bool hit);
     virtual void _dump() override;
 
 private:
     uint64_t cache_hits;
     uint64_t cache_misses;
     std::mutex mtx;
-    std::map<Operation::Type, uint64_t> received_replies;
+    std::map<OpType, uint64_t> received_replies;
 };
 
 } // namespace memcachekv

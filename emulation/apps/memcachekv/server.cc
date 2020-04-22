@@ -43,6 +43,7 @@ void Server::receive_message(const Message &msg, const Address &addr)
         process_kv_message(kvmsg, addr);
         return;
     }
+    panic("Received unexpected message");
 }
 
 typedef std::function<bool(std::pair<keyhash_t, unsigned int>,
@@ -88,7 +89,7 @@ void Server::run_thread(int tid)
         }
         Message msg;
         if (!this->ctrl_codec->encode(msg, ctrlmsg)) {
-            panic("Failed to encode hk report\n");
+            panic("Failed to encode hk report");
         }
         this->transport->send_message_to_controller(msg, this->config->rack_id);
     }
@@ -141,14 +142,15 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
         kvmsg.reply.node_id = this->config->node_id;
         kvmsg.reply.client_id = request.client_id;
         kvmsg.reply.req_id = request.req_id;
+        kvmsg.reply.req_time = request.req_time;
     } else {
         kvmsg.type = MemcacheKVMessage::Type::REQUEST;
         kvmsg.request = request;
-        kvmsg.request.op.op_type = Operation::Type::PUTFWD;
+        kvmsg.request.op.op_type = OpType::PUTFWD;
     }
     Message msg;
     if (!this->codec->encode(msg, kvmsg)) {
-        printf("Failed to encode message\n");
+        panic("Failed to encode message");
     }
 
     // Chain replication: tail rack replies to client; other racks forward
@@ -166,15 +168,15 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
 void
 Server::process_op(const Operation &op, MemcacheKVReply &reply)
 {
-    reply.key = op.key;
     reply.keyhash = op.keyhash;
     reply.ver = op.ver;
+    reply.op_type = op.op_type;
+    reply.key = op.key;
     if (this->report_load) {
         reply.load = calculate_load();
     }
     switch (op.op_type) {
-    case Operation::Type::GET: {
-        reply.type = MemcacheKVReply::Type::READ;
+    case OpType::GET: {
         if (this->store.count(op.key) > 0) {
             // Key is present
             reply.result = Result::OK;
@@ -186,19 +188,19 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         }
         break;
     }
-    case Operation::Type::PUT: {
-        reply.type = MemcacheKVReply::Type::WRITE;
+    case OpType::PUT:
+    case OpType::PUTFWD: {
         if (this->store.count(op.key) == 0 ||
             op.ver >= this->store.at(op.key).ver) {
             this->store[op.key].value = op.value;
             this->store[op.key].ver = op.ver;
         }
+        reply.op_type = OpType::PUT; // client doesn't expect PUTFWD
         reply.result = Result::OK;
         reply.value = op.value; // for netcache
         break;
     }
-    case Operation::Type::DEL: {
-        reply.type = MemcacheKVReply::Type::WRITE;
+    case OpType::DEL: {
         this->store.unsafe_erase(op.key);
         // XXX rkey?
         reply.result = Result::OK;
@@ -227,8 +229,7 @@ Server::process_migration_request(const MigrationRequest &request)
 
         Message msg;
         if (!this->codec->encode(msg, kvmsg)) {
-            printf("Failed to encode migration ack\n");
-            return;
+            panic("Failed to encode migration ack");
         }
         this->transport->send_message_to_router(msg);
     }
@@ -251,7 +252,9 @@ Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
         kvmsg.migration_request.ver = this->store.at(key_mgr.key).ver;
     }
     Message msg;
-    this->codec->encode(msg, kvmsg);
+    if (!this->codec->encode(msg, kvmsg)) {
+        panic("Failed to encode message");
+    }
     for (int node_id = 0; node_id < this->config->num_nodes; node_id++) {
         if (node_id != this->config->node_id) {
             this->transport->send_message_to_local_node(msg, node_id);

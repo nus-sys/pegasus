@@ -3,14 +3,14 @@
 namespace memcachekv {
 
 void
-MemcacheKVStats::report_op(Operation::Type op_type, int latency, bool hit)
+MemcacheKVStats::report_op(OpType op_type, int latency, bool hit)
 {
     report_latency(latency);
     {
         std::lock_guard<std::mutex> lck(this->mtx);
         this->received_replies[op_type] += 1;
 
-        if (op_type == Operation::Type::GET) {
+        if (op_type == OpType::GET) {
             if (hit) {
                 this->cache_hits++;
             } else {
@@ -28,9 +28,9 @@ MemcacheKVStats::_dump()
     } else {
         printf("Cache Hit Rate: 0\n");
     }
-    printf("GET Percentage: %.2f\n", (float)this->received_replies[Operation::Type::GET] / this->completed_ops);
-    printf("PUT Percentage: %.2f\n", (float)this->received_replies[Operation::Type::PUT] / this->completed_ops);
-    printf("DEL Percentage: %.2f\n", (float)this->received_replies[Operation::Type::DEL] / this->completed_ops);
+    printf("GET Percentage: %.2f\n", (float)this->received_replies[OpType::GET] / this->completed_ops);
+    printf("PUT Percentage: %.2f\n", (float)this->received_replies[OpType::PUT] / this->completed_ops);
+    printf("DEL Percentage: %.2f\n", (float)this->received_replies[OpType::DEL] / this->completed_ops);
 }
 
 } // namespace memcachekv

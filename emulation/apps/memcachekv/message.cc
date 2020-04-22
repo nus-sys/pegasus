@@ -59,6 +59,7 @@ WireCodec::decode(const Message &in, MemcacheKVMessage &out)
     case OP_PUT:
     case OP_DEL:
     case OP_PUT_FWD: {
+        // Request
         if (buf_size < REQUEST_BASE_SIZE) {
             return false;
         }
@@ -67,19 +68,11 @@ WireCodec::decode(const Message &in, MemcacheKVMessage &out)
         ptr += sizeof(client_id_t);
         out.request.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
+        out.request.req_time = *(req_time_t*)ptr;
+        ptr += sizeof(req_time_t);
         out.request.node_id = node_id;
-        switch (op_type) {
-        case OP_GET:
-            out.request.op.op_type = Operation::Type::GET;
-            break;
-        case OP_PUT:
-        case OP_PUT_FWD:
-            out.request.op.op_type = Operation::Type::PUT;
-            break;
-        case OP_DEL:
-            out.request.op.op_type = Operation::Type::DEL;
-            break;
-        }
+        out.request.op.op_type = static_cast<OpType>(*(op_type_t*)ptr);
+        ptr += sizeof(op_type_t);
         out.request.op.keyhash = keyhash;
         out.request.op.ver = ver;
         key_len_t key_len = *(key_len_t*)ptr;
@@ -108,11 +101,6 @@ WireCodec::decode(const Message &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
-        if (op_type == OP_REP_R) {
-            out.reply.type = MemcacheKVReply::Type::READ;
-        } else {
-            out.reply.type = MemcacheKVReply::Type::WRITE;
-        }
         out.reply.keyhash = keyhash;
         out.reply.node_id = node_id;
         out.reply.load = load_a;
@@ -121,6 +109,10 @@ WireCodec::decode(const Message &in, MemcacheKVMessage &out)
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
+        out.reply.req_time = *(req_time_t*)ptr;
+        ptr += sizeof(req_time_t);
+        out.reply.op_type = static_cast<OpType>(*(op_type_t*)ptr);
+        ptr += sizeof(op_type_t);
         out.reply.result = static_cast<Result>(*(result_t*)ptr);
         ptr += sizeof(result_t);
         value_len_t value_len = *(value_len_t*)ptr;
@@ -166,8 +158,8 @@ WireCodec::encode(Message &out, const MemcacheKVMessage &in)
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
         buf_size = REQUEST_BASE_SIZE + in.request.op.key.size();
-        if (in.request.op.op_type == Operation::Type::PUT ||
-            in.request.op.op_type == Operation::Type::PUTFWD) {
+        if (in.request.op.op_type == OpType::PUT ||
+            in.request.op.op_type == OpType::PUTFWD) {
             buf_size += sizeof(value_len_t) + in.request.op.value.size();
         }
         break;
@@ -200,16 +192,16 @@ WireCodec::encode(Message &out, const MemcacheKVMessage &in)
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
         switch (in.request.op.op_type) {
-        case Operation::Type::GET:
+        case OpType::GET:
             *(op_type_t*)ptr = OP_GET;
             break;
-        case Operation::Type::PUT:
+        case OpType::PUT:
             *(op_type_t*)ptr = OP_PUT;
             break;
-        case Operation::Type::DEL:
+        case OpType::DEL:
             *(op_type_t*)ptr = OP_DEL;
             break;
-        case Operation::Type::PUTFWD:
+        case OpType::PUTFWD:
             *(op_type_t*)ptr = OP_PUT_FWD;
             break;
         default:
@@ -232,11 +224,12 @@ WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {
-        switch (in.reply.type) {
-        case MemcacheKVReply::Type::READ:
+        switch (in.reply.op_type) {
+        case OpType::GET:
             *(op_type_t*)ptr = OP_REP_R;
             break;
-        case MemcacheKVReply::Type::WRITE:
+        case OpType::PUT:
+        case OpType::DEL:
             *(op_type_t*)ptr = OP_REP_W;
             break;
         default:
@@ -293,12 +286,16 @@ WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.request.req_id;
         ptr += sizeof(req_id_t);
+        *(req_time_t*)ptr = (req_time_t)in.request.req_time;
+        ptr += sizeof(req_time_t);
+        *(op_type_t*)ptr = static_cast<op_type_t>(in.request.op.op_type);
+        ptr += sizeof(op_type_t);
         *(key_len_t*)ptr = (key_len_t)in.request.op.key.size();
         ptr += sizeof(key_len_t);
         memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
         ptr += in.request.op.key.size();
-        if (in.request.op.op_type == Operation::Type::PUT ||
-            in.request.op.op_type == Operation::Type::PUTFWD) {
+        if (in.request.op.op_type == OpType::PUT ||
+            in.request.op.op_type == OpType::PUTFWD) {
             *(value_len_t*)ptr = (value_len_t)in.request.op.value.size();
             ptr += sizeof(value_len_t);
             memcpy(ptr, in.request.op.value.data(), in.request.op.value.size());
@@ -311,6 +308,10 @@ WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.reply.req_id;
         ptr += sizeof(req_id_t);
+        *(req_time_t*)ptr = (req_time_t)in.reply.req_time;
+        ptr += sizeof(req_time_t);
+        *(op_type_t*)ptr = static_cast<op_type_t>(in.reply.op_type);
+        ptr += sizeof(op_type_t);
         *(result_t *)ptr = (result_t)in.reply.result;
         ptr += sizeof(result_t);
         *(value_len_t *)ptr = (value_len_t)in.reply.value.size();
@@ -374,7 +375,9 @@ NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
         ptr += sizeof(client_id_t);
         out.request.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
-        out.request.op.op_type = static_cast<Operation::Type>(*(op_type_t*)ptr);
+        out.request.req_time = *(req_time_t*)ptr;
+        ptr += sizeof(req_time_t);
+        out.request.op.op_type = static_cast<OpType>(*(op_type_t*)ptr);
         ptr += sizeof(op_type_t);
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
@@ -383,7 +386,7 @@ NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
         }
         out.request.op.key = string(ptr, key_len);
         ptr += key_len;
-        if (out.request.op.op_type == Operation::Type::PUT) {
+        if (out.request.op.op_type == OpType::PUT) {
             if (buf_size < REQUEST_BASE_SIZE + key_len + sizeof(value_len_t)) {
                 return false;
             }
@@ -402,15 +405,14 @@ NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
-        if (op_type == OP_REP_R) {
-            out.reply.type = MemcacheKVReply::Type::READ;
-        } else {
-            out.reply.type = MemcacheKVReply::Type::WRITE;
-        }
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
+        out.reply.req_time = *(req_time_t*)ptr;
+        ptr += sizeof(req_time_t);
+        out.reply.op_type = static_cast<OpType>(*(op_type_t*)ptr);
+        ptr += sizeof(op_type_t);
         out.reply.result = static_cast<Result>(*(result_t*)ptr);
         ptr += sizeof(result_t);
         value_len_t value_len = *(value_len_t*)ptr;
@@ -426,11 +428,14 @@ NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
-        out.reply.type = MemcacheKVReply::Type::READ;
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
+        out.reply.req_time = *(req_time_t*)ptr;
+        ptr += sizeof(req_time_t);
+        out.reply.op_type = static_cast<OpType>(*(op_type_t*)ptr);
+        ptr += sizeof(op_type_t);
         out.reply.result = Result::OK;
         out.reply.value = cached_value;
         break;
@@ -449,7 +454,7 @@ NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
         buf_size = REQUEST_BASE_SIZE + in.request.op.key.size();
-        if (in.request.op.op_type == Operation::Type::PUT) {
+        if (in.request.op.op_type == OpType::PUT) {
             buf_size += sizeof(value_len_t) + in.request.op.value.size();
         }
         break;
@@ -470,11 +475,11 @@ NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
         switch (in.request.op.op_type) {
-        case Operation::Type::GET:
+        case OpType::GET:
             *(op_type_t*)ptr = OP_READ;
             break;
-        case Operation::Type::PUT:
-        case Operation::Type::DEL:
+        case OpType::PUT:
+        case OpType::DEL:
             *(op_type_t*)ptr = OP_WRITE;
             break;
         default:
@@ -491,11 +496,12 @@ NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {
-        switch (in.reply.type) {
-        case MemcacheKVReply::Type::READ:
+        switch (in.reply.op_type) {
+        case OpType::GET:
             *(op_type_t*)ptr = OP_REP_R;
             break;
-        case MemcacheKVReply::Type::WRITE:
+        case OpType::PUT:
+        case OpType::DEL:
             *(op_type_t*)ptr = OP_REP_W;
             break;
         default:
@@ -524,13 +530,15 @@ NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.request.req_id;
         ptr += sizeof(req_id_t);
+        *(req_time_t*)ptr = (req_time_t)in.request.req_time;
+        ptr += sizeof(req_time_t);
         *(op_type_t*)ptr = static_cast<op_type_t>(in.request.op.op_type);
         ptr += sizeof(op_type_t);
         *(key_len_t*)ptr = (key_len_t)in.request.op.key.size();
         ptr += sizeof(key_len_t);
         memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
         ptr += in.request.op.key.size();
-        if (in.request.op.op_type == Operation::Type::PUT) {
+        if (in.request.op.op_type == OpType::PUT) {
             *(value_len_t*)ptr = (value_len_t)in.request.op.value.size();
             ptr += sizeof(value_len_t);
             memcpy(ptr, in.request.op.value.data(), in.request.op.value.size());
@@ -543,6 +551,10 @@ NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.reply.req_id;
         ptr += sizeof(req_id_t);
+        *(req_time_t*)ptr = (req_time_t)in.reply.req_time;
+        ptr += sizeof(req_time_t);
+        *(op_type_t*)ptr = static_cast<op_type_t>(in.reply.op_type);
+        ptr += sizeof(op_type_t);
         *(result_t *)ptr = (result_t)in.reply.result;
         ptr += sizeof(result_t);
         *(value_len_t *)ptr = (value_len_t)in.reply.value.size();

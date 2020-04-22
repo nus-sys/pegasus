@@ -62,7 +62,7 @@ public:
 
 private:
     int next_zipf_key_index(int tid);
-    Operation::Type next_op_type(int tid);
+    OpType next_op_type(int tid);
     void change_keys();
     void adjust_send_rate(int tid);
 
@@ -93,13 +93,13 @@ private:
 };
 
 struct PendingRequest {
-    Operation::Type op_type;
+    OpType op_type;
     struct timeval start_time;
     int received_acks;
     int expected_acks;
 
     inline PendingRequest()
-        : op_type(Operation::Type::GET),
+        : op_type(OpType::GET),
         received_acks(0),
         expected_acks(0) {};
 };
@@ -119,7 +119,7 @@ public:
 
 private:
     void execute_op(const Operation &op);
-    void complete_op(uint32_t req_id, const PendingRequest &request, Result result);
+    void complete_op(const MemcacheKVReply &reply);
     void insert_pending_request(uint32_t req_id, const PendingRequest &request);
     PendingRequest& get_pending_request(uint32_t req_id);
     void delete_pending_request(uint32_t req_id);

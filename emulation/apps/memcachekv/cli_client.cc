@@ -26,7 +26,7 @@ void CLIClient::receive_message(const Message &msg, const Address &addr)
     this->codec->decode(msg, kvmsg);
     assert(kvmsg.type == MemcacheKVMessage::Type::REPLY);
     printf("Reply type %u keyhash %u node %u ver %u result %u value %s\n",
-           (unsigned int)kvmsg.reply.type, kvmsg.reply.keyhash, kvmsg.reply.node_id,
+           (unsigned int)kvmsg.reply.op_type, kvmsg.reply.keyhash, kvmsg.reply.node_id,
            kvmsg.reply.ver, (unsigned int)kvmsg.reply.result, kvmsg.reply.value.c_str());
 }
 
@@ -41,7 +41,7 @@ void CLIClient::run()
     while (true) {
         printf("op type (0-read, 1-write): ");
         getline(cin, input);
-        kvmsg.request.op.op_type = static_cast<Operation::Type>(stoi(input));
+        kvmsg.request.op.op_type = static_cast<OpType>(stoi(input));
         printf("key: ");
         getline(cin, input);
         kvmsg.request.op.key = input;
@@ -55,7 +55,7 @@ void CLIClient::run()
         Message msg;
         this->codec->encode(msg, kvmsg);
 
-        int rack_id = kvmsg.request.op.op_type == Operation::Type::GET ? this->config->num_racks-1 : 0;
+        int rack_id = kvmsg.request.op.op_type == OpType::GET ? this->config->num_racks-1 : 0;
         this->transport->send_message_to_node(msg, rack_id, kvmsg.request.node_id);
         sleep(1);
     }
