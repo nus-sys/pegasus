@@ -13,7 +13,8 @@ public:
     ~Decrementor();
 
     virtual void receive_message(const Message &msg,
-                                 const Address &addr) override final;
+                                 const Address &addr,
+                                 int tid) override final;
     virtual void run() override final;
     virtual void run_thread(int tid) override final;
 

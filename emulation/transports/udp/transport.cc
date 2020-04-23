@@ -182,7 +182,8 @@ void UDPTransport::on_readable(int fd)
 
     assert(this->receiver);
     this->receiver->receive_message(Message(buf, ret, false),
-                                    UDPAddress(src_addr));
+                                    UDPAddress(src_addr),
+                                    0); // Currently single threaded transport
 }
 
 void UDPTransport::add_socket_event(int fd)

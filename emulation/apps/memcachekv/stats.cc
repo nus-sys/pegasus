@@ -2,20 +2,27 @@
 
 namespace memcachekv {
 
-void
-MemcacheKVStats::report_op(OpType op_type, int latency, bool hit)
+MemcacheKVStats::MemcacheKVStats(int n_threads,
+                                 const char* stats_file,
+                                 int interval,
+                                 const char *interval_file)
+    : Stats(n_threads, stats_file, interval, interval_file),
+    cache_hits(n_threads, 0), cache_misses(n_threads, 0),
+    replies(n_threads)
 {
-    report_latency(latency);
-    {
-        std::lock_guard<std::mutex> lck(this->mtx);
-        this->received_replies[op_type] += 1;
+}
 
-        if (op_type == OpType::GET) {
-            if (hit) {
-                this->cache_hits++;
-            } else {
-                this->cache_misses++;
-            }
+void
+MemcacheKVStats::report_op(int tid, OpType op_type, int latency, bool hit)
+{
+    report_latency(tid, latency);
+    this->replies[tid][op_type] += 1;
+
+    if (op_type == OpType::GET) {
+        if (hit) {
+            this->cache_hits[tid]++;
+        } else {
+            this->cache_misses[tid]++;
         }
     }
 }
@@ -23,14 +30,32 @@ MemcacheKVStats::report_op(OpType op_type, int latency, bool hit)
 void
 MemcacheKVStats::_dump()
 {
-    if (this->cache_hits + this->cache_misses > 0) {
-        printf("Cache Hit Rate: %.2f\n", (float)this->cache_hits / (this->cache_hits + this->cache_misses));
+    // Combine stats from all threads
+    uint64_t combined_cache_hits = 0, combined_cache_misses = 0, combined_completed_ops = 0;
+    std::map<OpType, uint64_t> combined_replies;
+    for (const auto &hits : this->cache_hits) {
+        combined_cache_hits += hits;
+    }
+    for (const auto &misses : this->cache_misses) {
+        combined_cache_misses += misses;
+    }
+    for (const auto &thread_replies : this->replies) {
+        for (const auto &reply : thread_replies) {
+            combined_replies[reply.first] += reply.second;
+        }
+    }
+    for (const auto &ops : this->completed_ops) {
+        combined_completed_ops += ops;
+    }
+    // Dump combined stats
+    if (combined_cache_hits + combined_cache_misses > 0) {
+        printf("Cache Hit Rate: %.2f\n", (float)combined_cache_hits / (combined_cache_hits + combined_cache_misses));
     } else {
         printf("Cache Hit Rate: 0\n");
     }
-    printf("GET Percentage: %.2f\n", (float)this->received_replies[OpType::GET] / this->completed_ops);
-    printf("PUT Percentage: %.2f\n", (float)this->received_replies[OpType::PUT] / this->completed_ops);
-    printf("DEL Percentage: %.2f\n", (float)this->received_replies[OpType::DEL] / this->completed_ops);
+    printf("GET Percentage: %.2f\n", (float)combined_replies[OpType::GET] / combined_completed_ops);
+    printf("PUT Percentage: %.2f\n", (float)combined_replies[OpType::PUT] / combined_completed_ops);
+    printf("DEL Percentage: %.2f\n", (float)combined_replies[OpType::DEL] / combined_completed_ops);
 }
 
 } // namespace memcachekv

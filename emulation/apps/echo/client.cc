@@ -16,12 +16,12 @@ Client::~Client()
 {
 }
 
-void Client::receive_message(const Message &msg, const Address &addr)
+void Client::receive_message(const Message &msg, const Address &addr, int tid)
 {
     struct timeval now, sent;
     sent = *(struct timeval*)msg.buf();
     gettimeofday(&now, nullptr);
-    this->stats->report_latency(latency(sent, now));
+    this->stats->report_latency(tid, latency(sent, now));
 }
 
 void Client::run()
@@ -44,7 +44,7 @@ void Client::run_thread(int tid)
     do {
         wait(*now, this->interval);
         this->transport->send_message_to_node(msg, RACK, NODE);
-        this->stats->report_issue();
+        this->stats->report_issue(tid);
     } while (latency(start, *now) < this->config->duration * 1000000);
 }
 

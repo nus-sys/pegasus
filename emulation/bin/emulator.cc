@@ -346,7 +346,7 @@ int main(int argc, char *argv[])
             config->client_id = node_id;
             config->is_server = false;
             config->terminating = true;
-            stats = new Stats(stats_file_path, 0);
+            stats = new Stats(n_app_threads, stats_file_path, 0);
             app = new echo::Client(config, stats, mean_interval);
             break;
         }
@@ -408,7 +408,10 @@ int main(int argc, char *argv[])
             }
             in.close();
 
-            stats = new memcachekv::MemcacheKVStats(stats_file_path, interval, interval_file_path);
+            stats = new memcachekv::MemcacheKVStats(n_app_threads,
+                                                    stats_file_path,
+                                                    interval,
+                                                    interval_file_path);
             gen = new memcachekv::KVWorkloadGenerator(&keys,
                                                       value_len,
                                                       get_ratio,

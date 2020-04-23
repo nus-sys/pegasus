@@ -113,13 +113,14 @@ public:
     ~Client();
 
     virtual void receive_message(const Message &msg,
-                                 const Address &addr) override final;
+                                 const Address &addr,
+                                 int tid) override final;
     virtual void run() override final;
     virtual void run_thread(int tid) override final;
 
 private:
     void execute_op(const Operation &op);
-    void complete_op(const MemcacheKVReply &reply);
+    void complete_op(int tid, const MemcacheKVReply &reply);
     void insert_pending_request(uint32_t req_id, const PendingRequest &request);
     PendingRequest& get_pending_request(uint32_t req_id);
     void delete_pending_request(uint32_t req_id);

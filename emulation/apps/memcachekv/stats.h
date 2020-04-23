@@ -9,20 +9,20 @@ namespace memcachekv {
 
 class MemcacheKVStats : public Stats {
 public:
-    MemcacheKVStats()
-        : Stats(), cache_hits(0), cache_misses(0) {};
-    MemcacheKVStats(const char* stats_file, int interval, const char *interval_file = nullptr)
-        : Stats(stats_file, interval, interval_file), cache_hits(0), cache_misses(0) {};
+    MemcacheKVStats(int n_threads);
+    MemcacheKVStats(int n_threads,
+                    const char* stats_file,
+                    int interval,
+                    const char *interval_file = nullptr);
     ~MemcacheKVStats() {};
 
-    void report_op(OpType op_type, int latency, bool hit);
+    void report_op(int tid, OpType op_type, int latency, bool hit);
     virtual void _dump() override;
 
 private:
-    uint64_t cache_hits;
-    uint64_t cache_misses;
-    std::mutex mtx;
-    std::map<OpType, uint64_t> received_replies;
+    std::vector<uint64_t> cache_hits;
+    std::vector<uint64_t> cache_misses;
+    std::vector<std::map<OpType, uint64_t>> replies;
 };
 
 } // namespace memcachekv

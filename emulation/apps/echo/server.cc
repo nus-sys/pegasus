@@ -10,7 +10,7 @@ Server::~Server()
 {
 }
 
-void Server::receive_message(const Message &msg, const Address &addr)
+void Server::receive_message(const Message &msg, const Address &addr, int tid)
 {
     this->transport->send_message(msg, addr);
 }

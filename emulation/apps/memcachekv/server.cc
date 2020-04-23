@@ -28,7 +28,7 @@ Server::~Server()
 {
 }
 
-void Server::receive_message(const Message &msg, const Address &addr)
+void Server::receive_message(const Message &msg, const Address &addr, int tid)
 {
     // Check for controller message
     ControllerMessage ctrlmsg;

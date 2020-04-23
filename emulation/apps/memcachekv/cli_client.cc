@@ -20,7 +20,7 @@ CLIClient::~CLIClient()
 {
 }
 
-void CLIClient::receive_message(const Message &msg, const Address &addr)
+void CLIClient::receive_message(const Message &msg, const Address &addr, int tid)
 {
     MemcacheKVMessage kvmsg;
     this->codec->decode(msg, kvmsg);

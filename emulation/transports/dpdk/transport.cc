@@ -506,7 +506,7 @@ void DPDKTransport::transport_thread(int tid)
             Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
                         rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),
                         false);
-            this->receiver->receive_message(msg, addr);
+            this->receiver->receive_message(msg, addr, tid);
             rte_pktmbuf_free(m);
         }
     }

@@ -25,7 +25,7 @@ Decrementor::~Decrementor()
 }
 
 void
-Decrementor::receive_message(const Message &msg, const Address &addr)
+Decrementor::receive_message(const Message &msg, const Address &addr, int tid)
 {
     // Should never receive messages
     return;

@@ -163,7 +163,7 @@ void KVWorkloadGenerator::adjust_send_rate(int tid)
 {
     if (++this->op_count[tid] >= LATENCY_CHECK_COUNT) {
         this->op_count[tid] = 0;
-        if (this->stats->get_latency(LATENCY_CHECK_PTILE) > this->target_latency) {
+        if (this->stats->get_latency(tid, LATENCY_CHECK_PTILE) > this->target_latency) {
             this->mean_interval[tid] += 1;
         } else {
             this->mean_interval[tid] = std::max(MIN_INTERVAL, this->mean_interval[tid] - 1);
@@ -184,7 +184,7 @@ Client::~Client()
 {
 }
 
-void Client::receive_message(const Message &msg, const Address &addr)
+void Client::receive_message(const Message &msg, const Address &addr, int tid)
 {
     MemcacheKVMessage kvmsg;
     if (!this->codec->decode(msg, kvmsg)) {
@@ -193,7 +193,7 @@ void Client::receive_message(const Message &msg, const Address &addr)
     assert(kvmsg.type == MemcacheKVMessage::Type::REPLY);
     assert(kvmsg.reply.client_id == this->config->client_id);
 
-    complete_op(kvmsg.reply);
+    complete_op(tid, kvmsg.reply);
 }
 
 void Client::run()
@@ -215,6 +215,7 @@ void Client::run_thread(int tid)
         const NextOperation &next_op = this->gen->next_operation(tid);
         wait(now, next_op.time);
         execute_op(next_op.op);
+        this->stats->report_issue(tid);
     } while (latency(start, now) < this->config->duration * 1000000);
 }
 
@@ -240,11 +241,9 @@ void Client::execute_op(const Operation &op)
     // Chain replication: send READs to tail rack and WRITEs to head rack
     int rack_id = op.op_type == OpType::GET ? this->config->num_racks-1 : 0;
     this->transport->send_message_to_node(msg, rack_id, kvmsg.request.node_id);
-
-    this->stats->report_issue();
 }
 
-void Client::complete_op(const MemcacheKVReply &reply)
+void Client::complete_op(int tid, const MemcacheKVReply &reply)
 {
     struct timeval start_time, end_time;
     gettimeofday(&end_time, nullptr);
@@ -253,7 +252,8 @@ void Client::complete_op(const MemcacheKVReply &reply)
     if (end_time.tv_usec < start_time.tv_usec) {
         start_time.tv_sec -= 1; // assume request won't take > 1 sec
     }
-    this->stats->report_op(reply.op_type,
+    this->stats->report_op(tid,
+                           reply.op_type,
                            latency(start_time, end_time),
                            reply.result == Result::OK);
 }

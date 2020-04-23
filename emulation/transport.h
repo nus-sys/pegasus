@@ -31,7 +31,8 @@ public:
     virtual ~TransportReceiver() = 0;
     void register_transport(Transport *transport);
     virtual void receive_message(const Message &msg,
-                                 const Address &addr) = 0;
+                                 const Address &addr,
+                                 int tid) = 0;
 protected:
     Transport *transport;
 };

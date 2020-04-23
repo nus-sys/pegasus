@@ -7,7 +7,7 @@ Controller::Controller(Configuration *config,
     : config(config), ctrlmsg(ctrlmsg) {}
 
 
-void Controller::receive_message(const Message &msg, const Address &addr)
+void Controller::receive_message(const Message &msg, const Address &addr, int tid)
 {
     ControllerMessage ctrlmsg;
     if (!this->codec.decode(msg, ctrlmsg)) {
