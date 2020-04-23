@@ -210,7 +210,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     default:
         panic("Unknown memcachekv op type");
     }
-    update_rate(op);
+    //update_rate(op);
 }
 
 void
