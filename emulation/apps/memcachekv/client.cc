@@ -72,9 +72,9 @@ int KVWorkloadGenerator::next_zipf_key_index(int tid)
     int l = 0, r = this->keys->size(), mid = 0;
     while (l < r) {
         mid = (l + r) / 2;
-        if (random > this->zipfs[mid]) {
+        if (random > this->zipfs.at(mid)) {
             l = mid + 1;
-        } else if (random < this->zipfs[mid]) {
+        } else if (random < this->zipfs.at(mid)) {
             r = mid - 1;
         } else {
             break;
