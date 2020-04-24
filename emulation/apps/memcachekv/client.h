@@ -58,7 +58,7 @@ public:
                         Stats *stats);
     ~KVWorkloadGenerator() {};
 
-    const NextOperation &next_operation(int tid);
+    void next_operation(int tid, NextOperation &next_op);
 
 private:
     int next_zipf_key_index(int tid);
@@ -76,8 +76,6 @@ private:
     int d_interval;
     int d_nkeys;
     Stats *stats;
-
-    NextOperation next_op;
 
     std::string value;
     std::vector<float> zipfs;
@@ -130,7 +128,6 @@ private:
     KVWorkloadGenerator *gen;
     MessageCodec *codec;
 
-    std::atomic_uint req_id;
     std::unordered_map<uint32_t, PendingRequest> pending_requests;
     std::mutex pending_requests_mutex;
 };

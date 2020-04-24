@@ -7,6 +7,8 @@
 #include <apps/memcachekv/client.h>
 #include <apps/memcachekv/utils.h>
 
+static thread_local uint32_t req_id = 1;
+
 #define LATENCY_CHECK_COUNT 100
 #define LATENCY_CHECK_PTILE 0.99
 #define MIN_INTERVAL 1
@@ -66,7 +68,7 @@ int KVWorkloadGenerator::next_zipf_key_index(int tid)
 {
     float random = 0.0;
     while (random == 0.0) {
-        random = this->unif_real_dist[tid](this->generator[tid]);
+        random = this->unif_real_dist.at(tid)(this->generator.at(tid));
     }
 
     int l = 0, r = this->keys->size(), mid = 0;
@@ -85,7 +87,7 @@ int KVWorkloadGenerator::next_zipf_key_index(int tid)
 
 OpType KVWorkloadGenerator::next_op_type(int tid)
 {
-    float op_choice = this->unif_real_dist[tid](this->generator[tid]);
+    float op_choice = this->unif_real_dist.at(tid)(this->generator.at(tid));
     OpType op_type;
     if (op_choice < this->get_ratio) {
         op_type = OpType::GET;
@@ -97,7 +99,7 @@ OpType KVWorkloadGenerator::next_op_type(int tid)
     return op_type;
 }
 
-const NextOperation &KVWorkloadGenerator::next_operation(int tid)
+void KVWorkloadGenerator::next_operation(int tid, NextOperation &next_op)
 {
     if (this->d_type != DynamismType::NONE) {
         struct timeval tv;
@@ -108,10 +110,10 @@ const NextOperation &KVWorkloadGenerator::next_operation(int tid)
         }
     }
 
-    Operation &op = this->next_op.op;
+    Operation &op = next_op.op;
     switch (this->key_type) {
     case KeyType::UNIFORM:
-        op.key = this->keys->at(this->unif_int_dist[tid](this->generator[tid]));
+        op.key = this->keys->at(this->unif_int_dist.at(tid)(this->generator.at(tid)));
         break;
     case KeyType::ZIPF:
         op.key = this->keys->at(next_zipf_key_index(tid));
@@ -130,8 +132,7 @@ const NextOperation &KVWorkloadGenerator::next_operation(int tid)
         adjust_send_rate(tid);
         break;
     }
-    this->next_op.time = this->poisson_dist[tid](this->generator[tid]);
-    return this->next_op;
+    next_op.time = this->poisson_dist.at(tid)(this->generator.at(tid));
 }
 
 void KVWorkloadGenerator::change_keys()
@@ -176,7 +177,7 @@ Client::Client(Configuration *config,
                MemcacheKVStats *stats,
                KVWorkloadGenerator *gen,
                MessageCodec *codec)
-    : config(config), stats(stats), gen(gen), codec(codec), req_id(1)
+    : config(config), stats(stats), gen(gen), codec(codec)
 {
 }
 
@@ -210,9 +211,10 @@ void Client::run_thread(int tid)
     struct timeval start, now;
     gettimeofday(&start, nullptr);
     gettimeofday(&now, nullptr);
+    NextOperation next_op;
 
     do {
-        const NextOperation &next_op = this->gen->next_operation(tid);
+        this->gen->next_operation(tid, next_op);
         wait(now, next_op.time);
         execute_op(next_op.op);
         this->stats->report_issue(tid);
@@ -223,12 +225,11 @@ void Client::execute_op(const Operation &op)
 {
     struct timeval time;
     gettimeofday(&time, nullptr);
-    uint32_t req_id = std::atomic_fetch_add(&this->req_id, {1});
 
     MemcacheKVMessage kvmsg;
     kvmsg.type = MemcacheKVMessage::Type::REQUEST;
     kvmsg.request.client_id = this->config->client_id;
-    kvmsg.request.req_id = req_id;
+    kvmsg.request.req_id = req_id++;
     kvmsg.request.req_time = (uint32_t)time.tv_usec;
     kvmsg.request.node_id = key_to_node_id(op.key, this->config->num_nodes);
     kvmsg.request.op = op;
