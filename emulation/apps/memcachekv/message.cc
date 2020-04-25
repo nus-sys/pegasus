@@ -18,8 +18,7 @@ static void convert_endian(void *dst, const void *src, size_t size)
     }
 }
 
-bool
-WireCodec::decode(const Message &in, MemcacheKVMessage &out)
+bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
 {
     const char *ptr = (const char*)in.buf();
     size_t buf_size = in.len();
@@ -150,8 +149,7 @@ WireCodec::decode(const Message &in, MemcacheKVMessage &out)
     return true;
 }
 
-bool
-WireCodec::encode(Message &out, const MemcacheKVMessage &in)
+bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
 {
     // First determine buffer size
     size_t buf_size;
@@ -345,8 +343,7 @@ WireCodec::encode(Message &out, const MemcacheKVMessage &in)
     return true;
 }
 
-bool
-NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
+bool NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
 {
     const char *ptr = (const char*)in.buf();
     size_t buf_size = in.len();
@@ -446,8 +443,7 @@ NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
     return true;
 }
 
-bool
-NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
+bool NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
 {
     // First determine buffer size
     size_t buf_size;
@@ -573,8 +569,7 @@ NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
     return true;
 }
 
-bool
-ControllerCodec::decode(const Message &in, ControllerMessage &out)
+bool ControllerCodec::decode(const Message &in, ControllerMessage &out)
 {
     const char *ptr = (const char*)in.buf();
     size_t buf_size = in.len();
@@ -642,8 +637,7 @@ ControllerCodec::decode(const Message &in, ControllerMessage &out)
     return true;
 }
 
-bool
-ControllerCodec::encode(Message &out, const ControllerMessage &in)
+bool ControllerCodec::encode(Message &out, const ControllerMessage &in)
 {
     size_t buf_size;
     switch (in.type) {
