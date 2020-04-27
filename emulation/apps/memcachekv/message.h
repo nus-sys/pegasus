@@ -1,5 +1,5 @@
-#ifndef __MEMCACHEKV_MESSAGE_H__
-#define __MEMCACHEKV_MESSAGE_H__
+#ifndef _MEMCACHEKV_MESSAGE_H_
+#define _MEMCACHEKV_MESSAGE_H_
 
 #include <sys/socket.h>
 #include <list>
@@ -37,12 +37,12 @@ struct Operation {
 
 struct MemcacheKVRequest {
     MemcacheKVRequest()
-        : client_id(0), req_id(0), node_id(0) {};
+        : client_id(0), server_id(0), req_id(0), req_time(0) {};
 
     int client_id;
+    int server_id;
     uint32_t req_id;
     uint32_t req_time;
-    int node_id;
     Operation op;
 };
 
@@ -53,22 +53,23 @@ enum class Result {
 
 struct MemcacheKVReply {
     MemcacheKVReply()
-        : keyhash(0), node_id(0), load(0), ver(0), client_id(0),
-        req_id(0), req_time(0), op_type(OpType::GET),
-        result(Result::OK), value("") {};
-
-    keyhash_t keyhash;
-    int node_id;
-    load_t load;
-    ver_t ver;
+        : client_id(0), server_id(0), req_id(0), req_time(0),
+        op_type(OpType::GET), keyhash(0), ver(0), key(""), value(""),
+        result(Result::OK), load(0) {};
 
     int client_id;
+    int server_id;
     uint32_t req_id;
     uint32_t req_time;
+
     OpType op_type;
-    Result result;
+    keyhash_t keyhash;
+    ver_t ver;
     std::string key;
     std::string value;
+
+    Result result;
+    load_t load;
 };
 
 struct MigrationRequest {
@@ -82,7 +83,7 @@ struct MigrationRequest {
 struct MigrationAck {
     keyhash_t keyhash;
     ver_t ver;
-    int node_id;
+    int server_id;
 };
 
 struct MemcacheKVMessage {
@@ -126,17 +127,18 @@ private:
     bool proto_enable;
     /* Wire format:
      * Header:
-     * identifier (16) + op_type (8) + key_hash (32) + node (8) + load (16) +
-     * version (32) + debug_node (8) + debug_load (16) + message payload
+     * identifier (16) + op_type (8) + key_hash (32) + client_id (8) + server_id
+     * (8) + load (16) + version (32) + debug_node (8) + debug_load (16) +
+     * message payload
      *
      * Message payload:
      * Request:
-     * client_id (32) + req_id (32) + req_time (32) + op_type (8) + key_len (16)
-     * + key (+ value_len(16) + value)
+     * req_id (32) + req_time (32) + op_type (8) + key_len (16) + key (+
+     * value_len(16) + value)
      *
      * Reply:
-     * client_id (32) + req_id (32) + req_time (32) + op_type (8) + result (8) +
-     * value_len(16) + value
+     * req_id (32) + req_time (32) + op_type (8) + result (8) + value_len(16) +
+     * value
      *
      * Migration request:
      * key_len (16) + key + value_len (16) + value
@@ -150,7 +152,6 @@ private:
     typedef uint8_t node_t;
     typedef uint16_t load_t;
     typedef uint32_t ver_t;
-    typedef uint32_t client_id_t;
     typedef uint32_t req_id_t;
     typedef uint32_t req_time_t;
     typedef uint16_t key_len_t;
@@ -169,9 +170,9 @@ private:
     static const op_type_t OP_MGR_ACK   = 0x6;
     static const op_type_t OP_PUT_FWD   = 0x7;
 
-    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
-    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(key_len_t);
-    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(client_id_t) + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(result_t) + sizeof(value_len_t);
+    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
+    static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(key_len_t);
+    static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(result_t) + sizeof(value_len_t);
     static const size_t MGR_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
     static const size_t MGR_ACK_BASE_SIZE = PACKET_BASE_SIZE;
 };
@@ -326,4 +327,4 @@ private:
 
 } // namespace memcachekv
 
-#endif /* __MEMCACHEKV_MESSAGE_H__ */
+#endif /* _MEMCACHEKV_MESSAGE_H_ */

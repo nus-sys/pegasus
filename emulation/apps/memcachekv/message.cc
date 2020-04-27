@@ -1,22 +1,13 @@
 #include <cstring>
 
 #include <logger.h>
+#include <utils.h>
 #include <apps/memcachekv/message.h>
 #include <apps/memcachekv/utils.h>
 
 using std::string;
 
 namespace memcachekv {
-
-static void convert_endian(void *dst, const void *src, size_t size)
-{
-    uint8_t *dptr, *sptr;
-    for (dptr = (uint8_t*)dst, sptr = (uint8_t*)src + size - 1;
-         size > 0;
-         size--) {
-        *dptr++ = *sptr--;
-    }
-}
 
 bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
 {
@@ -39,7 +30,9 @@ bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
     keyhash_t keyhash;
     convert_endian(&keyhash, ptr, sizeof(keyhash_t));
     ptr += sizeof(keyhash_t);
-    int node_id = *(node_t*)ptr;
+    uint8_t client_id = *(node_t*)ptr;
+    ptr += sizeof(node_t);
+    uint8_t server_id = *(node_t*)ptr;
     ptr += sizeof(node_t);
     load_t load_a;
     convert_endian(&load_a, ptr, sizeof(load_t));
@@ -63,13 +56,12 @@ bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REQUEST;
-        out.request.client_id = *(client_id_t*)ptr;
-        ptr += sizeof(client_id_t);
+        out.request.client_id = client_id;
+        out.request.server_id = server_id;
         out.request.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
         out.request.req_time = *(req_time_t*)ptr;
         ptr += sizeof(req_time_t);
-        out.request.node_id = node_id;
         out.request.op.op_type = static_cast<OpType>(*(op_type_t*)ptr);
         ptr += sizeof(op_type_t);
         out.request.op.keyhash = keyhash;
@@ -100,12 +92,11 @@ bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
+        out.reply.client_id = client_id;
+        out.reply.server_id = server_id;
         out.reply.keyhash = keyhash;
-        out.reply.node_id = node_id;
         out.reply.load = load_a;
         out.reply.ver = ver;
-        out.reply.client_id = *(client_id_t*)ptr;
-        ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
         out.reply.req_time = *(req_time_t*)ptr;
@@ -210,7 +201,9 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         hash = hash & KEYHASH_MASK; // controller uses signed int
         convert_endian(ptr, &hash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
-        *(node_t*)ptr = in.request.node_id;
+        *(node_t*)ptr = in.request.client_id;
+        ptr += sizeof(node_t);
+        *(node_t*)ptr = in.request.server_id;
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         *(ver_t*)ptr = 0;
@@ -236,7 +229,9 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(op_type_t);
         convert_endian(ptr, &in.reply.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
-        *(node_t*)ptr = in.reply.node_id;
+        *(node_t*)ptr = in.reply.client_id;
+        ptr += sizeof(node_t);
+        *(node_t*)ptr = in.reply.server_id;
         ptr += sizeof(node_t);
         convert_endian(ptr, &in.reply.load, sizeof(load_t));
         ptr += sizeof(load_t);
@@ -252,6 +247,7 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         convert_endian(ptr, &in.migration_request.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         ptr += sizeof(node_t);
+        ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         convert_endian(ptr, &in.migration_request.ver, sizeof(ver_t));
         ptr += sizeof(ver_t);
@@ -264,7 +260,8 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(op_type_t);
         convert_endian(ptr, &in.migration_ack.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
-        *(node_t*)ptr = in.migration_ack.node_id;
+        ptr += sizeof(node_t);
+        *(node_t*)ptr = in.migration_ack.server_id;
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         convert_endian(ptr, &in.migration_ack.ver, sizeof(ver_t));
@@ -280,8 +277,6 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
     // Payload
     switch (in.type) {
     case MemcacheKVMessage::Type::REQUEST: {
-        *(client_id_t*)ptr = (client_id_t)in.request.client_id;
-        ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.request.req_id;
         ptr += sizeof(req_id_t);
         *(req_time_t*)ptr = (req_time_t)in.request.req_time;
@@ -302,8 +297,6 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {
-        *(client_id_t*)ptr = (client_id_t)in.reply.client_id;
-        ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.reply.req_id;
         ptr += sizeof(req_id_t);
         *(req_time_t*)ptr = (req_time_t)in.reply.req_time;

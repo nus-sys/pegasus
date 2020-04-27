@@ -229,9 +229,9 @@ void Client::execute_op(const Operation &op)
     MemcacheKVMessage kvmsg;
     kvmsg.type = MemcacheKVMessage::Type::REQUEST;
     kvmsg.request.client_id = this->config->client_id;
+    kvmsg.request.server_id = key_to_node_id(op.key, this->config->num_nodes);
     kvmsg.request.req_id = req_id++;
     kvmsg.request.req_time = (uint32_t)time.tv_usec;
-    kvmsg.request.node_id = key_to_node_id(op.key, this->config->num_nodes);
     kvmsg.request.op = op;
 
     Message msg;
@@ -239,9 +239,13 @@ void Client::execute_op(const Operation &op)
         panic("Failed to encode message");
     }
 
-    // Chain replication: send READs to tail rack and WRITEs to head rack
-    int rack_id = op.op_type == OpType::GET ? this->config->num_racks-1 : 0;
-    this->transport->send_message_to_node(msg, rack_id, kvmsg.request.node_id);
+    if (this->config->endhost_lb) {
+        this->transport->send_message_to_lb(msg);
+    } else {
+        // Chain replication: send READs to tail rack and WRITEs to head rack
+        int rack_id = op.op_type == OpType::GET ? this->config->num_racks-1 : 0;
+        this->transport->send_message_to_node(msg, rack_id, kvmsg.request.server_id);
+    }
 }
 
 void Client::complete_op(int tid, const MemcacheKVReply &reply)
@@ -257,25 +261,6 @@ void Client::complete_op(int tid, const MemcacheKVReply &reply)
                            reply.op_type,
                            latency(start_time, end_time),
                            reply.result == Result::OK);
-}
-
-void Client::insert_pending_request(uint32_t req_id, const PendingRequest &request)
-{
-    std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
-    this->pending_requests[req_id] = request;
-}
-
-PendingRequest& Client::get_pending_request(uint32_t req_id)
-{
-    std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
-    assert(this->pending_requests.count(req_id) > 0);
-    return this->pending_requests.at(req_id);
-}
-
-void Client::delete_pending_request(uint32_t req_id)
-{
-    std::lock_guard<std::mutex> lck(this->pending_requests_mutex);
-    this->pending_requests.erase(req_id);
 }
 
 } // namespace memcachekv

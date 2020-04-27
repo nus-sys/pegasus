@@ -84,10 +84,10 @@ UDPConfiguration::UDPConfiguration(const char *file_path)
             }
             this->client_addresses.push_back(new UDPAddress(std::string(host),
                                                             std::string(port)));
-        } else if (strcasecmp(cmd, "router") == 0) {
+        } else if (strcasecmp(cmd, "lb") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
-                panic("'router' configuration line requires an argument");
+                panic("'lb' configuration line requires an argument");
             }
 
             char *host = strtok(arg, ":");
@@ -96,7 +96,7 @@ UDPConfiguration::UDPConfiguration(const char *file_path)
             if (host == nullptr || port == nullptr) {
                 panic("Configuration line format: 'router host:port'");
             }
-            this->router_address = new UDPAddress(std::string(host), std::string(port));
+            this->lb_address = new UDPAddress(std::string(host), std::string(port));
         } else if (strcasecmp(cmd, "controller") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {

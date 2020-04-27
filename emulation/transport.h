@@ -33,6 +33,8 @@ public:
     virtual void receive_message(const Message &msg,
                                  const Address &addr,
                                  int tid) = 0;
+    virtual void receive_raw(void *buf, void *tdata, int tid);
+
 protected:
     Transport *transport;
 };
@@ -45,10 +47,11 @@ public:
     void register_receiver(TransportReceiver *receiver);
     void send_message_to_node(const Message &msg, int rack_id, int node_id);
     void send_message_to_local_node(const Message &msg, int node_id);
-    void send_message_to_router(const Message &msg);
+    void send_message_to_lb(const Message &msg);
     void send_message_to_controller(const Message &msg, int rack_id);
 
     virtual void send_message(const Message &msg, const Address &addr) = 0;
+    virtual void send_raw(const void *buf, void *tdata);
     virtual void run(void) = 0;
     virtual void stop(void) = 0;
     virtual void wait(void) = 0;

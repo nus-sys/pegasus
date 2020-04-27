@@ -12,6 +12,7 @@ public:
     ~DPDKTransport();
 
     virtual void send_message(const Message &msg, const Address &addr) override final;
+    virtual void send_raw(const void *buf, void *tdata) override final;
     virtual void run() override final;
     virtual void stop() override final;
     virtual void wait() override final;

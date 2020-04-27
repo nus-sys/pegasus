@@ -59,6 +59,11 @@ void TransportReceiver::register_transport(Transport *transport)
     this->transport = transport;
 }
 
+void TransportReceiver::receive_raw(void *buf, void *tdata, int tid)
+{
+    panic("receive_raw not implemented");
+}
+
 Transport::Transport(const Configuration *config)
     : config(config), receiver(nullptr)
 {
@@ -88,13 +93,18 @@ void Transport::send_message_to_local_node(const Message &msg, int node_id)
                  *this->config->node_addresses.at(this->config->rack_id).at(node_id));
 }
 
-void Transport::send_message_to_router(const Message &msg)
+void Transport::send_message_to_lb(const Message &msg)
 {
-    send_message(msg, *this->config->router_address);
+    send_message(msg, *this->config->lb_address);
 }
 
 void Transport::send_message_to_controller(const Message &msg, int rack_id)
 {
     assert(rack_id >= 0 && rack_id < (int)this->config->controller_addresses.size());
     send_message(msg, *this->config->controller_addresses.at(rack_id));
+}
+
+void Transport::send_raw(const void *buf, void *tdata)
+{
+    panic("send_raw not implemented");
 }

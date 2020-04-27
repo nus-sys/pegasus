@@ -81,10 +81,10 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
             this->client_addresses.push_back(new DPDKAddress(ether,
                                                              ip,
                                                              port));
-        } else if (strcasecmp(cmd, "router") == 0) {
+        } else if (strcasecmp(cmd, "lb") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
-                panic("'router' configuration line requires an argument");
+                panic("'lb' configuration line requires an argument");
             }
 
             char *ether = strtok(arg, "|");
@@ -92,9 +92,9 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
             char *port = strtok(nullptr, "");
 
             if (ether == nullptr || ip == nullptr || port == nullptr) {
-                panic("Configuration line format: 'router ether|ip|port'");
+                panic("Configuration line format: 'lb ether|ip|port'");
             }
-            this->router_address = new DPDKAddress(ether, ip, port);
+            this->lb_address = new DPDKAddress(ether, ip, port);
         } else if (strcasecmp(cmd, "controller") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {

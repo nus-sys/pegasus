@@ -30,9 +30,11 @@ public:
     int n_colocate_nodes;
     bool is_server;
     bool terminating;
+    bool raw;
+    bool endhost_lb;
     std::vector<std::vector<Address*>> node_addresses;
     std::vector<Address*> client_addresses;
-    Address *router_address;
+    Address *lb_address;
     std::vector<Address*> controller_addresses;
 };
 

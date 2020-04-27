@@ -139,8 +139,8 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
     // Chain replication: tail rack sends a reply; other racks forward the request
     if (this->config->rack_id == this->config->num_racks - 1) {
         kvmsg.type = MemcacheKVMessage::Type::REPLY;
-        kvmsg.reply.node_id = this->config->node_id;
         kvmsg.reply.client_id = request.client_id;
+        kvmsg.reply.server_id = this->config->node_id;
         kvmsg.reply.req_id = request.req_id;
         kvmsg.reply.req_time = request.req_time;
     } else {
@@ -153,24 +153,28 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
         panic("Failed to encode message");
     }
 
-    // Chain replication: tail rack replies to client; other racks forward
-    // request to the next rack (same node id) in chain
-    if (this->config->rack_id == this->config->num_racks - 1) {
-        this->transport->send_message(msg,
-                                      *this->config->client_addresses[request.client_id]);
+    if (this->config->endhost_lb) {
+        this->transport->send_message_to_lb(msg);
     } else {
-        this->transport->send_message_to_node(msg,
-                                              this->config->rack_id+1,
-                                              this->config->node_id);
+        // Chain replication: tail rack replies to client; other racks forward
+        // request to the next rack (same node id) in chain
+        if (this->config->rack_id == this->config->num_racks - 1) {
+            this->transport->send_message(msg,
+                    *this->config->client_addresses[request.client_id]);
+        } else {
+            this->transport->send_message_to_node(msg,
+                    this->config->rack_id+1,
+                    this->config->node_id);
+        }
     }
 }
 
 void
 Server::process_op(const Operation &op, MemcacheKVReply &reply)
 {
+    reply.op_type = op.op_type;
     reply.keyhash = op.keyhash;
     reply.ver = op.ver;
-    reply.op_type = op.op_type;
     reply.key = op.key;
     if (this->report_load) {
         reply.load = calculate_load();
@@ -225,13 +229,13 @@ Server::process_migration_request(const MigrationRequest &request)
         kvmsg.type = MemcacheKVMessage::Type::MGR_ACK;
         kvmsg.migration_ack.keyhash = request.keyhash;
         kvmsg.migration_ack.ver = request.ver;
-        kvmsg.migration_ack.node_id = this->config->node_id;
+        kvmsg.migration_ack.server_id = this->config->node_id;
 
         Message msg;
         if (!this->codec->encode(msg, kvmsg)) {
             panic("Failed to encode migration ack");
         }
-        this->transport->send_message_to_router(msg);
+        this->transport->send_message_to_lb(msg);
     }
 }
 

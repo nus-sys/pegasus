@@ -42,8 +42,7 @@ enum class DynamismType {
 
 class KVWorkloadGenerator {
 public:
-    KVWorkloadGenerator(std::deque<std::string> *keys,
-                        int value_len,
+    KVWorkloadGenerator(std::deque<std::string> *keys, int value_len,
                         float get_ratio,
                         float put_ratio,
                         int mean_interval,
@@ -90,18 +89,6 @@ private:
     std::vector<std::poisson_distribution<int>> poisson_dist;
 };
 
-struct PendingRequest {
-    OpType op_type;
-    struct timeval start_time;
-    int received_acks;
-    int expected_acks;
-
-    inline PendingRequest()
-        : op_type(OpType::GET),
-        received_acks(0),
-        expected_acks(0) {};
-};
-
 class Client : public Application {
 public:
     Client(Configuration *config,
@@ -119,17 +106,11 @@ public:
 private:
     void execute_op(const Operation &op);
     void complete_op(int tid, const MemcacheKVReply &reply);
-    void insert_pending_request(uint32_t req_id, const PendingRequest &request);
-    PendingRequest& get_pending_request(uint32_t req_id);
-    void delete_pending_request(uint32_t req_id);
 
     Configuration *config;
     MemcacheKVStats *stats;
     KVWorkloadGenerator *gen;
     MessageCodec *codec;
-
-    std::unordered_map<uint32_t, PendingRequest> pending_requests;
-    std::mutex pending_requests_mutex;
 };
 
 } // namespace memcachekv

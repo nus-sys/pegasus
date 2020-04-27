@@ -1,4 +1,8 @@
 #include <cassert>
+#include <net/ethernet.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+
 #include <rte_eal.h>
 #include <rte_lcore.h>
 #include <rte_ethdev.h>
@@ -15,11 +19,8 @@
 #define MAX_PKT_BURST 32
 #define MEMPOOL_CACHE_SIZE 256
 
-#define ETHER_HDR_SIZE 14
-#define IPV4_VER 4
 #define IPV4_HDR_SIZE 5
 #define IPV4_TTL 0xFF
-#define IPV4_PROTO_UDP 0x11
 
 #define FLOW_DEFAULT_PRIORITY 1
 #define FLOW_TRANSPORT_PRIORITY 0
@@ -193,7 +194,8 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
 }
 
 DPDKTransport::DPDKTransport(const Configuration *config)
-    : Transport(config), port_id(0), rx_queue_id(config->colocate_id), status(STOPPED)
+    : Transport(config), port_id(0),
+    rx_queue_id(config->colocate_id), status(STOPPED)
 {
     this->argc = 4;
     this->argv = new char*[this->argc];
@@ -338,7 +340,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
         panic("Failed to allocate rte_mbuf");
     }
     /* Ethernet header */
-    ether_hdr = (struct rte_ether_hdr*)rte_pktmbuf_append(m, ETHER_HDR_SIZE);
+    ether_hdr = (struct rte_ether_hdr*)rte_pktmbuf_append(m, ETHER_HDR_LEN);
     if (ether_hdr == nullptr) {
         panic("Failed to allocate Ethernet header");
     }
@@ -350,7 +352,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     if (ip_hdr == nullptr) {
         panic("Failed to allocated IP header");
     }
-    ip_hdr->version_ihl = (IPV4_VER << 4) | IPV4_HDR_SIZE;
+    ip_hdr->version_ihl = (IPVERSION << 4) | IPV4_HDR_SIZE;
     ip_hdr->type_of_service = 0;
     ip_hdr->total_length = rte_cpu_to_be_16(IPV4_HDR_SIZE * RTE_IPV4_IHL_MULTIPLIER +
                                             sizeof(struct rte_udp_hdr) +
@@ -358,7 +360,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     ip_hdr->packet_id = 0;
     ip_hdr->fragment_offset = 0;
     ip_hdr->time_to_live = IPV4_TTL;
-    ip_hdr->next_proto_id = IPV4_PROTO_UDP;
+    ip_hdr->next_proto_id = IPPROTO_UDP;
     ip_hdr->hdr_checksum = 0;
     ip_hdr->src_addr = src_addr.ip_addr;
     ip_hdr->dst_addr = dst_addr.ip_addr;
@@ -382,6 +384,18 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     sent = rte_eth_tx_burst(this->port_id, tx_queue_id, &m, 1);
     if (sent < 1) {
         panic("Failed to send packet");
+    }
+}
+
+void DPDKTransport::send_raw(const void *buf, void *tdata)
+{
+    struct rte_mbuf *m;
+    uint16_t sent;
+
+    m = (struct rte_mbuf*)tdata;
+    sent = rte_eth_tx_burst(this->port_id, tx_queue_id, &m, 1);
+    if (sent < 1) {
+        panic("Failed to send raw packet");
     }
 }
 
@@ -487,27 +501,33 @@ void DPDKTransport::transport_thread(int tid)
                                         npkts);
         for (i = 0; i < npkts; i++) {
             m = pkt_burst[i];
-            /* Parse packet header */
-            struct rte_ether_hdr *ether_hdr;
-            struct rte_ipv4_hdr *ip_hdr;
-            struct rte_udp_hdr *udp_hdr;
-            offset = 0;
-            ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
-            offset += ETHER_HDR_SIZE;
-            ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
-            offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
-            udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
-            offset += sizeof(struct rte_udp_hdr);
+            if (this->config->raw) {
+                this->receiver->receive_raw(rte_pktmbuf_mtod_offset(m, void*, 0),
+                                            m,
+                                            tid);
+            } else {
+                /* Parse packet header */
+                struct rte_ether_hdr *ether_hdr;
+                struct rte_ipv4_hdr *ip_hdr;
+                struct rte_udp_hdr *udp_hdr;
+                offset = 0;
+                ether_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ether_hdr*, offset);
+                offset += ETHER_HDR_LEN;
+                ip_hdr = rte_pktmbuf_mtod_offset(m, struct rte_ipv4_hdr*, offset);
+                offset += (ip_hdr->version_ihl & RTE_IPV4_HDR_IHL_MASK) * RTE_IPV4_IHL_MULTIPLIER;
+                udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
+                offset += sizeof(struct rte_udp_hdr);
 
-            /* Construct source address */
-            DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
+                /* Construct source address */
+                DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port);
 
-            /* Upcall to transport receiver */
-            Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
-                        rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),
-                        false);
-            this->receiver->receive_message(msg, addr, tid);
-            rte_pktmbuf_free(m);
+                /* Upcall to transport receiver */
+                Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
+                            rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),
+                            false);
+                this->receiver->receive_message(msg, addr, tid);
+                rte_pktmbuf_free(m);
+            }
         }
     }
 }

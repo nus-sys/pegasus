@@ -8,6 +8,16 @@
 #include <stdint.h>
 #include <logger.h>
 
+inline void convert_endian(void *dst, const void *src, size_t size)
+{
+    uint8_t *dptr, *sptr;
+    for (dptr = (uint8_t*)dst, sptr = (uint8_t*)src + size - 1;
+         size > 0;
+         size--) {
+        *dptr++ = *sptr--;
+    }
+}
+
 inline int latency(const struct timeval &start, const struct timeval &end)
 {
     return (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
