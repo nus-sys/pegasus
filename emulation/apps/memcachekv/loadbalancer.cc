@@ -207,7 +207,7 @@ void LoadBalancer::handle_write_req(struct PegasusHeader &header, struct MetaDat
     const_rset_accessor_t ac;
 
     data.is_server = true;
-    header.ver = std::atomic_fetch_add(&this->ver_next, 1);
+    header.ver = std::atomic_fetch_add(&this->ver_next, {1});
     if (this->rset.find(ac, header.keyhash)) {
         header.server_id = select_server(this->all_servers);
     }
