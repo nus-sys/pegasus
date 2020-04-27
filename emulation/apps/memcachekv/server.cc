@@ -153,7 +153,7 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
         panic("Failed to encode message");
     }
 
-    if (this->config->endhost_lb) {
+    if (this->config->use_endhost_lb) {
         this->transport->send_message_to_lb(msg);
     } else {
         // Chain replication: tail rack replies to client; other racks forward

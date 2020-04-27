@@ -239,7 +239,7 @@ void Client::execute_op(const Operation &op)
         panic("Failed to encode message");
     }
 
-    if (this->config->endhost_lb) {
+    if (this->config->use_endhost_lb) {
         this->transport->send_message_to_lb(msg);
     } else {
         // Chain replication: send READs to tail rack and WRITEs to head rack

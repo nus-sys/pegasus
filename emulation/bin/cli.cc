@@ -34,8 +34,9 @@ int main(int argc, char *argv[])
     config->n_transport_threads = 1;
     config->rack_id = -1;
     config->client_id = 0;
-    config->is_server = false;
+    config->node_type = Configuration::NodeType::CLIENT;
     config->terminating = true;
+    config->use_raw_transport = false;
     Transport *transport = new UDPTransport(config);
     CLIClient cli(config, codec);
     Node node(config, transport);

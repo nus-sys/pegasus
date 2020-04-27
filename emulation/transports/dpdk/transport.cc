@@ -124,10 +124,20 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
     for (int colocate_id = 0; colocate_id < config->n_colocate_nodes; colocate_id++) {
         /* Node address */
         const DPDKAddress *addr;
-        if (config->is_server) {
+        switch (config->node_type) {
+        case Configuration::NodeType::SERVER:
             addr = static_cast<const DPDKAddress*>(config->node_addresses.at(config->rack_id).at(config->node_id+colocate_id));
-        } else {
+            break;
+        case Configuration::NodeType::CLIENT:
+            assert(colocate_id == 0);
             addr = static_cast<const DPDKAddress*>(config->client_addresses.at(config->client_id+colocate_id));
+            break;
+        case Configuration::NodeType::LB:
+            assert(colocate_id == 0);
+            addr = static_cast<const DPDKAddress*>(config->lb_address);
+            break;
+        default:
+            panic("Unreachable");
         }
         // Each node gets one rx queue
         uint16_t rx_queue_id = colocate_id;
@@ -501,7 +511,7 @@ void DPDKTransport::transport_thread(int tid)
                                         npkts);
         for (i = 0; i < npkts; i++) {
             m = pkt_burst[i];
-            if (this->config->raw) {
+            if (this->config->use_raw_transport) {
                 this->receiver->receive_raw(rte_pktmbuf_mtod_offset(m, void*, 0),
                                             m,
                                             tid);

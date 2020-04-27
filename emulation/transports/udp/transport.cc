@@ -21,10 +21,18 @@ UDPTransport::UDPTransport(const Configuration *config)
         panic("Failed to create new libevent event base");
     }
 
-    if (config->is_server) {
+    switch (config->node_type) {
+    case Configuration::NodeType::SERVER:
         register_address(config->node_addresses.at(config->rack_id).at(config->node_id));
-    } else {
+        break;
+    case Configuration::NodeType::CLIENT:
         register_address(config->client_addresses.at(config->client_id));
+        break;
+    case Configuration::NodeType::LB:
+        register_address(config->lb_address);
+        break;
+    default:
+        panic("Unreachable");
     }
     register_controller();
 }

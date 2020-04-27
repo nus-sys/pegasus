@@ -11,6 +11,12 @@ public:
 
 class Configuration {
 public:
+    enum NodeType {
+        CLIENT,
+        SERVER,
+        LB
+    };
+
     Configuration();
     virtual ~Configuration() = 0;
 
@@ -28,10 +34,10 @@ public:
     int n_app_threads;
     int colocate_id;
     int n_colocate_nodes;
-    bool is_server;
+    NodeType node_type;
     bool terminating;
-    bool raw;
-    bool endhost_lb;
+    bool use_raw_transport;
+    bool use_endhost_lb;
     std::vector<std::vector<Address*>> node_addresses;
     std::vector<Address*> client_addresses;
     Address *lb_address;

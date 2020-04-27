@@ -15,12 +15,14 @@
 #include <apps/memcachekv/client.h>
 #include <apps/memcachekv/controller.h>
 #include <apps/memcachekv/decrementor.h>
+#include <apps/memcachekv/loadbalancer.h>
 
 enum class NodeMode {
     CLIENT,
     SERVER,
     CONTROLLER,
     DECREMENTOR,
+    LB,
     UNKNOWN
 };
 
@@ -62,7 +64,7 @@ int main(int argc, char *argv[])
     AppMode app_mode = AppMode::UNKNOWN;
     int n_transport_threads = 1, n_app_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, colocate_id = 0, n_colocate_nodes = 1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
-    bool report_load = false, endhost_lb = false;
+    bool report_load = false, use_endhost_lb = false;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
     std::deque<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::KeyType::UNIFORM;
@@ -79,7 +81,7 @@ int main(int argc, char *argv[])
             break;
         }
         case 'b': {
-            endhost_lb = stoi(std::string(optarg)) == 1;
+            use_endhost_lb = stoi(std::string(optarg)) == 1;
             break;
         }
         case 'c': {
@@ -120,6 +122,8 @@ int main(int argc, char *argv[])
                 node_mode = NodeMode::CLIENT;
             } else if (strcmp(optarg, "server") == 0) {
                 node_mode = NodeMode::SERVER;
+            } else if (strcmp(optarg, "lb") == 0) {
+                node_mode = NodeMode::LB;
             } else if (strcmp(optarg, "controller") == 0) {
                 node_mode = NodeMode::CONTROLLER;
             } else if (strcmp(optarg, "decrementor") == 0) {
@@ -333,8 +337,7 @@ int main(int argc, char *argv[])
     config->n_app_threads = n_app_threads;
     config->colocate_id = colocate_id;
     config->n_colocate_nodes = n_colocate_nodes;
-    config->raw = false;
-    config->endhost_lb = endhost_lb;
+    config->use_endhost_lb = use_endhost_lb;
 
     Stats *stats = nullptr;
     memcachekv::KVWorkloadGenerator *gen = nullptr;
@@ -350,8 +353,9 @@ int main(int argc, char *argv[])
             }
             config->rack_id = -1;
             config->client_id = node_id;
-            config->is_server = false;
+            config->node_type = Configuration::NodeType::CLIENT;
             config->terminating = true;
+            config->use_raw_transport = false;
             stats = new Stats(n_app_threads, stats_file_path, 0);
             app = new echo::Client(config, stats, mean_interval);
             break;
@@ -365,8 +369,9 @@ int main(int argc, char *argv[])
             }
             config->rack_id = rack_id;
             config->node_id = node_id;
-            config->is_server = true;
+            config->node_type = Configuration::NodeType::SERVER;
             config->terminating = false;
+            config->use_raw_transport = false;
             app = new echo::Server();
             break;
         }
@@ -399,8 +404,9 @@ int main(int argc, char *argv[])
             }
             config->rack_id = -1;
             config->client_id = node_id;
-            config->is_server = false;
+            config->node_type = Configuration::NodeType::CLIENT;
             config->terminating = true;
+            config->use_raw_transport = false;
             // Read in all keys
             std::ifstream in;
             in.open(keys_file_path);
@@ -445,8 +451,9 @@ int main(int argc, char *argv[])
             }
             config->rack_id = rack_id;
             config->node_id = node_id;
-            config->is_server = true;
+            config->node_type = Configuration::NodeType::SERVER;
             config->terminating = false;
+            config->use_raw_transport = false;
             std::string default_value = std::string(value_len, 'v');
             app = new memcachekv::Server(config, codec, ctrl_codec, proc_latency, default_value, report_load);
             break;
@@ -455,8 +462,9 @@ int main(int argc, char *argv[])
             config->rack_id = -1;
             config->node_id = -1;
             config->client_id = -1;
-            config->is_server = false;
+            config->node_type = Configuration::NodeType::CLIENT;
             config->terminating = true;
+            config->use_raw_transport = false;
             memcachekv::ControllerMessage msg;
             msg.type = memcachekv::ControllerMessage::Type::RESET_REQ;
             msg.reset_req.num_nodes = num_nodes;
@@ -468,11 +476,21 @@ int main(int argc, char *argv[])
             config->rack_id = -1;
             config->node_id = -1;
             config->client_id = -1;
-            config->is_server = false;
+            config->node_type = Configuration::NodeType::CLIENT;
             config->terminating = false;
+            config->use_raw_transport = false;
             app = new memcachekv::Decrementor(config, dec_interval, n_dec);
             break;
         }
+        case NodeMode::LB:
+            config->rack_id = -1;
+            config->node_id = -1;
+            config->client_id = -1;
+            config->node_type = Configuration::NodeType::LB;
+            config->terminating = false;
+            config->use_raw_transport = true;
+            app = new memcachekv::LoadBalancer(config);
+            break;
         default:
             panic("Unknown node mode");
         }
