@@ -122,22 +122,26 @@ void LoadBalancer::rewrite_pegasus_header(void *pkt, const struct PegasusHeader 
 void LoadBalancer::rewrite_address(void *pkt, struct MetaData &data)
 {
     // Currently only support DPDK addresses
-    DPDKAddress *addr;
+    const DPDKAddress *src_addr, *dst_addr;
+    src_addr = static_cast<const DPDKAddress*>(this->config->my_address());
     if (data.is_server) {
-        addr = static_cast<DPDKAddress*>(this->config->node_addresses.at(0).at(data.dst));
+        dst_addr = static_cast<DPDKAddress*>(this->config->node_addresses.at(0).at(data.dst));
     } else {
-        addr = static_cast<DPDKAddress*>(this->config->client_addresses.at(data.dst));
+        dst_addr = static_cast<DPDKAddress*>(this->config->client_addresses.at(data.dst));
     }
 
     char *ptr = (char*)pkt;
     struct ether_header *eth = (struct ether_header*)ptr;
-    memcpy(eth->ether_dhost, &addr->ether_addr, ETH_ALEN);
+    memcpy(eth->ether_shost, &src_addr->ether_addr, ETH_ALEN);
+    memcpy(eth->ether_dhost, &dst_addr->ether_addr, ETH_ALEN);
     ptr += ETHER_HDR_LEN;
     struct iphdr *ip = (struct iphdr*)ptr;
-    ip->daddr = addr->ip_addr;
+    ip->saddr = src_addr->ip_addr;
+    ip->daddr = dst_addr->ip_addr;
     ptr += IPV4_HDR_LEN;
     struct udphdr *udp = (struct udphdr*)ptr;
-    udp->dest = addr->udp_port;
+    udp->source = src_addr->udp_port;
+    udp->dest = dst_addr->udp_port;
 }
 
 void LoadBalancer::calculate_chksum(void *pkt)
