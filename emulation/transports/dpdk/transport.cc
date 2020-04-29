@@ -512,9 +512,11 @@ void DPDKTransport::transport_thread(int tid)
         for (i = 0; i < npkts; i++) {
             m = pkt_burst[i];
             if (this->config->use_raw_transport) {
-                this->receiver->receive_raw(rte_pktmbuf_mtod_offset(m, void*, 0),
-                                            m,
-                                            tid);
+                if (!this->receiver->receive_raw(rte_pktmbuf_mtod_offset(m, void*, 0),
+                                                 m,
+                                                 tid)) {
+                    rte_pktmbuf_free(m);
+                }
             } else {
                 /* Parse packet header */
                 struct rte_ether_hdr *ether_hdr;

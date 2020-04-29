@@ -33,7 +33,8 @@ public:
     virtual void receive_message(const Message &msg,
                                  const Address &addr,
                                  int tid) = 0;
-    virtual void receive_raw(void *buf, void *tdata, int tid);
+    // Return true if callee reuses the buffer to send a packet
+    virtual bool receive_raw(void *buf, void *tdata, int tid);
 
 protected:
     Transport *transport;

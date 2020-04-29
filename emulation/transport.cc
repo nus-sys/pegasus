@@ -59,7 +59,7 @@ void TransportReceiver::register_transport(Transport *transport)
     this->transport = transport;
 }
 
-void TransportReceiver::receive_raw(void *buf, void *tdata, int tid)
+bool TransportReceiver::receive_raw(void *buf, void *tdata, int tid)
 {
     panic("receive_raw not implemented");
 }

@@ -7,9 +7,8 @@
 #include <transports/dpdk/configuration.h>
 #include <apps/memcachekv/loadbalancer.h>
 
-typedef tbb::concurrent_hash_map<keyhash_t, std::set<node_t>>::const_accessor const_rset_accessor_t;
-typedef tbb::concurrent_hash_map<keyhash_t, std::set<node_t>>::accessor rset_accessor_t;
-typedef tbb::concurrent_hash_map<keyhash_t, ver_t>::accessor ver_accessor_t;
+typedef tbb::concurrent_hash_map<keyhash_t, memcachekv::RSetData>::const_accessor const_rset_accessor_t;
+typedef tbb::concurrent_hash_map<keyhash_t, memcachekv::RSetData>::accessor rset_accessor_t;
 
 #define IPV4_HDR_LEN 20
 #define UDP_HDR_LEN 8
@@ -43,7 +42,7 @@ void LoadBalancer::receive_message(const Message &msg, const Address &addr, int 
     panic("LoadBalancer should not receive regular message");
 }
 
-void LoadBalancer::receive_raw(void *buf, void *tdata, int tid)
+bool LoadBalancer::receive_raw(void *buf, void *tdata, int tid)
 {
     PegasusHeader header;
     MetaData data;
@@ -52,10 +51,15 @@ void LoadBalancer::receive_raw(void *buf, void *tdata, int tid)
         panic("Wrong header format");
     }
     process_pegasus_header(header, data);
-    rewrite_address(buf, data);
-    rewrite_pegasus_header(buf, header);
-    calculate_chksum(buf);
-    this->transport->send_raw(buf, tdata);
+    if (data.forward) {
+        rewrite_address(buf, data);
+        rewrite_pegasus_header(buf, header);
+        calculate_chksum(buf);
+        this->transport->send_raw(buf, tdata);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void LoadBalancer::run()
@@ -182,10 +186,10 @@ void LoadBalancer::process_pegasus_header(struct PegasusHeader &header,
         handle_reply(header, data);
         break;
     case OP_MGR_REQ:
-        panic("Not implemented");
+        handle_mgr_req(header, data);
         break;
     case OP_MGR_ACK:
-        panic("Not implemented");
+        handle_mgr_ack(header, data);
         break;
     case OP_PUT_FWD:
         panic("Not implemented");
@@ -200,8 +204,9 @@ void LoadBalancer::handle_read_req(struct PegasusHeader &header, struct MetaData
     const_rset_accessor_t ac;
 
     data.is_server = true;
+    data.forward = true;
     if (this->rset.find(ac, header.keyhash)) {
-        header.server_id = select_server(ac->second);
+        header.server_id = select_server(ac->second.replicas);
     }
     data.dst = header.server_id;
 }
@@ -211,6 +216,7 @@ void LoadBalancer::handle_write_req(struct PegasusHeader &header, struct MetaDat
     const_rset_accessor_t ac;
 
     data.is_server = true;
+    data.forward = true;
     header.ver = std::atomic_fetch_add(&this->ver_next, {1});
     if (this->rset.find(ac, header.keyhash)) {
         header.server_id = select_server(this->all_servers);
@@ -221,18 +227,40 @@ void LoadBalancer::handle_write_req(struct PegasusHeader &header, struct MetaDat
 void LoadBalancer::handle_reply(struct PegasusHeader &header, struct MetaData &data)
 {
     rset_accessor_t ac_rset;
-    ver_accessor_t ac_ver;
 
     data.is_server = false;
+    data.forward = true;
     data.dst = header.client_id;
     if (this->rset.find(ac_rset, header.keyhash)) {
-        this->ver_completed.insert(ac_ver, header.keyhash);
-        if (header.ver > ac_ver->second) {
-            ac_ver->second = header.ver;
-            ac_rset->second.clear();
-            ac_rset->second.insert(header.server_id);
-        } else if (header.ver == ac_ver->second) {
-            ac_rset->second.insert(header.server_id);
+        if (header.ver > ac_rset->second.ver_completed) {
+            ac_rset->second.ver_completed = header.ver;
+            ac_rset->second.replicas.clear();
+            ac_rset->second.replicas.insert(header.server_id);
+        } else if (header.ver == ac_rset->second.ver_completed) {
+            ac_rset->second.replicas.insert(header.server_id);
+        }
+    }
+}
+
+void LoadBalancer::handle_mgr_req(struct PegasusHeader &header, struct MetaData &data)
+{
+    data.is_server = true;
+    data.forward = true;
+    data.dst = header.server_id;
+}
+
+void LoadBalancer::handle_mgr_ack(struct PegasusHeader &header, struct MetaData &data)
+{
+    rset_accessor_t ac_rset;
+
+    data.forward = false;
+    if (this->rset.find(ac_rset, header.keyhash)) {
+        if (header.ver > ac_rset->second.ver_completed) {
+            ac_rset->second.ver_completed = header.ver;
+            ac_rset->second.replicas.clear();
+            ac_rset->second.replicas.insert(header.server_id);
+        } else if (header.ver == ac_rset->second.ver_completed) {
+            ac_rset->second.replicas.insert(header.server_id);
         }
     }
 }

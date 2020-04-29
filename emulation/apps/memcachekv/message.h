@@ -81,9 +81,10 @@ struct MigrationRequest {
 };
 
 struct MigrationAck {
+    int server_id;
+
     keyhash_t keyhash;
     ver_t ver;
-    int server_id;
 };
 
 struct MemcacheKVMessage {

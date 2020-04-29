@@ -28,9 +28,16 @@ struct PegasusHeader {
 
 /* Process pipeline metadata */
 struct MetaData {
-    node_t dst;
     bool is_server;
+    bool forward;
+    node_t dst;
 };
+
+/* Replica set */
+typedef struct {
+    std::set<node_t> replicas;
+    ver_t ver_completed;
+} RSetData;
 
 class LoadBalancer : public Application {
 public:
@@ -40,7 +47,7 @@ public:
     virtual void receive_message(const Message &msg,
                                  const Address &addr,
                                  int tid) override final;
-    virtual void receive_raw(void *buf, void *tdata, int tid) override final;
+    virtual bool receive_raw(void *buf, void *tdata, int tid) override final;
     virtual void run() override final;
     virtual void run_thread(int tid) override final;
 
@@ -53,12 +60,13 @@ private:
     void handle_read_req(struct PegasusHeader &header, struct MetaData &data);
     void handle_write_req(struct PegasusHeader &header, struct MetaData &data);
     void handle_reply(struct PegasusHeader &header, struct MetaData &data);
+    void handle_mgr_req(struct PegasusHeader &header, struct MetaData &data);
+    void handle_mgr_ack(struct PegasusHeader &header, struct MetaData &data);
     node_t select_server(const std::set<node_t> &servers);
 
     Configuration *config;
     std::atomic_uint ver_next;
-    tbb::concurrent_hash_map<keyhash_t, std::set<node_t>> rset;
-    tbb::concurrent_hash_map<keyhash_t, ver_t> ver_completed;
+    tbb::concurrent_hash_map<keyhash_t, RSetData> rset;
     std::set<node_t> all_servers;
 };
 
