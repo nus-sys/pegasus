@@ -190,7 +190,7 @@ int main(int argc, char *argv[])
         case 'w': {
             if (strcmp(optarg, "static") == 0) {
                 protocol_mode = ProtocolMode::STATIC;
-            } else if (strcmp(optarg, "router") == 0) {
+            } else if (strcmp(optarg, "pegasus") == 0) {
                 protocol_mode = ProtocolMode::PEGASUS;
             } else if (strcmp(optarg, "netcache") == 0) {
                 protocol_mode = ProtocolMode::NETCACHE;
