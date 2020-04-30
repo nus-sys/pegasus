@@ -6,7 +6,7 @@
 #include <set>
 #include <mutex>
 #include <vector>
-#include <tbb/concurrent_unordered_map.h>
+#include <tbb/concurrent_hash_map.h>
 
 #include <application.h>
 #include <apps/memcachekv/message.h>
@@ -52,7 +52,9 @@ private:
         std::string value;
         ver_t ver;
     };
-    tbb::concurrent_unordered_map<std::string, Item> store;
+    tbb::concurrent_hash_map<std::string, Item> store;
+    typedef tbb::concurrent_hash_map<std::string, Item>::const_accessor const_accessor_t;
+    typedef tbb::concurrent_hash_map<std::string, Item>::accessor accessor_t;
 
     int proc_latency;
     std::string default_value;

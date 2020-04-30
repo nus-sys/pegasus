@@ -181,10 +181,11 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     }
     switch (op.op_type) {
     case OpType::GET: {
-        if (this->store.count(op.key) > 0) {
+        const_accessor_t ac;
+        if (this->store.find(ac, op.key)) {
             // Key is present
             reply.result = Result::OK;
-            reply.value = this->store.at(op.key).value;
+            reply.value = ac->second.value;
         } else {
             // Key not found
             reply.result = Result::NOT_FOUND;
@@ -194,10 +195,11 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     }
     case OpType::PUT:
     case OpType::PUTFWD: {
-        if (this->store.count(op.key) == 0 ||
-            op.ver >= this->store.at(op.key).ver) {
-            this->store[op.key].value = op.value;
-            this->store[op.key].ver = op.ver;
+        accessor_t ac;
+        this->store.insert(ac, op.key);
+        if (op.ver >= ac->second.ver) {
+            ac->second.value = op.value;
+            ac->second.ver = op.ver;
         }
         reply.op_type = OpType::PUT; // client doesn't expect PUTFWD
         reply.result = Result::OK;
@@ -205,7 +207,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
         break;
     }
     case OpType::DEL: {
-        this->store.unsafe_erase(op.key);
+        this->store.erase(op.key);
         // XXX rkey?
         reply.result = Result::OK;
         reply.value = "";
@@ -220,11 +222,17 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
 void
 Server::process_migration_request(const MigrationRequest &request)
 {
-    if (this->store.count(request.key) == 0 ||
-        request.ver >= this->store.at(request.key).ver) {
+    bool ack = false;
+    accessor_t ac;
+    this->store.insert(ac, request.key);
+    if (request.ver >= ac->second.ver) {
+        ac->second.value = request.value;
+        ac->second.ver = request.ver;
+        ack = true;
+    }
+    ac.release();
 
-        this->store[request.key] = Item(request.value, request.ver);
-
+    if (ack) {
         MemcacheKVMessage kvmsg;
         kvmsg.type = MemcacheKVMessage::Type::MGR_ACK;
         kvmsg.migration_ack.keyhash = request.keyhash;
@@ -243,18 +251,22 @@ void
 Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
 {
     MemcacheKVMessage kvmsg;
+    const_accessor_t ac;
 
     // Send migration request to all nodes in the rack (except itself)
     kvmsg.type = MemcacheKVMessage::Type::MGR_REQ;
     kvmsg.migration_request.keyhash = key_mgr.keyhash;
     kvmsg.migration_request.key = key_mgr.key;
-    if (this->store.count(key_mgr.key) == 0) {
+
+    if (this->store.find(ac, key_mgr.key)) {
+        kvmsg.migration_request.value = ac->second.value;
+        kvmsg.migration_request.ver = ac->second.ver;
+    } else {
         kvmsg.migration_request.value = this->default_value;
         kvmsg.migration_request.ver = 0;
-    } else {
-        kvmsg.migration_request.value = this->store.at(key_mgr.key).value;
-        kvmsg.migration_request.ver = this->store.at(key_mgr.key).ver;
     }
+    ac.release();
+
     Message msg;
     if (!this->codec->encode(msg, kvmsg)) {
         panic("Failed to encode message");
