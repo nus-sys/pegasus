@@ -24,6 +24,7 @@ public:
 private:
     bool filter_packet(const DPDKAddress &addr) const;
 
+    bool use_flow_api;
     int argc;
     char **argv;
     uint16_t port_id;

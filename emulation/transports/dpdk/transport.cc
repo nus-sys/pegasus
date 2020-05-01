@@ -204,7 +204,8 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
 }
 
 DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
-    : Transport(config), rx_queue_id(config->colocate_id), status(STOPPED)
+    : Transport(config), use_flow_api(use_flow_api),
+    rx_queue_id(config->colocate_id), status(STOPPED)
 {
     this->argc = 4;
     this->argv = new char*[this->argc];
@@ -316,7 +317,7 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
         }
 
         // Create flow rules
-        if (use_flow_api) {
+        if (this->use_flow_api) {
             generate_flow_rules(config, this->port_id);
         }
     }
@@ -537,11 +538,13 @@ void DPDKTransport::transport_thread(int tid)
                 /* Construct source address */
                 DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port, 0);
 
-                /* Upcall to transport receiver */
-                Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
+                if (this->use_flow_api || filter_packet(addr)) {
+                    /* Upcall to transport receiver */
+                    Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
                             rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),
                             false);
-                this->receiver->receive_message(msg, addr, tid);
+                    this->receiver->receive_message(msg, addr, tid);
+                }
                 rte_pktmbuf_free(m);
             }
         }
