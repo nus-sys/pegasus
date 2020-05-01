@@ -17,7 +17,7 @@ DPDKAddress::DPDKAddress(const char *ether,
         panic("Failed to parse IP address");
     }
     this->udp_port = rte_cpu_to_be_16(uint16_t(std::stoul(port)));
-    this->port_id = uint16_t(std::stoul(port));
+    this->port_id = uint16_t(std::stoul(port_id));
 }
 
 DPDKAddress::DPDKAddress(const struct rte_ether_addr &ether_addr,
