@@ -8,16 +8,16 @@
 
 class DPDKAddress : public Address {
 public:
-    DPDKAddress(const char *ether, const char *ip, const char *port, const char *port_id);
+    DPDKAddress(const char *ether, const char *ip, const char *port, const char *dev_port);
     DPDKAddress(const struct rte_ether_addr &ether_addr,
                 rte_be32_t ip_addr,
                 rte_be16_t udp_port,
-                uint16_t port_id);
+                uint16_t dev_port);
 
     struct rte_ether_addr ether_addr;
     rte_be32_t ip_addr;
     rte_be16_t udp_port;
-    uint16_t port_id;
+    uint16_t dev_port;
 };
 
 class DPDKConfiguration : public Configuration {

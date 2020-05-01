@@ -29,6 +29,8 @@
 #define FLOW_IPV4_ADDR_MASK 0xFFFFFFFF
 #define FLOW_UDP_PORT_MASK 0xFFFF
 
+#define DEFAULT_PORT_ID 0
+
 thread_local static int tx_queue_id;
 
 struct AppArg {
@@ -90,7 +92,7 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     strcpy(argv[3], "--proc-type=auto");
 }
 
-static void generate_flow_rules(const Configuration *config, uint16_t port_id)
+static void generate_flow_rules(const Configuration *config, uint16_t dev_port)
 {
 
     {
@@ -112,10 +114,10 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
         struct rte_flow_action actions[2];
         actions[0].type = RTE_FLOW_ACTION_TYPE_DROP;
         actions[1].type = RTE_FLOW_ACTION_TYPE_END;
-        if (rte_flow_validate(port_id, &attr, patterns, actions, nullptr) != 0) {
+        if (rte_flow_validate(dev_port, &attr, patterns, actions, nullptr) != 0) {
             panic("Default flow rule is not valid");
         }
-        if (rte_flow_create(port_id, &attr, patterns, actions, nullptr) == nullptr) {
+        if (rte_flow_create(dev_port, &attr, patterns, actions, nullptr) == nullptr) {
             panic("rte_flow_create failed");
         }
     }
@@ -194,10 +196,10 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
         actions[1].type = RTE_FLOW_ACTION_TYPE_END;
 
         /* Validate and install flow rules */
-        if (rte_flow_validate(port_id, &attr, patterns, actions, nullptr) != 0) {
+        if (rte_flow_validate(dev_port, &attr, patterns, actions, nullptr) != 0) {
             panic("Flow rule is not valid");
         }
-        if (rte_flow_create(port_id, &attr, patterns, actions, nullptr) == nullptr) {
+        if (rte_flow_create(dev_port, &attr, patterns, actions, nullptr) == nullptr) {
             panic("rte_flow_create failed");
         }
     }
@@ -219,7 +221,7 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
 
     // Initialize
     const DPDKAddress *addr = static_cast<const DPDKAddress*>(config->my_address());
-    this->port_id = addr->port_id;
+    this->dev_port = addr->dev_port;
 
     construct_arguments(config, this->argc, this->argv);
     if (rte_eal_init(argc, argv) < 0) {
@@ -263,7 +265,7 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
         memset(&port_conf, 0, sizeof(port_conf));
         port_conf.txmode.mq_mode = ETH_MQ_TX_NONE;
 
-        if (rte_eth_dev_info_get(this->port_id, &dev_info) != 0) {
+        if (rte_eth_dev_info_get(this->dev_port, &dev_info) != 0) {
             panic("rte_eth_dev_info_get failed");
         }
         if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
@@ -271,13 +273,13 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
         }
         int num_rx_queues = config->n_colocate_nodes;
         int num_tx_queues = config->n_colocate_nodes * config->n_transport_threads;
-        if (rte_eth_dev_configure(this->port_id,
+        if (rte_eth_dev_configure(this->dev_port,
                                   num_rx_queues,
                                   num_tx_queues,
                                   &port_conf) < 0) {
             panic("rte_eth_dev_configure failed");
         }
-        if (rte_eth_dev_adjust_nb_rx_tx_desc(this->port_id, &nb_rxd, &nb_txd) < 0) {
+        if (rte_eth_dev_adjust_nb_rx_tx_desc(this->dev_port, &nb_rxd, &nb_txd) < 0) {
             panic("rte_eth_dev_adjust_nb_rx_tx_desc failed");
         }
 
@@ -285,10 +287,10 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
         rxconf = dev_info.default_rxconf;
         rxconf.offloads = port_conf.rxmode.offloads;
         for (int qid = 0; qid < num_rx_queues; qid++) {
-            if (rte_eth_rx_queue_setup(this->port_id,
+            if (rte_eth_rx_queue_setup(this->dev_port,
                                        qid,
                                        nb_rxd,
-                                       rte_eth_dev_socket_id(this->port_id),
+                                       rte_eth_dev_socket_id(this->dev_port),
                                        &rxconf,
                                        this->pktmbuf_pool) < 0) {
                 panic("rte_eth_rx_queue_setup failed");
@@ -299,26 +301,26 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
         txconf = dev_info.default_txconf;
         txconf.offloads = port_conf.txmode.offloads;
         for (int qid = 0; qid < num_tx_queues; qid++) {
-            if (rte_eth_tx_queue_setup(this->port_id,
+            if (rte_eth_tx_queue_setup(this->dev_port,
                                        qid,
                                        nb_txd,
-                                       rte_eth_dev_socket_id(this->port_id),
+                                       rte_eth_dev_socket_id(this->dev_port),
                                        &txconf) < 0) {
                 panic("rte_eth_tx_queue_setup failed");
             }
         }
 
         // Start device
-        if (rte_eth_dev_start(this->port_id) < 0) {
+        if (rte_eth_dev_start(this->dev_port) < 0) {
             panic("rte_eth_dev_start failed");
         }
-        if (rte_eth_promiscuous_enable(this->port_id) != 0) {
+        if (rte_eth_promiscuous_enable(this->dev_port) != 0) {
             panic("rte_eth_promiscuous_enable failed");
         }
 
         // Create flow rules
         if (this->use_flow_api) {
-            generate_flow_rules(config, this->port_id);
+            generate_flow_rules(config, this->dev_port);
         }
     }
 }
@@ -326,9 +328,9 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
 DPDKTransport::~DPDKTransport()
 {
     if (rte_eal_process_type() == RTE_PROC_PRIMARY) {
-        rte_flow_flush(this->port_id, nullptr);
-        rte_eth_dev_stop(this->port_id);
-        rte_eth_dev_close(this->port_id);
+        rte_flow_flush(this->dev_port, nullptr);
+        rte_eth_dev_stop(this->dev_port);
+        rte_eth_dev_close(this->dev_port);
     }
     if (this->argv != nullptr) {
         for (int i = 0; i < this->argc; i++) {
@@ -396,7 +398,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     }
     memcpy(dgram, msg.buf(), msg.len());
     /* Send packet */
-    sent = rte_eth_tx_burst(this->port_id, tx_queue_id, &m, 1);
+    sent = rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
     if (sent < 1) {
         panic("Failed to send packet");
     }
@@ -408,7 +410,7 @@ void DPDKTransport::send_raw(const void *buf, void *tdata)
     uint16_t sent;
 
     m = (struct rte_mbuf*)tdata;
-    sent = rte_eth_tx_burst(this->port_id, tx_queue_id, &m, 1);
+    sent = rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
     if (sent < 1) {
         panic("Failed to send raw packet");
     }
@@ -490,7 +492,7 @@ void DPDKTransport::distributor_thread()
     struct rte_mbuf *pkt_burst[MAX_PKT_BURST];
 
     while(this->status == DPDKTransport::RUNNING) {
-        n_rx = rte_eth_rx_burst(this->port_id,
+        n_rx = rte_eth_rx_burst(this->dev_port,
                                 this->rx_queue_id,
                                 pkt_burst,
                                 MAX_PKT_BURST);
@@ -535,10 +537,15 @@ void DPDKTransport::transport_thread(int tid)
                 udp_hdr = rte_pktmbuf_mtod_offset(m, struct rte_udp_hdr*, offset);
                 offset += sizeof(struct rte_udp_hdr);
 
-                /* Construct source address */
-                DPDKAddress addr(ether_hdr->s_addr, ip_hdr->src_addr, udp_hdr->src_port, 0);
-
-                if (this->use_flow_api || filter_packet(addr)) {
+                if (this->use_flow_api || filter_packet(DPDKAddress(ether_hdr->d_addr,
+                                                                    ip_hdr->dst_addr,
+                                                                    udp_hdr->dst_port,
+                                                                    DEFAULT_PORT_ID))) {
+                    /* Construct source address */
+                    DPDKAddress addr(ether_hdr->s_addr,
+                                     ip_hdr->src_addr,
+                                     udp_hdr->src_port,
+                                     DEFAULT_PORT_ID);
                     /* Upcall to transport receiver */
                     Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
                             rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),

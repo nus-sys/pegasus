@@ -27,7 +27,7 @@ private:
     bool use_flow_api;
     int argc;
     char **argv;
-    uint16_t port_id;
+    uint16_t dev_port;
     uint16_t rx_queue_id;
     volatile enum {
         RUNNING,
