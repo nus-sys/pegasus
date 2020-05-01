@@ -8,7 +8,7 @@
 
 class DPDKTransport : public Transport {
 public:
-    DPDKTransport(const Configuration *config);
+    DPDKTransport(const Configuration *config, bool use_flow_api);
     ~DPDKTransport();
 
     virtual void send_message(const Message &msg, const Address &addr) override final;

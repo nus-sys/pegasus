@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     AppMode app_mode = AppMode::UNKNOWN;
     int n_transport_threads = 1, n_app_threads = 1, value_len = 256, mean_interval = 1000, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, colocate_id = 0, n_colocate_nodes = 1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
-    bool report_load = false, use_endhost_lb = false;
+    bool report_load = false, use_endhost_lb = false, use_flow_api = false;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
     std::deque<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::KeyType::UNIFORM;
@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -109,8 +109,11 @@ int main(int argc, char *argv[])
             break;
         }
         case 'j': {
-            int input = stoi(std::string(optarg));
-            report_load = input != 0;
+            report_load = stoi(std::string(optarg))!= 0;
+            break;
+        }
+        case 'k': {
+            use_flow_api = stoi(std::string(optarg)) != 0;
             break;
         }
         case 'l': {
@@ -507,7 +510,7 @@ int main(int argc, char *argv[])
         transport = new UDPTransport(config);
         break;
     case TransportMode::DPDK:
-        transport = new DPDKTransport(config);
+        transport = new DPDKTransport(config, use_flow_api);
         break;
     }
     Node *node = new Node(config, transport);

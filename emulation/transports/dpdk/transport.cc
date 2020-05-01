@@ -203,7 +203,7 @@ static void generate_flow_rules(const Configuration *config, uint16_t port_id)
     }
 }
 
-DPDKTransport::DPDKTransport(const Configuration *config)
+DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     : Transport(config), port_id(0),
     rx_queue_id(config->colocate_id), status(STOPPED)
 {
@@ -314,7 +314,9 @@ DPDKTransport::DPDKTransport(const Configuration *config)
         }
 
         // Create flow rules
-        generate_flow_rules(config, this->port_id);
+        if (use_flow_api) {
+            generate_flow_rules(config, this->port_id);
+        }
     }
 }
 
