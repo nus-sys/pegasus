@@ -28,16 +28,19 @@ public:
 
 private:
     void process_kv_message(const MemcacheKVMessage &msg,
-                            const Address &addr);
+                            const Address &addr,
+                            int tid);
     void process_ctrl_message(const ControllerMessage &msg,
                               const Address &addr);
     void process_kv_request(const MemcacheKVRequest &request,
-                            const Address &addr);
+                            const Address &addr,
+                            int tid);
     void process_op(const Operation &op,
-                    MemcacheKVReply &reply);
+                    MemcacheKVReply &reply,
+                    int tid);
     void process_migration_request(const MigrationRequest &request);
     void process_ctrl_key_migration(const ControllerKeyMigration &key_mgr);
-    void update_rate(const Operation &op);
+    void update_rate(const Operation &op, int tid);
     load_t calculate_load();
 
     Configuration *config;
@@ -69,10 +72,13 @@ private:
     static const int MAX_HK_SIZE = 8;
     static const int KR_SAMPLE_RATE = 100;
     static const int HK_THRESHOLD = 5;
-    unsigned int request_count;
-    std::unordered_map<keyhash_t, unsigned int> key_count;
-    std::unordered_map<keyhash_t, unsigned int> hk_report;
-    std::mutex hk_mutex;
+    std::vector<unsigned> request_count;
+    std::vector<tbb::concurrent_hash_map<keyhash_t, uint64_t>> key_count;
+    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::const_accessor const_kc_accessor_t;
+    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::accessor kc_accessor_t;
+    std::vector<tbb::concurrent_hash_map<keyhash_t, uint64_t>> hk_report;
+    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::const_accessor const_hk_accessor_t;
+    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::accessor hk_accessor_t;
 };
 
 } // namespace memcachekv

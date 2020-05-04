@@ -21,7 +21,9 @@ Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl
 {
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
-    this->request_count = 0;
+    this->request_count.resize(config->n_transport_threads, 0);
+    this->key_count.resize(config->n_transport_threads);
+    this->hk_report.resize(config->n_transport_threads);
 }
 
 Server::~Server()
@@ -40,17 +42,17 @@ void Server::receive_message(const Message &msg, const Address &addr, int tid)
     // KV message
     MemcacheKVMessage kvmsg;
     if (this->codec->decode(msg, kvmsg)) {
-        process_kv_message(kvmsg, addr);
+        process_kv_message(kvmsg, addr, tid);
         return;
     }
     panic("Received unexpected message");
 }
 
-typedef std::function<bool(std::pair<keyhash_t, unsigned int>,
-                           std::pair<keyhash_t, unsigned int>)> Comparator;
+typedef std::function<bool(std::pair<keyhash_t, uint64_t>,
+                           std::pair<keyhash_t, uint64_t>)> Comparator;
 static Comparator comp =
-[](std::pair<keyhash_t, unsigned int> a,
-   std::pair<keyhash_t, unsigned int> b)
+[](std::pair<keyhash_t, uint64_t> a,
+   std::pair<keyhash_t, uint64_t> b)
 {
     return a.second > b.second;
 };
@@ -64,14 +66,20 @@ void Server::run_thread(int tid)
 {
     // Send HK report periodically
     while (true) {
-        usleep(HK_EPOCH);
-        // Sort hk_report
-        this->hk_mutex.lock();
-        std::set<std::pair<keyhash_t, unsigned int>, Comparator> sorted_hk(this->hk_report.begin(), this->hk_report.end(), comp);
-        this->hk_report.clear();
-        this->key_count.clear();
-        this->hk_mutex.unlock();
+        usleep(Server::HK_EPOCH);
+        // Combine and sort hk_report
+        std::unordered_map<keyhash_t, uint64_t> hk_combined;
+        for (int i = 0; i < this->config->n_transport_threads; i++) {
+            for (const auto &hk : this->hk_report[i]) {
+                hk_combined[hk.first] += hk.second;
+            }
+            this->key_count[i].clear();
+            this->hk_report[i].clear();
+        }
 
+        std::set<std::pair<keyhash_t, uint64_t>, Comparator> sorted_hk(hk_combined.begin(),
+                                                                       hk_combined.end(),
+                                                                       comp);
         if (sorted_hk.size() == 0) {
             continue;
         }
@@ -79,13 +87,12 @@ void Server::run_thread(int tid)
         // hk report has a max of MAX_HK_SIZE reports
         ControllerMessage ctrlmsg;
         ctrlmsg.type = ControllerMessage::Type::HK_REPORT;
-        int i = 0;
         for (const auto &hk : sorted_hk) {
-            if (i >= MAX_HK_SIZE) {
+            if (ctrlmsg.hk_report.reports.size() >= Server::MAX_HK_SIZE) {
                 break;
             }
-            ctrlmsg.hk_report.reports.push_back(ControllerHKReport::Report(hk.first, hk.second));
-            i++;
+            ctrlmsg.hk_report.reports.push_back(ControllerHKReport::Report(hk.first,
+                                                                           hk.second));
         }
         Message msg;
         if (!this->ctrl_codec->encode(msg, ctrlmsg)) {
@@ -96,11 +103,11 @@ void Server::run_thread(int tid)
 }
 
 void Server::process_kv_message(const MemcacheKVMessage &msg,
-                                const Address &addr)
+                                const Address &addr, int tid)
 {
     switch (msg.type) {
     case MemcacheKVMessage::Type::REQUEST: {
-        process_kv_request(msg.request, addr);
+        process_kv_request(msg.request, addr, tid);
         break;
     }
     case MemcacheKVMessage::Type::MGR_REQ: {
@@ -126,7 +133,8 @@ void Server::process_ctrl_message(const ControllerMessage &msg,
 }
 
 void Server::process_kv_request(const MemcacheKVRequest &request,
-                                const Address &addr)
+                                const Address &addr,
+                                int tid)
 {
     // User defined processing latency
     if (this->proc_latency > 0) {
@@ -134,7 +142,7 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
     }
 
     MemcacheKVMessage kvmsg;
-    process_op(request.op, kvmsg.reply);
+    process_op(request.op, kvmsg.reply, tid);
 
     // Chain replication: tail rack sends a reply; other racks forward the request
     if (this->config->rack_id == this->config->num_racks - 1) {
@@ -170,7 +178,7 @@ void Server::process_kv_request(const MemcacheKVRequest &request,
 }
 
 void
-Server::process_op(const Operation &op, MemcacheKVReply &reply)
+Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
 {
     reply.op_type = op.op_type;
     reply.keyhash = op.keyhash;
@@ -216,7 +224,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply)
     default:
         panic("Unknown memcachekv op type");
     }
-    //update_rate(op);
+    update_rate(op, tid);
 }
 
 void
@@ -279,14 +287,17 @@ Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
 }
 
 void
-Server::update_rate(const Operation &op)
+Server::update_rate(const Operation &op, int tid)
 {
-    if (++this->request_count % KR_SAMPLE_RATE == 0) {
-        this->hk_mutex.lock();
-        if (++this->key_count[op.keyhash] >= this->HK_THRESHOLD) {
-            this->hk_report[op.keyhash] = this->key_count[op.keyhash];
+    if (++this->request_count[tid] % Server::KR_SAMPLE_RATE == 0) {
+        kc_accessor_t kc_ac;
+        this->key_count[tid].insert(kc_ac, op.keyhash);
+        kc_ac->second++;
+        if (kc_ac->second >= Server::HK_THRESHOLD) {
+            hk_accessor_t hk_ac;
+            this->hk_report[tid].insert(hk_ac, op.keyhash);
+            hk_ac->second = kc_ac->second;
         }
-        this->hk_mutex.unlock();
     }
 }
 
