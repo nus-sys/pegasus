@@ -7,6 +7,7 @@
 #include <mutex>
 #include <vector>
 #include <tbb/concurrent_hash_map.h>
+#include <tbb/concurrent_unordered_map.h>
 
 #include <application.h>
 #include <apps/memcachekv/message.h>
@@ -73,12 +74,8 @@ private:
     static const int KR_SAMPLE_RATE = 100;
     static const int HK_THRESHOLD = 5;
     std::vector<unsigned> request_count;
-    std::vector<tbb::concurrent_hash_map<keyhash_t, uint64_t>> key_count;
-    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::const_accessor const_kc_accessor_t;
-    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::accessor kc_accessor_t;
-    std::vector<tbb::concurrent_hash_map<keyhash_t, uint64_t>> hk_report;
-    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::const_accessor const_hk_accessor_t;
-    typedef tbb::concurrent_hash_map<keyhash_t, uint64_t>::accessor hk_accessor_t;
+    std::vector<tbb::concurrent_unordered_map<keyhash_t, uint64_t>> key_count;
+    std::vector<tbb::concurrent_unordered_map<keyhash_t, uint64_t>> hk_report;
 };
 
 } // namespace memcachekv

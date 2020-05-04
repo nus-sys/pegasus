@@ -70,11 +70,15 @@ void Server::run_thread(int tid)
         // Combine and sort hk_report
         std::unordered_map<keyhash_t, uint64_t> hk_combined;
         for (int i = 0; i < this->config->n_transport_threads; i++) {
-            for (const auto &hk : this->hk_report[i]) {
-                hk_combined[hk.first] += hk.second;
+            for (auto &kc : this->key_count[i]) {
+                kc.second = 0;
             }
-            this->key_count[i].clear();
-            this->hk_report[i].clear();
+            for (auto &hk : this->hk_report[i]) {
+                if (hk.second >= Server::HK_THRESHOLD) {
+                    hk_combined[hk.first] += hk.second;
+                }
+                hk.second = 0;
+            }
         }
 
         std::set<std::pair<keyhash_t, uint64_t>, Comparator> sorted_hk(hk_combined.begin(),
@@ -290,13 +294,9 @@ void
 Server::update_rate(const Operation &op, int tid)
 {
     if (++this->request_count[tid] % Server::KR_SAMPLE_RATE == 0) {
-        kc_accessor_t kc_ac;
-        this->key_count[tid].insert(kc_ac, op.keyhash);
-        kc_ac->second++;
-        if (kc_ac->second >= Server::HK_THRESHOLD) {
-            hk_accessor_t hk_ac;
-            this->hk_report[tid].insert(hk_ac, op.keyhash);
-            hk_ac->second = kc_ac->second;
+        uint64_t count = ++this->key_count[tid][op.keyhash];
+        if (count >= Server::HK_THRESHOLD) {
+            this->hk_report[tid][op.keyhash] = count;
         }
     }
 }
