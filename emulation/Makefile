@@ -19,7 +19,7 @@ INC_FLAGS := $(addprefix -I,$(INC_DIRS))
 
 CPPFLAGS := $(INC_FLAGS) -MMD -MP
 CFLAGS := -g -Wall -Werror -pthread -O3
-CXXFLAGS := -std=c++0x -O3
+CXXFLAGS := -std=c++1z -O3 -Wno-register
 LDFLAGS := -levent_pthreads
 
 # Libevent definitions

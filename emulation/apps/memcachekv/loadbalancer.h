@@ -3,7 +3,10 @@
 
 #include <set>
 #include <atomic>
+#include <shared_mutex>
 #include <tbb/concurrent_hash_map.h>
+#include <tbb/concurrent_unordered_map.h>
+#include <tbb/concurrent_unordered_set.h>
 
 #include <application.h>
 
@@ -13,6 +16,8 @@ typedef uint32_t keyhash_t;
 typedef uint8_t node_t;
 typedef uint16_t load_t;
 typedef uint32_t ver_t;
+
+typedef uint64_t count_t;
 
 namespace memcachekv {
 
@@ -30,6 +35,7 @@ struct PegasusHeader {
 struct MetaData {
     bool is_server;
     bool forward;
+    bool is_rkey;
     node_t dst;
 };
 
@@ -54,20 +60,48 @@ public:
 private:
     bool parse_pegasus_header(const void *pkt, struct PegasusHeader &header);
     void rewrite_pegasus_header(void *pkt, const struct PegasusHeader &header);
-    void rewrite_address(void *pkt, struct MetaData &data);
+    void rewrite_address(void *pkt, struct MetaData &meta);
     void calculate_chksum(void *pkt);
-    void process_pegasus_header(struct PegasusHeader &header, struct MetaData &data);
-    void handle_read_req(struct PegasusHeader &header, struct MetaData &data);
-    void handle_write_req(struct PegasusHeader &header, struct MetaData &data);
-    void handle_reply(struct PegasusHeader &header, struct MetaData &data);
-    void handle_mgr_req(struct PegasusHeader &header, struct MetaData &data);
-    void handle_mgr_ack(struct PegasusHeader &header, struct MetaData &data);
+    void process_pegasus_header(struct PegasusHeader &header,
+                                struct MetaData &meta,
+                                int tid);
+    void handle_read_req(struct PegasusHeader &header,
+                         struct MetaData &meta,
+                         int tid);
+    void handle_write_req(struct PegasusHeader &header,
+                          struct MetaData &meta,
+                          int tid);
+    void handle_reply(struct PegasusHeader &header,
+                      struct MetaData &meta,
+                      int tid);
+    void handle_mgr_req(struct PegasusHeader &header,
+                        struct MetaData &meta,
+                        int tid);
+    void handle_mgr_ack(struct PegasusHeader &header,
+                        struct MetaData &meta,
+                        int tid);
     node_t select_server(const std::set<node_t> &servers);
+    void update_stats(const struct PegasusHeader &header,
+                      const struct MetaData &meta,
+                      int tid);
+    void add_rkey(keyhash_t newkey);
+    void replace_rkey(keyhash_t newkey, keyhash_t oldkey);
 
     Configuration *config;
     std::atomic_uint ver_next;
     tbb::concurrent_hash_map<keyhash_t, RSetData> rset;
+    size_t rset_size;
+    static const size_t MAX_RSET_SIZE = 32;
     std::set<node_t> all_servers;
+
+    std::shared_mutex stats_mutex;
+    std::vector<count_t> access_count;
+    tbb::concurrent_unordered_map<keyhash_t, std::atomic_uint> rkey_access_count;
+    tbb::concurrent_unordered_map<keyhash_t, std::atomic_uint> ukey_access_count;
+    tbb::concurrent_unordered_set<keyhash_t> hot_ukey;
+    static const int STATS_SAMPLE_RATE = 1000;
+    static const int STATS_HK_THRESHOLD = 10;
+    static const int STATS_EPOCH = 10000;
 };
 
 } // namespace memcachekv
