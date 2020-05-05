@@ -22,8 +22,6 @@ Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
     this->request_count.resize(config->n_transport_threads, 0);
-    this->key_count.resize(config->n_transport_threads);
-    this->hk_report.resize(config->n_transport_threads);
 }
 
 Server::~Server()
@@ -66,33 +64,30 @@ void Server::run_thread(int tid)
 {
     // Send HK report periodically
     while (true) {
-        usleep(Server::HK_EPOCH);
-        // Combine and sort hk_report
-        std::unordered_map<keyhash_t, uint64_t> hk_combined;
-        for (int i = 0; i < this->config->n_transport_threads; i++) {
-            for (auto &kc : this->key_count[i]) {
-                kc.second = 0;
-            }
-            for (auto &hk : this->hk_report[i]) {
-                if (hk.second >= Server::HK_THRESHOLD) {
-                    hk_combined[hk.first] += hk.second;
-                }
-                hk.second = 0;
-            }
+        usleep(Server::STATS_EPOCH);
+        /* Construct sorted hot key accesses */
+        std::unordered_map<keyhash_t, count_t> hk;
+        for (const auto &keyhash : this->hot_keys) {
+            hk[keyhash] = std::atomic_load(&this->access_count.at(keyhash));
         }
-
-        std::set<std::pair<keyhash_t, uint64_t>, Comparator> sorted_hk(hk_combined.begin(),
-                                                                       hk_combined.end(),
-                                                                       comp);
+        std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_hk(hk.begin(),
+                                                                      hk.end(),
+                                                                      comp);
+        /* Clear stats */
+        {
+            std::unique_lock lock(this->stats_mutex);
+            this->access_count.clear();
+            this->hot_keys.clear();
+        }
+        /* Send hk report */
         if (sorted_hk.size() == 0) {
             continue;
         }
-
-        // hk report has a max of MAX_HK_SIZE reports
+        // hk report has a max size of STATS_HK_REPORT_SIZE
         ControllerMessage ctrlmsg;
         ctrlmsg.type = ControllerMessage::Type::HK_REPORT;
         for (const auto &hk : sorted_hk) {
-            if (ctrlmsg.hk_report.reports.size() >= Server::MAX_HK_SIZE) {
+            if (ctrlmsg.hk_report.reports.size() >= Server::STATS_HK_REPORT_SIZE) {
                 break;
             }
             ctrlmsg.hk_report.reports.push_back(ControllerHKReport::Report(hk.first,
@@ -293,10 +288,11 @@ Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
 void
 Server::update_rate(const Operation &op, int tid)
 {
-    if (++this->request_count[tid] % Server::KR_SAMPLE_RATE == 0) {
-        uint64_t count = ++this->key_count[tid][op.keyhash];
-        if (count >= Server::HK_THRESHOLD) {
-            this->hk_report[tid][op.keyhash] = count;
+    if (++this->request_count[tid] % Server::STATS_SAMPLE_RATE == 0) {
+        std::shared_lock lock(this->stats_mutex);
+        count_t count = std::atomic_fetch_add(&this->access_count.at(op.keyhash), {1});
+        if (count >= Server::STATS_HK_THRESHOLD) {
+            this->hot_keys.insert(op.keyhash);
         }
     }
 }

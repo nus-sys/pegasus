@@ -6,11 +6,16 @@
 #include <set>
 #include <mutex>
 #include <vector>
+#include <atomic>
+#include <shared_mutex>
 #include <tbb/concurrent_hash_map.h>
 #include <tbb/concurrent_unordered_map.h>
+#include <tbb/concurrent_unordered_set.h>
 
 #include <application.h>
 #include <apps/memcachekv/message.h>
+
+typedef uint64_t count_t;
 
 namespace memcachekv {
 
@@ -68,14 +73,15 @@ private:
     struct timeval epoch_start;
     std::mutex load_mutex;
     std::list<struct timeval> request_ts;
-
-    static const int HK_EPOCH = 10000; // 10ms
-    static const int MAX_HK_SIZE = 8;
-    static const int KR_SAMPLE_RATE = 100;
-    static const int HK_THRESHOLD = 5;
-    std::vector<unsigned> request_count;
-    std::vector<tbb::concurrent_unordered_map<keyhash_t, uint64_t>> key_count;
-    std::vector<tbb::concurrent_unordered_map<keyhash_t, uint64_t>> hk_report;
+    /* Request stats */
+    static const int STATS_HK_REPORT_SIZE = 8;
+    static const int STATS_SAMPLE_RATE = 1000;
+    static const int STATS_HK_THRESHOLD = 5;
+    static const int STATS_EPOCH = 10000; // 10ms
+    std::shared_mutex stats_mutex;
+    std::vector<count_t> request_count;
+    tbb::concurrent_unordered_map<keyhash_t, std::atomic_uint> access_count;
+    tbb::concurrent_unordered_set<keyhash_t> hot_keys;
 };
 
 } // namespace memcachekv
