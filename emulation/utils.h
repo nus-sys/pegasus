@@ -2,7 +2,7 @@
 #define _UTILS_H_
 
 #include <sched.h>
-
+#include <time.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -21,6 +21,11 @@ inline void convert_endian(void *dst, const void *src, size_t size)
 inline int latency(const struct timeval &start, const struct timeval &end)
 {
     return (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec);
+}
+
+inline long latency_ns(const struct timespec &start, const struct timespec &end)
+{
+    return (end.tv_sec - start.tv_sec) * 1000000000L + (end.tv_nsec - start.tv_nsec);
 }
 
 inline struct timeval get_prev_timeval(const struct timeval &t, int interval)
@@ -51,6 +56,18 @@ inline void wait(struct timeval &t, int usec)
     while (true) {
         gettimeofday(&t, nullptr);
         if (latency(start, t) >= usec) {
+            break;
+        }
+    }
+}
+
+inline void wait_ns(struct timespec &ts, long nsec)
+{
+    struct timespec start = ts;
+
+    while (true) {
+        clock_gettime(CLOCK_REALTIME, &ts);
+        if (latency_ns(start, ts) >= nsec) {
             break;
         }
     }

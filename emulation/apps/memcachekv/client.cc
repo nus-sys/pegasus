@@ -11,7 +11,7 @@ static thread_local uint32_t req_id = 1;
 
 #define LATENCY_CHECK_COUNT 100
 #define LATENCY_CHECK_PTILE 0.99
-#define MIN_INTERVAL 1
+#define MIN_INTERVAL 1000
 
 using std::string;
 
@@ -21,7 +21,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
                                          int value_len,
                                          float get_ratio,
                                          float put_ratio,
-                                         int mean_interval,
+                                         long mean_interval,
                                          int target_latency,
                                          float alpha,
                                          KeyType key_type,
@@ -60,7 +60,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
         this->generator.push_back(std::default_random_engine(time.tv_sec * 1000000 + time.tv_usec + i));
         this->unif_real_dist.push_back(std::uniform_real_distribution<float>(0.0, 1.0));
         this->unif_int_dist.push_back(std::uniform_int_distribution<int>(0, keys->size()-1));
-        this->poisson_dist.push_back(std::poisson_distribution<int>(mean_interval));
+        this->poisson_dist.push_back(std::poisson_distribution<long>(mean_interval));
     }
 }
 
@@ -167,9 +167,9 @@ void KVWorkloadGenerator::adjust_send_rate(int tid)
         if (this->stats->get_latency(tid, LATENCY_CHECK_PTILE) > this->target_latency) {
             this->mean_interval[tid] += 1;
         } else {
-            this->mean_interval[tid] = std::max(MIN_INTERVAL, this->mean_interval[tid] - 1);
+            this->mean_interval[tid] = std::max((long)MIN_INTERVAL, this->mean_interval[tid] - 1);
         }
-        this->poisson_dist[tid] = std::poisson_distribution<int>(this->mean_interval[tid]);
+        this->poisson_dist[tid] = std::poisson_distribution<long>(this->mean_interval[tid]);
     }
 }
 
@@ -209,15 +209,17 @@ void Client::run()
 void Client::run_thread(int tid)
 {
     struct timeval start, now;
+    struct timespec ts;
     gettimeofday(&start, nullptr);
-    gettimeofday(&now, nullptr);
+    clock_gettime(CLOCK_REALTIME, &ts);
     NextOperation next_op;
 
     do {
         this->gen->next_operation(tid, next_op);
-        wait(now, next_op.time);
+        wait_ns(ts, next_op.time);
         execute_op(next_op.op);
         this->stats->report_issue(tid);
+        gettimeofday(&now, nullptr);
     } while (latency(start, now) < this->config->duration * 1000000);
 }
 
