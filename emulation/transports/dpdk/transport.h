@@ -28,13 +28,11 @@ private:
     int argc;
     char **argv;
     uint16_t dev_port;
-    uint16_t rx_queue_id;
     volatile enum {
         RUNNING,
         STOPPED,
     } status;
     struct rte_mempool *pktmbuf_pool;
-    struct rte_distributor *distributor;
 };
 
 #endif /* _DPDK_TRANSPORT_H_ */
