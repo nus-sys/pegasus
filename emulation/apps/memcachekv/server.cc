@@ -68,7 +68,7 @@ void Server::run_thread(int tid)
         /* Construct sorted hot key accesses */
         std::unordered_map<keyhash_t, count_t> hk;
         for (const auto &keyhash : this->hot_keys) {
-            hk[keyhash] = std::atomic_load(&this->access_count.at(keyhash));
+            hk[keyhash] = this->access_count.at(keyhash);
         }
         std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_hk(hk.begin(),
                                                                       hk.end(),
@@ -290,8 +290,7 @@ Server::update_rate(const Operation &op, int tid)
 {
     if (++this->request_count[tid] % Server::STATS_SAMPLE_RATE == 0) {
         std::shared_lock lock(this->stats_mutex);
-        count_t count = std::atomic_fetch_add(&this->access_count.at(op.keyhash), {1});
-        if (count >= Server::STATS_HK_THRESHOLD) {
+        if (++this->access_count[op.keyhash] >= Server::STATS_HK_THRESHOLD) {
             this->hot_keys.insert(op.keyhash);
         }
     }
