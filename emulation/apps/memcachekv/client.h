@@ -18,9 +18,9 @@ namespace memcachekv {
 
 struct NextOperation {
     inline NextOperation() {};
-    inline NextOperation(int time, const Operation &op)
+    inline NextOperation(long time, const Operation &op)
         : time(time), op(op) {};
-    int time;
+    long time;
     Operation op;
 };
 
@@ -45,7 +45,7 @@ public:
     KVWorkloadGenerator(std::deque<std::string> *keys, int value_len,
                         float get_ratio,
                         float put_ratio,
-                        int mean_interval,
+                        long mean_interval,
                         int target_latency,
                         float alpha,
                         KeyType key_type,
@@ -82,11 +82,11 @@ private:
 
     // Per thread
     std::vector<int> op_count;
-    std::vector<int> mean_interval;
+    std::vector<long> mean_interval;
     std::vector<std::default_random_engine> generator;
     std::vector<std::uniform_real_distribution<float>> unif_real_dist;
     std::vector<std::uniform_int_distribution<int>> unif_int_dist;
-    std::vector<std::poisson_distribution<int>> poisson_dist;
+    std::vector<std::poisson_distribution<long>> poisson_dist;
 };
 
 class Client : public Application {
