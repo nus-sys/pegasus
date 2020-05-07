@@ -11,7 +11,7 @@ namespace echo {
 
 class Client : public Application {
 public:
-    Client(Configuration *config, Stats *stats, int interval, int msglen);
+    Client(Configuration *config, Stats *stats, float interval, int msglen);
     ~Client();
 
     virtual void receive_message(const Message &msg,

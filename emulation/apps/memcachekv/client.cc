@@ -21,7 +21,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
                                          int value_len,
                                          float get_ratio,
                                          float put_ratio,
-                                         long mean_interval,
+                                         float mean_interval,
                                          int target_latency,
                                          float alpha,
                                          KeyType key_type,
@@ -54,13 +54,14 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
     this->last_interval = time;
 
     // Per thread initialization
+    long mean_interval_ns = mean_interval * 1000;
     for (int i = 0; i < n_threads; i++) {
-        this->mean_interval.push_back(mean_interval);
+        this->mean_interval.push_back(mean_interval_ns);
         this->op_count.push_back(0);
         this->generator.push_back(std::default_random_engine(time.tv_sec * 1000000 + time.tv_usec + i));
         this->unif_real_dist.push_back(std::uniform_real_distribution<float>(0.0, 1.0));
         this->unif_int_dist.push_back(std::uniform_int_distribution<int>(0, keys->size()-1));
-        this->poisson_dist.push_back(std::poisson_distribution<long>(mean_interval));
+        this->poisson_dist.push_back(std::poisson_distribution<long>(mean_interval_ns));
     }
 }
 

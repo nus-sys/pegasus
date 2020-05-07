@@ -7,8 +7,8 @@ namespace echo {
 #define RACK 0
 #define NODE 0
 
-Client::Client(Configuration *config, Stats *stats, int interval, int msglen)
-    : config(config), stats(stats), interval(interval), msglen(msglen)
+Client::Client(Configuration *config, Stats *stats, float interval, int msglen)
+    : config(config), stats(stats), interval((int)interval), msglen(msglen)
 {
 }
 

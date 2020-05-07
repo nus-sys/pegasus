@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
     ProtocolMode protocol_mode = ProtocolMode::STATIC;
     TransportMode transport_mode = TransportMode::UDP;
     AppMode app_mode = AppMode::UNKNOWN;
-    long mean_interval = 1000000;
+    float mean_interval = 1000;
     int n_transport_threads = 1, n_app_threads = 1, value_len = 256, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, colocate_id = 0, n_colocate_nodes = 1;
     float get_ratio = 0.5, put_ratio = 0.5, alpha = 0.5;
     bool report_load = false, use_endhost_lb = false, use_flow_api = false;
@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
             break;
         }
         case 'i': {
-            mean_interval = stol(std::string(optarg));
+            mean_interval = stof(std::string(optarg));
             break;
         }
         case 'j': {

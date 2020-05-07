@@ -45,7 +45,7 @@ public:
     KVWorkloadGenerator(std::deque<std::string> *keys, int value_len,
                         float get_ratio,
                         float put_ratio,
-                        long mean_interval,
+                        float mean_interval,
                         int target_latency,
                         float alpha,
                         KeyType key_type,
