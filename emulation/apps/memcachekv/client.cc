@@ -54,14 +54,13 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
     this->last_interval = time;
 
     // Per thread initialization
-    long mean_interval_ns = mean_interval * 1000;
     for (int i = 0; i < n_threads; i++) {
-        this->mean_interval.push_back(mean_interval_ns);
+        this->mean_interval.push_back((long)mean_interval);
         this->op_count.push_back(0);
         this->generator.push_back(std::default_random_engine(time.tv_sec * 1000000 + time.tv_usec + i));
         this->unif_real_dist.push_back(std::uniform_real_distribution<float>(0.0, 1.0));
         this->unif_int_dist.push_back(std::uniform_int_distribution<int>(0, keys->size()-1));
-        this->poisson_dist.push_back(std::poisson_distribution<long>(mean_interval_ns));
+        this->poisson_dist.push_back(std::poisson_distribution<long>((long)mean_interval));
     }
 }
 
@@ -175,7 +174,7 @@ void KVWorkloadGenerator::adjust_send_rate(int tid)
 }
 
 Client::Client(Configuration *config,
-               MemcacheKVStats *stats,
+               Stats *stats,
                KVWorkloadGenerator *gen,
                MessageCodec *codec)
     : config(config), stats(stats), gen(gen), codec(codec)
@@ -210,17 +209,15 @@ void Client::run()
 void Client::run_thread(int tid)
 {
     struct timeval start, now;
-    struct timespec ts;
     gettimeofday(&start, nullptr);
-    clock_gettime(CLOCK_REALTIME, &ts);
+    gettimeofday(&now, nullptr);
     NextOperation next_op;
 
     do {
         this->gen->next_operation(tid, next_op);
-        wait_ns(ts, next_op.time);
+        wait(now, next_op.time);
         execute_op(next_op.op);
         this->stats->report_issue(tid);
-        gettimeofday(&now, nullptr);
     } while (latency(start, now) < this->config->duration * 1000000);
 }
 
@@ -260,10 +257,7 @@ void Client::complete_op(int tid, const MemcacheKVReply &reply)
     if (end_time.tv_usec < start_time.tv_usec) {
         start_time.tv_sec -= 1; // assume request won't take > 1 sec
     }
-    this->stats->report_op(tid,
-                           reply.op_type,
-                           latency(start_time, end_time),
-                           reply.result == Result::OK);
+    this->stats->report_latency(tid, latency(start_time, end_time));
 }
 
 } // namespace memcachekv

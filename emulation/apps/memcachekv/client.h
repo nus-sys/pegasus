@@ -92,7 +92,7 @@ private:
 class Client : public Application {
 public:
     Client(Configuration *config,
-           MemcacheKVStats *stats,
+           Stats *stats,
            KVWorkloadGenerator *gen,
            MessageCodec *codec);
     ~Client();
@@ -108,7 +108,7 @@ private:
     void complete_op(int tid, const MemcacheKVReply &reply);
 
     Configuration *config;
-    MemcacheKVStats *stats;
+    Stats *stats;
     KVWorkloadGenerator *gen;
     MessageCodec *codec;
 };
