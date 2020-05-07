@@ -60,9 +60,7 @@ private:
         std::string value;
         ver_t ver;
     };
-    tbb::concurrent_hash_map<std::string, Item> store;
-    typedef tbb::concurrent_hash_map<std::string, Item>::const_accessor const_accessor_t;
-    typedef tbb::concurrent_hash_map<std::string, Item>::accessor accessor_t;
+    tbb::concurrent_unordered_map<keyhash_t, Item> store;
 
     int proc_latency;
     std::string default_value;
