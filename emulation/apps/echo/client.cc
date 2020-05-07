@@ -7,8 +7,8 @@ namespace echo {
 #define RACK 0
 #define NODE 0
 
-Client::Client(Configuration *config, Stats *stats, int interval)
-    : config(config), stats(stats), interval(interval)
+Client::Client(Configuration *config, Stats *stats, int interval, int msglen)
+    : config(config), stats(stats), interval(interval), msglen(msglen)
 {
 }
 
@@ -34,8 +34,8 @@ void Client::run()
 
 void Client::run_thread(int tid)
 {
-    char buf[1024];
-    Message msg(buf, sizeof(struct timeval), false);
+    char buf[this->msglen];
+    Message msg(buf, this->msglen, false);
     struct timeval start;
     struct timeval *now = (struct timeval*)buf;
     gettimeofday(&start, nullptr);
