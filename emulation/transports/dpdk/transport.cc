@@ -34,14 +34,14 @@
 #define DEFAULT_PORT_ID 0
 
 thread_local static int queue_id;
-thread_local static uint16_t rand_port = 0;
+thread_local static uint16_t rand_port;
 #define RAND_PORT_BASE 12345
 #define RAND_PORT_MAX 10000
 
 struct AppArg {
     Application *app;
     int tid;
-    int tx_queue_id;
+    int queue_id;
 };
 
 struct TransportArg {
@@ -59,6 +59,7 @@ static int transport_thread_(void *arg)
 {
     struct TransportArg *targ = (struct TransportArg*)arg;
     queue_id = targ->queue_id;
+    rand_port = rand() % RAND_PORT_MAX;
     targ->transport->transport_thread(targ->tid);
     return 0;
 }
@@ -66,7 +67,8 @@ static int transport_thread_(void *arg)
 static int app_thread(void *arg)
 {
     struct AppArg *app_arg = (struct AppArg*)arg;
-    queue_id = app_arg->tx_queue_id;
+    queue_id = app_arg->queue_id;
+    rand_port = rand() % RAND_PORT_MAX;
     app_arg->app->run_thread(app_arg->tid);
     return 0;
 }
@@ -441,7 +443,7 @@ void DPDKTransport::run_app_threads(Application *app)
     for (int tid = 1; tid < this->config->n_app_threads; tid++) {
         app_args[tid].app = app;
         app_args[tid].tid = tid;
-        app_args[tid].tx_queue_id = this->config->colocate_id * this->config->n_transport_threads + tid;
+        app_args[tid].queue_id = this->config->colocate_id * this->config->n_transport_threads + tid;
         if (rte_eal_remote_launch(app_thread,
                                   &app_args[tid],
                                   this->config->app_core + tid) != 0) {
@@ -452,7 +454,7 @@ void DPDKTransport::run_app_threads(Application *app)
     // Run on master core
     app_args[0].app = app;
     app_args[0].tid = 0;
-    app_args[0].tx_queue_id = this->config->colocate_id * this->config->n_transport_threads;
+    app_args[0].queue_id = this->config->colocate_id * this->config->n_transport_threads;
     app_thread(&app_args[0]);
 
     // Wait for app slave cores to finish
@@ -525,9 +527,6 @@ bool DPDKTransport::filter_packet(const DPDKAddress &addr) const
         return false;
     }
     if (addr.ip_addr != my_addr->ip_addr) {
-        return false;
-    }
-    if (addr.udp_port != my_addr->udp_port) {
         return false;
     }
     return true;
