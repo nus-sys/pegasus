@@ -50,7 +50,7 @@ bool LoadBalancer::receive_raw(void *buf, void *tdata, int tid)
     MetaData meta;
 
     if (!parse_pegasus_header(buf, header)) {
-        panic("Wrong header format");
+        return false;
     }
     process_pegasus_header(header, meta, tid);
     if (meta.forward) {
