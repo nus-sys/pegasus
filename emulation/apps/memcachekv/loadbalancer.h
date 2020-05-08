@@ -96,8 +96,8 @@ private:
 
     std::shared_mutex stats_mutex;
     std::vector<count_t> access_count;
-    tbb::concurrent_unordered_map<keyhash_t, std::atomic_uint> rkey_access_count;
-    tbb::concurrent_unordered_map<keyhash_t, std::atomic_uint> ukey_access_count;
+    tbb::concurrent_unordered_map<keyhash_t, count_t> rkey_access_count;
+    tbb::concurrent_unordered_map<keyhash_t, count_t> ukey_access_count;
     tbb::concurrent_unordered_set<keyhash_t> hot_ukey;
     static const int STATS_SAMPLE_RATE = 1000;
     static const int STATS_HK_THRESHOLD = 10;

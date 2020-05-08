@@ -95,7 +95,7 @@ void LoadBalancer::run_thread(int tid)
          */
         std::unordered_map<keyhash_t, count_t> ukeys;
         for (const auto &keyhash : this->hot_ukey) {
-            ukeys[keyhash] = std::atomic_load(&this->ukey_access_count.at(keyhash));
+            ukeys[keyhash] = this->ukey_access_count.at(keyhash);
         }
         std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_ukey(ukeys.begin(),
                                                                         ukeys.end(),
@@ -104,7 +104,7 @@ void LoadBalancer::run_thread(int tid)
         const_rset_accessor_t ac;
         for (const auto &it : this->rkey_access_count) {
             if (this->rset.find(ac, it.first)) {
-                rkeys[it.first] = std::atomic_load(&it.second);
+                rkeys[it.first] = it.second;
             }
         }
         std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_rkey(rkeys.begin(),
@@ -366,10 +366,9 @@ void LoadBalancer::update_stats(const struct PegasusHeader &header,
     if (++this->access_count[tid] % LoadBalancer::STATS_SAMPLE_RATE == 0) {
         std::shared_lock lock(this->stats_mutex);
         if (meta.is_rkey) {
-            std::atomic_fetch_add(&this->rkey_access_count.at(header.keyhash), {1});
+            ++this->rkey_access_count[header.keyhash];
         } else {
-            count_t count = std::atomic_fetch_add(&this->ukey_access_count.at(header.keyhash), {1});
-            if (count >= LoadBalancer::STATS_HK_THRESHOLD) {
+            if (++this->ukey_access_count[header.keyhash] >= LoadBalancer::STATS_HK_THRESHOLD) {
                 this->hot_ukey.insert(header.keyhash);
             }
         }
