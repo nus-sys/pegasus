@@ -30,6 +30,7 @@ DPDKAddress::DPDKAddress(const struct rte_ether_addr &ether_addr,
 }
 
 DPDKConfiguration::DPDKConfiguration(const char *file_path)
+    : Configuration()
 {
     std::ifstream file;
     std::vector<Address*> rack;
@@ -134,4 +135,7 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
     this->num_nodes = this->num_racks == 0 ? 0 : this->node_addresses[0].size();
     assert(this->num_racks > 0 && this->num_nodes > 0);
     assert((int)this->controller_addresses.size() == this->num_racks);
+    if (this->use_endhost_lb || this->node_type == LB) {
+        assert(this->lb_address != nullptr);
+    }
 }
