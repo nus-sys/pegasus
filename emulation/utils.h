@@ -49,6 +49,8 @@ inline int timeval_cmp(const struct timeval &t1, const struct timeval &t2)
     return (int64_t)t1.tv_usec - (int64_t)t2.tv_usec;
 }
 
+float wait_ticks(long ticks);
+
 inline void wait(struct timeval &t, int usec)
 {
     struct timeval start = t;

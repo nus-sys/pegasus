@@ -104,7 +104,7 @@ public:
     virtual void run_thread(int tid) override final;
 
 private:
-    void execute_op(const Operation &op);
+    void execute_op(const Operation &op, const struct timeval &time);
     void complete_op(int tid, const MemcacheKVReply &reply);
 
     Configuration *config;

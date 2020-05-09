@@ -215,17 +215,15 @@ void Client::run_thread(int tid)
 
     do {
         this->gen->next_operation(tid, next_op);
-        wait(now, next_op.time);
-        execute_op(next_op.op);
+        wait_ticks(next_op.time);
+        gettimeofday(&now, nullptr);
+        execute_op(next_op.op, now);
         this->stats->report_issue(tid);
     } while (latency(start, now) < this->config->duration * 1000000);
 }
 
-void Client::execute_op(const Operation &op)
+void Client::execute_op(const Operation &op, const struct timeval &time)
 {
-    struct timeval time;
-    gettimeofday(&time, nullptr);
-
     MemcacheKVMessage kvmsg;
     kvmsg.type = MemcacheKVMessage::Type::REQUEST;
     kvmsg.request.client_id = this->config->client_id;
