@@ -44,8 +44,8 @@ MemcacheKVStats::_dump()
             combined_replies[reply.first] += reply.second;
         }
     }
-    for (const auto &ops : this->completed_ops) {
-        combined_completed_ops += ops;
+    for (ThreadStats *ts : this->thread_stats) {
+        combined_completed_ops += ts->completed_ops;
     }
     // Dump combined stats
     if (combined_cache_hits + combined_cache_misses > 0) {

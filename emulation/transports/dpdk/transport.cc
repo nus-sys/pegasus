@@ -412,7 +412,7 @@ void DPDKTransport::run(void)
     // Start all transport threads
     for (int tid = 0; tid < this->config->n_transport_threads; tid++) {
         transport_args[tid].transport = this;
-        transport_args[tid].tid = tid;
+        transport_args[tid].tid = this->config->n_app_threads + tid;
         transport_args[tid].queue_id = this->config->colocate_id * this->config->n_transport_threads + tid;
         if (rte_eal_remote_launch(transport_thread_,
                                   &transport_args[tid],

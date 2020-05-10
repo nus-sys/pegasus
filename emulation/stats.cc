@@ -4,12 +4,16 @@
 #include <logger.h>
 #include <utils.h>
 
+Stats::ThreadStats::ThreadStats()
+    : issued_ops(0), completed_ops(0)
+{
+}
+
 Stats::Stats(int n_threads,
              const char *stats_file,
              int interval,
              const char *interval_file)
-    : issued_ops(n_threads, 0), completed_ops(n_threads, 0), interval(interval),
-    last_interval(n_threads), latencies(n_threads), interval_latencies(n_threads)
+    : interval(interval)
 {
     if (stats_file != nullptr) {
         this->file_stream.open(stats_file, std::ofstream::out | std::ofstream::trunc);
@@ -20,6 +24,9 @@ Stats::Stats(int n_threads,
     if (interval_file != nullptr) {
         this->interval_file = std::string(interval_file);
     }
+    for (int i = 0; i < n_threads; i++) {
+        this->thread_stats.push_back(new ThreadStats);
+    }
 }
 
 Stats::~Stats()
@@ -27,25 +34,28 @@ Stats::~Stats()
     if (this->file_stream.is_open()) {
         this->file_stream.close();
     }
+    for (ThreadStats *ts : this->thread_stats) {
+        delete ts;
+    }
 }
 
 void Stats::report_issue(int tid)
 {
-    this->issued_ops[tid]++;
+    this->thread_stats[tid]->issued_ops++;
 }
 
 void Stats::report_latency(int tid, int l)
 {
-    this->latencies[tid][l]++;
-    this->completed_ops[tid]++;
+    this->thread_stats[tid]->latencies[l]++;
+    this->thread_stats[tid]->completed_ops++;
     if (this->interval > 0) {
         struct timeval tv;
         gettimeofday(&tv, nullptr);
-        if (latency(this->last_interval[tid], tv) >= this->interval) {
-            this->last_interval[tid] = tv;
-            this->interval_latencies[tid].push_back(std::map<int, uint64_t>());
+        if (latency(this->thread_stats[tid]->last_interval, tv) >= this->interval) {
+            this->thread_stats[tid]->last_interval = tv;
+            this->thread_stats[tid]->interval_latencies.push_back(std::map<int, uint64_t>());
         }
-        this->interval_latencies[tid].back()[l]++;
+        this->thread_stats[tid]->interval_latencies.back()[l]++;
     }
 }
 
@@ -54,12 +64,12 @@ int Stats::get_latency(int tid, float percentile)
     uint64_t count = 0;
 
     assert(percentile >= 0 && percentile < 1);
-    if (this->latencies[tid].empty()) {
+    if (this->thread_stats[tid]->latencies.empty()) {
         return -1;
     }
-    for (const auto &latency : this->latencies[tid]) {
+    for (const auto &latency : this->thread_stats[tid]->latencies) {
         count += latency.second;
-        if (count >= (uint64_t)(this->completed_ops[tid] * percentile)) {
+        if (count >= (uint64_t)(this->thread_stats[tid]->completed_ops * percentile)) {
             return latency.first;
         }
     }
@@ -70,11 +80,9 @@ void Stats::start()
 {
     gettimeofday(&this->start_time, nullptr);
     if (this->interval > 0) {
-        for (auto &last_interval : this->last_interval) {
-            last_interval = this->start_time;
-        }
-        for (auto &interval_latencies : this->interval_latencies) {
-            interval_latencies.push_back(std::map<int, uint64_t>());
+        for (ThreadStats *ts : this->thread_stats) {
+            ts->last_interval = this->start_time;
+            ts->interval_latencies.push_back(std::map<int, uint64_t>());
         }
     }
 }
@@ -94,17 +102,14 @@ void Stats::dump()
     uint64_t combined_issued_ops = 0, combined_completed_ops = 0;
 
     // Combine latency from all threads
-    for (const auto &thread_latencies : this->latencies) {
-        for (const auto &latency : thread_latencies) {
+    for (ThreadStats *ts : this->thread_stats) {
+        for (const auto &latency : ts->latencies) {
             combined_latencies[latency.first] += latency.second;
         }
+        combined_issued_ops += ts->issued_ops;
+        combined_completed_ops += ts->completed_ops;
     }
-    for (const auto &ops : this->issued_ops) {
-        combined_issued_ops += ops;
-    }
-    for (const auto &ops : this->completed_ops) {
-        combined_completed_ops += ops;
-    }
+
     // Calculate latency stats
     for (const auto &latency : combined_latencies) {
         total_latency += (latency.first * latency.second);
@@ -138,7 +143,8 @@ void Stats::dump()
     if (this->interval > 0) {
         if (this->interval_file.size() > 0) {
             std::vector<std::map<int, uint64_t>> combined_il;
-            for (const auto &thread_il : this->interval_latencies) {
+            for (ThreadStats *ts : this->thread_stats) {
+                std::vector<std::map<int, uint64_t>> &thread_il = ts->interval_latencies;
                 if (thread_il.size() > combined_il.size()) {
                     combined_il.resize(thread_il.size());
                 }

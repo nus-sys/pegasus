@@ -55,7 +55,7 @@ public:
                         int d_nkeys,
                         int n_threads,
                         Stats *stats);
-    ~KVWorkloadGenerator() {};
+    ~KVWorkloadGenerator();
 
     void next_operation(int tid, NextOperation &next_op);
 
@@ -81,12 +81,18 @@ private:
     struct timeval last_interval;
 
     // Per thread
-    std::vector<int> op_count;
-    std::vector<long> mean_interval;
-    std::vector<std::default_random_engine> generator;
-    std::vector<std::uniform_real_distribution<float>> unif_real_dist;
-    std::vector<std::uniform_int_distribution<int>> unif_int_dist;
-    std::vector<std::poisson_distribution<long>> poisson_dist;
+    class ThreadState {
+    public:
+        ThreadState();
+
+        uint64_t op_count;
+        long mean_interval;
+        std::default_random_engine generator;
+        std::uniform_real_distribution<float> unif_real_dist;
+        std::uniform_int_distribution<int> unif_int_dist;
+        std::poisson_distribution<long> poisson_dist;
+    };
+    std::vector<ThreadState*> thread_states;
 };
 
 class Client : public Application {

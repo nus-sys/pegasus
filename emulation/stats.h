@@ -25,8 +25,18 @@ public:
     virtual void _dump();
 
 protected:
-    std::vector<uint64_t> issued_ops;
-    std::vector<uint64_t> completed_ops;
+class ThreadStats {
+public:
+    ThreadStats();
+
+    uint64_t issued_ops;
+    uint64_t completed_ops;
+    struct timeval last_interval;
+    std::map<int, uint64_t> latencies;
+    std::vector<std::map<int, uint64_t>> interval_latencies;
+};
+
+    std::vector<ThreadStats*> thread_stats;
     std::ofstream file_stream;
 
 private:
@@ -34,9 +44,6 @@ private:
     std::string interval_file;
     struct timeval start_time;
     struct timeval end_time;
-    std::vector<struct timeval> last_interval;
-    std::vector<std::map<int, uint64_t>> latencies; /* sorted latency */
-    std::vector<std::vector<std::map<int, uint64_t>>> interval_latencies;
 };
 
 #endif /* _STATS_H_ */

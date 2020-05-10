@@ -360,7 +360,7 @@ int main(int argc, char *argv[])
             config->node_type = Configuration::NodeType::CLIENT;
             config->terminating = true;
             config->use_raw_transport = false;
-            stats = new Stats(n_app_threads, stats_file_path, 0);
+            stats = new Stats(n_app_threads + n_transport_threads, stats_file_path, 0);
             app = new echo::Client(config, stats, mean_interval, value_len);
             break;
         }
@@ -424,7 +424,7 @@ int main(int argc, char *argv[])
             }
             in.close();
 
-            stats = new memcachekv::MemcacheKVStats(n_app_threads,
+            stats = new memcachekv::MemcacheKVStats(n_app_threads + n_transport_threads,
                                                     stats_file_path,
                                                     interval,
                                                     interval_file_path);
