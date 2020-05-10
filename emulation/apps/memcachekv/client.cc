@@ -22,7 +22,7 @@ KVWorkloadGenerator::ThreadState::ThreadState()
 {
 }
 
-KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
+KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> &keys,
                                          int value_len,
                                          float get_ratio,
                                          float put_ratio,
@@ -44,12 +44,12 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
     if (key_type == KeyType::ZIPF) {
         // Generate zipf distribution data
         float c = 0;
-        for (unsigned int i = 0; i < keys->size(); i++) {
+        for (unsigned int i = 0; i < keys.size(); i++) {
             c = c + (1.0 / pow((float)(i+1), alpha));
         }
         c = 1 / c;
         float sum = 0;
-        for (unsigned int i = 0; i< keys->size(); i++) {
+        for (unsigned int i = 0; i< keys.size(); i++) {
             sum += (c / pow((float)(i+1), alpha));
             this->zipfs.push_back(sum);
         }
@@ -64,7 +64,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> *keys,
         ts->mean_interval = (long)mean_interval;
         ts->generator = std::default_random_engine(time.tv_usec + i);
         ts->unif_real_dist = std::uniform_real_distribution<float>(0.0, 1.0);
-        ts->unif_int_dist = std::uniform_int_distribution<int>(0, keys->size()-1);
+        ts->unif_int_dist = std::uniform_int_distribution<int>(0, keys.size()-1);
         ts->poisson_dist = std::poisson_distribution<long>((long)mean_interval);
         this->thread_states.push_back(ts);
     }
@@ -85,7 +85,7 @@ int KVWorkloadGenerator::next_zipf_key_index(int tid)
         random = ts->unif_real_dist(ts->generator);
     }
 
-    int l = 0, r = this->keys->size(), mid = 0;
+    int l = 0, r = this->keys.size(), mid = 0;
     while (l < r) {
         mid = (l + r) / 2;
         if (random > this->zipfs.at(mid)) {
@@ -114,7 +114,7 @@ OpType KVWorkloadGenerator::next_op_type(int tid)
     return op_type;
 }
 
-void KVWorkloadGenerator::next_operation(int tid, NextOperation &next_op)
+void KVWorkloadGenerator::next_operation(int tid, Operation &op, long &time)
 {
     if (this->d_type != DynamismType::NONE) {
         struct timeval tv;
@@ -126,13 +126,12 @@ void KVWorkloadGenerator::next_operation(int tid, NextOperation &next_op)
     }
 
     ThreadState *ts = this->thread_states[tid];
-    Operation &op = next_op.op;
     switch (this->key_type) {
     case KeyType::UNIFORM:
-        op.key = this->keys->at(ts->unif_int_dist(ts->generator));
+        op.key = this->keys.at(ts->unif_int_dist(ts->generator));
         break;
     case KeyType::ZIPF:
-        op.key = this->keys->at(next_zipf_key_index(tid));
+        op.key = this->keys.at(next_zipf_key_index(tid));
         break;
     }
 
@@ -148,7 +147,7 @@ void KVWorkloadGenerator::next_operation(int tid, NextOperation &next_op)
         adjust_send_rate(tid);
         break;
     }
-    next_op.time = ts->poisson_dist(ts->generator);
+    time = ts->poisson_dist(ts->generator);
 }
 
 void KVWorkloadGenerator::change_keys()
@@ -156,18 +155,18 @@ void KVWorkloadGenerator::change_keys()
     switch (this->d_type) {
     case DynamismType::HOTIN: {
         for (int i = 0; i < this->d_nkeys; i++) {
-            this->keys->push_front(this->keys->back());
-            this->keys->pop_back();
+            this->keys.push_front(this->keys.back());
+            this->keys.pop_back();
         }
         break;
     }
     case DynamismType::RANDOM: {
         for (int i = 0; i < this->d_nkeys; i++) {
             int k1 = rand() % 10000;
-            int k2 = rand() % this->keys->size();
-            std::string tmp = this->keys->at(k1);
-            this->keys->at(k1) = this->keys->at(k2);
-            this->keys->at(k2) = tmp;
+            int k2 = rand() % this->keys.size();
+            std::string tmp = this->keys.at(k1);
+            this->keys.at(k1) = this->keys.at(k2);
+            this->keys.at(k2) = tmp;
         }
         break;
     }
@@ -228,27 +227,25 @@ void Client::run_thread(int tid)
     struct timeval start, now;
     gettimeofday(&start, nullptr);
     gettimeofday(&now, nullptr);
-    NextOperation next_op;
+    MemcacheKVMessage msg;
+    msg.type = MemcacheKVMessage::Type::REQUEST;
+    msg.request.client_id = this->config->client_id;
+    long time;
 
     do {
-        this->gen->next_operation(tid, next_op);
-        wait_ticks(next_op.time);
+        this->gen->next_operation(tid, msg.request.op, time);
+        wait_ticks(time);
         gettimeofday(&now, nullptr);
-        execute_op(next_op.op, now);
+        msg.request.req_time = (uint32_t)now.tv_usec;
+        msg.request.server_id = key_to_node_id(msg.request.op.key, this->config->num_nodes);
+        msg.request.req_id = req_id++;
+        execute_op(msg);
         this->stats->report_issue(tid);
     } while (latency(start, now) < this->config->duration * 1000000);
 }
 
-void Client::execute_op(const Operation &op, const struct timeval &time)
+void Client::execute_op(const MemcacheKVMessage &kvmsg)
 {
-    MemcacheKVMessage kvmsg;
-    kvmsg.type = MemcacheKVMessage::Type::REQUEST;
-    kvmsg.request.client_id = this->config->client_id;
-    kvmsg.request.server_id = key_to_node_id(op.key, this->config->num_nodes);
-    kvmsg.request.req_id = req_id++;
-    kvmsg.request.req_time = (uint32_t)time.tv_usec;
-    kvmsg.request.op = op;
-
     Message msg;
     if (!this->codec->encode(msg, kvmsg)) {
         panic("Failed to encode message");
@@ -258,7 +255,7 @@ void Client::execute_op(const Operation &op, const struct timeval &time)
         this->transport->send_message_to_lb(msg);
     } else {
         // Chain replication: send READs to tail rack and WRITEs to head rack
-        int rack_id = op.op_type == OpType::GET ? this->config->num_racks-1 : 0;
+        int rack_id = kvmsg.request.op.op_type == OpType::GET ? this->config->num_racks-1 : 0;
         this->transport->send_message_to_node(msg, rack_id, kvmsg.request.server_id);
     }
 }

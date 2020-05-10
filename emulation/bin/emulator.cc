@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <fstream>
 #include <signal.h>
+#include <deque>
 
 #include <node.h>
 #include <logger.h>
@@ -428,7 +429,7 @@ int main(int argc, char *argv[])
                                                     stats_file_path,
                                                     interval,
                                                     interval_file_path);
-            gen = new memcachekv::KVWorkloadGenerator(&keys,
+            gen = new memcachekv::KVWorkloadGenerator(keys,
                                                       value_len,
                                                       get_ratio,
                                                       put_ratio,

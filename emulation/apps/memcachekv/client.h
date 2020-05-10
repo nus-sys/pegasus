@@ -16,14 +16,6 @@
 
 namespace memcachekv {
 
-struct NextOperation {
-    inline NextOperation() {};
-    inline NextOperation(long time, const Operation &op)
-        : time(time), op(op) {};
-    long time;
-    Operation op;
-};
-
 enum class KeyType {
     UNIFORM,
     ZIPF
@@ -42,7 +34,8 @@ enum class DynamismType {
 
 class KVWorkloadGenerator {
 public:
-    KVWorkloadGenerator(std::deque<std::string> *keys, int value_len,
+    KVWorkloadGenerator(std::deque<std::string> &keys,
+                        int value_len,
                         float get_ratio,
                         float put_ratio,
                         float mean_interval,
@@ -57,7 +50,7 @@ public:
                         Stats *stats);
     ~KVWorkloadGenerator();
 
-    void next_operation(int tid, NextOperation &next_op);
+    void next_operation(int tid, Operation &op, long &time);
 
 private:
     int next_zipf_key_index(int tid);
@@ -65,7 +58,7 @@ private:
     void change_keys();
     void adjust_send_rate(int tid);
 
-    std::deque<std::string> *keys;
+    std::deque<std::string> &keys;
     float get_ratio;
     float put_ratio;
     int target_latency;
@@ -110,7 +103,7 @@ public:
     virtual void run_thread(int tid) override final;
 
 private:
-    void execute_op(const Operation &op, const struct timeval &time);
+    void execute_op(const MemcacheKVMessage &kvmsg);
     void complete_op(int tid, const MemcacheKVReply &reply);
 
     Configuration *config;
