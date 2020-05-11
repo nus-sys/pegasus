@@ -8,9 +8,6 @@
 #include <transports/dpdk/configuration.h>
 #include <apps/memcachekv/loadbalancer.h>
 
-typedef tbb::concurrent_hash_map<keyhash_t, memcachekv::RSetData>::const_accessor const_rset_accessor_t;
-typedef tbb::concurrent_hash_map<keyhash_t, memcachekv::RSetData>::accessor rset_accessor_t;
-
 #define IPV4_HDR_LEN 20
 #define UDP_HDR_LEN 8
 #define PEGASUS_IDENTIFIER 0x4750
@@ -26,13 +23,14 @@ typedef tbb::concurrent_hash_map<keyhash_t, memcachekv::RSetData>::accessor rset
 
 namespace memcachekv {
 
+thread_local static count_t access_count = 0;
+
 LoadBalancer::LoadBalancer(Configuration *config)
     : config(config), ver_next(1), rset_size(0)
 {
     for (node_t i = 0; i < config->node_addresses.at(0).size(); i++) {
         this->all_servers.insert(i);
     }
-    this->access_count.resize(config->n_transport_threads);
 }
 
 LoadBalancer::~LoadBalancer()
@@ -52,7 +50,7 @@ bool LoadBalancer::receive_raw(void *buf, void *tdata, int tid)
     if (!parse_pegasus_header(buf, header)) {
         return false;
     }
-    process_pegasus_header(header, meta, tid);
+    process_pegasus_header(header, meta);
     if (meta.forward) {
         rewrite_address(buf, meta);
         rewrite_pegasus_header(buf, header);
@@ -101,9 +99,8 @@ void LoadBalancer::run_thread(int tid)
                                                                         ukeys.end(),
                                                                         comp_desc);
         std::unordered_map<keyhash_t, count_t> rkeys;
-        const_rset_accessor_t ac;
         for (const auto &it : this->rkey_access_count) {
-            if (this->rset.find(ac, it.first)) {
+            if (this->rset.count(it.first) > 0) {
                 rkeys[it.first] = it.second;
             }
         }
@@ -206,7 +203,8 @@ void LoadBalancer::rewrite_address(void *pkt, struct MetaData &meta)
     ip->daddr = dst_addr->ip_addr;
     ptr += IPV4_HDR_LEN;
     struct udphdr *udp = (struct udphdr*)ptr;
-    udp->source = src_addr->udp_port;
+    // Do not rewrite src udp port: we use the sender's random src udp port for
+    // RSS
     udp->dest = dst_addr->udp_port;
 }
 
@@ -233,26 +231,25 @@ void LoadBalancer::calculate_chksum(void *pkt)
 }
 
 void LoadBalancer::process_pegasus_header(struct PegasusHeader &header,
-                                          struct MetaData &meta,
-                                          int tid)
+                                          struct MetaData &meta)
 {
     switch (header.op_type) {
     case OP_GET:
-        handle_read_req(header, meta, tid);
+        handle_read_req(header, meta);
         break;
     case OP_PUT:
     case OP_DEL:
-        handle_write_req(header, meta, tid);
+        handle_write_req(header, meta);
         break;
     case OP_REP_R:
     case OP_REP_W:
-        handle_reply(header, meta, tid);
+        handle_reply(header, meta);
         break;
     case OP_MGR_REQ:
-        handle_mgr_req(header, meta, tid);
+        handle_mgr_req(header, meta);
         break;
     case OP_MGR_ACK:
-        handle_mgr_ack(header, meta, tid);
+        handle_mgr_ack(header, meta);
         break;
     case OP_PUT_FWD:
         panic("Not implemented");
@@ -263,65 +260,58 @@ void LoadBalancer::process_pegasus_header(struct PegasusHeader &header,
 }
 
 void LoadBalancer::handle_read_req(struct PegasusHeader &header,
-                                   struct MetaData &meta,
-                                   int tid)
+                                   struct MetaData &meta)
 {
-    const_rset_accessor_t ac;
-
     meta.is_server = true;
     meta.forward = true;
-    if (this->rset.find(ac, header.keyhash)) {
-        header.server_id = select_server(ac->second.replicas);
+    const auto it = this->rset.find(header.keyhash);
+    if (it != this->rset.end()) {
+        header.server_id = select_server(it->second.replicas);
         meta.is_rkey = true;
     } else {
         meta.is_rkey = false;
     }
     meta.dst = header.server_id;
-    update_stats(header, meta, tid);
+    update_stats(header, meta);
 }
 
 void LoadBalancer::handle_write_req(struct PegasusHeader &header,
-                                    struct MetaData &meta,
-                                    int tid)
+                                    struct MetaData &meta)
 {
-    const_rset_accessor_t ac;
-
     meta.is_server = true;
     meta.forward = true;
     header.ver = std::atomic_fetch_add(&this->ver_next, {1});
-    if (this->rset.find(ac, header.keyhash)) {
+    const auto it = this->rset.find(header.keyhash);
+    if (it != this->rset.end()) {
         header.server_id = select_server(this->all_servers);
         meta.is_rkey = true;
     } else {
         meta.is_rkey = false;
     }
     meta.dst = header.server_id;
-    update_stats(header, meta, tid);
+    update_stats(header, meta);
 }
 
 void LoadBalancer::handle_reply(struct PegasusHeader &header,
-                                struct MetaData &meta,
-                                int tid)
+                                struct MetaData &meta)
 {
-    rset_accessor_t ac_rset;
-
     meta.is_server = false;
     meta.forward = true;
     meta.dst = header.client_id;
-    if (this->rset.find(ac_rset, header.keyhash)) {
-        if (header.ver > ac_rset->second.ver_completed) {
-            ac_rset->second.ver_completed = header.ver;
-            ac_rset->second.replicas.clear();
-            ac_rset->second.replicas.insert(header.server_id);
-        } else if (header.ver == ac_rset->second.ver_completed) {
-            ac_rset->second.replicas.insert(header.server_id);
+    auto it = this->rset.find(header.keyhash);
+    if (it != this->rset.end()) {
+        if (header.ver > it->second.ver_completed) {
+            it->second.ver_completed = header.ver;
+            it->second.replicas.clear();
+            it->second.replicas.insert(header.server_id);
+        } else if (header.ver == it->second.ver_completed) {
+            it->second.replicas.insert(header.server_id);
         }
     }
 }
 
 void LoadBalancer::handle_mgr_req(struct PegasusHeader &header,
-                                  struct MetaData &meta,
-                                  int tid)
+                                  struct MetaData &meta)
 {
     meta.is_server = true;
     meta.forward = true;
@@ -329,19 +319,17 @@ void LoadBalancer::handle_mgr_req(struct PegasusHeader &header,
 }
 
 void LoadBalancer::handle_mgr_ack(struct PegasusHeader &header,
-                                  struct MetaData &meta,
-                                  int tid)
+                                  struct MetaData &meta)
 {
-    rset_accessor_t ac_rset;
-
     meta.forward = false;
-    if (this->rset.find(ac_rset, header.keyhash)) {
-        if (header.ver > ac_rset->second.ver_completed) {
-            ac_rset->second.ver_completed = header.ver;
-            ac_rset->second.replicas.clear();
-            ac_rset->second.replicas.insert(header.server_id);
-        } else if (header.ver == ac_rset->second.ver_completed) {
-            ac_rset->second.replicas.insert(header.server_id);
+    auto it = this->rset.find(header.keyhash);
+    if (it != this->rset.end()) {
+        if (header.ver > it->second.ver_completed) {
+            it->second.ver_completed = header.ver;
+            it->second.replicas.clear();
+            it->second.replicas.insert(header.server_id);
+        } else if (header.ver == it->second.ver_completed) {
+            it->second.replicas.insert(header.server_id);
         }
     }
 }
@@ -360,10 +348,9 @@ node_t LoadBalancer::select_server(const std::set<node_t> &servers)
 
 
 void LoadBalancer::update_stats(const struct PegasusHeader &header,
-                                const struct MetaData &meta,
-                                int tid)
+                                const struct MetaData &meta)
 {
-    if (++this->access_count[tid] % LoadBalancer::STATS_SAMPLE_RATE == 0) {
+    if (++access_count % LoadBalancer::STATS_SAMPLE_RATE == 0) {
         std::shared_lock lock(this->stats_mutex);
         if (meta.is_rkey) {
             ++this->rkey_access_count[header.keyhash];
@@ -380,7 +367,8 @@ void LoadBalancer::add_rkey(keyhash_t newkey)
     RSetData data;
     data.replicas.insert(newkey % this->config->num_nodes);
     data.ver_completed = 0;
-    if (this->rset.insert(std::make_pair(newkey, data))) {
+    auto res = this->rset.insert(std::make_pair(newkey, data));
+    if (res.second) {
         this->rset_size++;
     }
 }
@@ -391,7 +379,7 @@ void LoadBalancer::replace_rkey(keyhash_t newkey, keyhash_t oldkey)
         return;
     }
     assert(this->rset_size > 0);
-    this->rset.erase(oldkey);
+    this->rset.unsafe_erase(oldkey);
     this->rset_size--;
     add_rkey(newkey);
 }

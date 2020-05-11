@@ -63,39 +63,31 @@ private:
     void rewrite_address(void *pkt, struct MetaData &meta);
     void calculate_chksum(void *pkt);
     void process_pegasus_header(struct PegasusHeader &header,
-                                struct MetaData &meta,
-                                int tid);
+                                struct MetaData &meta);
     void handle_read_req(struct PegasusHeader &header,
-                         struct MetaData &meta,
-                         int tid);
+                         struct MetaData &meta);
     void handle_write_req(struct PegasusHeader &header,
-                          struct MetaData &meta,
-                          int tid);
+                          struct MetaData &meta);
     void handle_reply(struct PegasusHeader &header,
-                      struct MetaData &meta,
-                      int tid);
+                      struct MetaData &meta);
     void handle_mgr_req(struct PegasusHeader &header,
-                        struct MetaData &meta,
-                        int tid);
+                        struct MetaData &meta);
     void handle_mgr_ack(struct PegasusHeader &header,
-                        struct MetaData &meta,
-                        int tid);
+                        struct MetaData &meta);
     node_t select_server(const std::set<node_t> &servers);
     void update_stats(const struct PegasusHeader &header,
-                      const struct MetaData &meta,
-                      int tid);
+                      const struct MetaData &meta);
     void add_rkey(keyhash_t newkey);
     void replace_rkey(keyhash_t newkey, keyhash_t oldkey);
 
     Configuration *config;
     std::atomic_uint ver_next;
-    tbb::concurrent_hash_map<keyhash_t, RSetData> rset;
+    tbb::concurrent_unordered_map<keyhash_t, RSetData> rset;
     size_t rset_size;
     static const size_t MAX_RSET_SIZE = 32;
     std::set<node_t> all_servers;
 
     std::shared_mutex stats_mutex;
-    std::vector<count_t> access_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> rkey_access_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> ukey_access_count;
     tbb::concurrent_unordered_set<keyhash_t> hot_ukey;
