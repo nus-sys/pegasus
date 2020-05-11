@@ -32,7 +32,8 @@ private:
         RUNNING,
         STOPPED,
     } status;
-    struct rte_mempool *pktmbuf_pool;
+    struct rte_mempool **pktmbuf_rx_pool;
+    struct rte_mempool **pktmbuf_tx_pool;
 };
 
 #endif /* _DPDK_TRANSPORT_H_ */
