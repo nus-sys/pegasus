@@ -4,7 +4,7 @@
 #include <set>
 #include <atomic>
 #include <shared_mutex>
-#include <tbb/concurrent_hash_map.h>
+#include <tbb/concurrent_vector.h>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_unordered_set.h>
 
@@ -39,11 +39,24 @@ struct MetaData {
     node_t dst;
 };
 
+#define MAX_REPLICAS 32
 /* Replica set */
-typedef struct {
-    std::set<node_t> replicas;
-    ver_t ver_completed;
-} RSetData;
+class RSetData {
+public:
+    RSetData();
+    RSetData(ver_t ver, node_t replica);
+    RSetData(const RSetData &r);
+    ver_t get_ver_completed() const;
+    node_t select() const;
+    void insert(node_t replica);
+    void reset(ver_t ver, node_t replica);
+
+private:
+    std::atomic<unsigned> ver_completed;
+    std::atomic<unsigned long> bitmap;
+    std::atomic<unsigned> size;
+    node_t replicas[MAX_REPLICAS];
+};
 
 class LoadBalancer : public Application {
 public:
@@ -74,7 +87,6 @@ private:
                         struct MetaData &meta);
     void handle_mgr_ack(struct PegasusHeader &header,
                         struct MetaData &meta);
-    node_t select_server(const std::set<node_t> &servers);
     void update_stats(const struct PegasusHeader &header,
                       const struct MetaData &meta);
     void add_rkey(keyhash_t newkey);
@@ -82,17 +94,17 @@ private:
 
     Configuration *config;
     std::atomic_uint ver_next;
+    static const size_t MAX_RSET_SIZE = 32;
     tbb::concurrent_unordered_map<keyhash_t, RSetData> rset;
     size_t rset_size;
-    static const size_t MAX_RSET_SIZE = 32;
-    std::set<node_t> all_servers;
+    RSetData all_servers;
 
     std::shared_mutex stats_mutex;
     tbb::concurrent_unordered_map<keyhash_t, count_t> rkey_access_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> ukey_access_count;
     tbb::concurrent_unordered_set<keyhash_t> hot_ukey;
     static const int STATS_SAMPLE_RATE = 1000;
-    static const int STATS_HK_THRESHOLD = 10;
+    static const int STATS_HK_THRESHOLD = 5;
     static const int STATS_EPOCH = 10000;
 };
 

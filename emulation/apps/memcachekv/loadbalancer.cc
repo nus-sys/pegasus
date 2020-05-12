@@ -24,6 +24,58 @@
 namespace memcachekv {
 
 thread_local static count_t access_count = 0;
+thread_local static unsigned set_index = 0;
+
+static const std::memory_order mem_order = std::memory_order_relaxed;
+
+RSetData::RSetData()
+{
+    this->ver_completed.store(0, mem_order);
+    this->bitmap.store(0, mem_order);
+    this->size.store(0, mem_order);
+}
+
+RSetData::RSetData(ver_t ver, node_t replica)
+{
+    reset(ver, replica);
+}
+
+RSetData::RSetData(const RSetData &r)
+{
+    this->ver_completed.store(r.ver_completed.load(mem_order), mem_order);
+    this->bitmap.store(r.bitmap.load(mem_order), mem_order);
+    this->size.store(r.size.load(mem_order), mem_order);
+    for (unsigned i = 0; i < this->size.load(mem_order); i++) {
+        this->replicas[i] = r.replicas[i];
+    }
+}
+
+ver_t RSetData::get_ver_completed() const
+{
+    return this->ver_completed.load(mem_order);
+}
+
+node_t RSetData::select() const
+{
+    return this->replicas[set_index++ % this->size.load(mem_order)];
+}
+
+void RSetData::insert(node_t replica)
+{
+    unsigned long bm = this->bitmap.fetch_or(1 << replica, mem_order);
+    if (!(bm & (1 << replica))) {
+        unsigned s = this->size.fetch_add(1, mem_order);
+        this->replicas[s] = replica;
+    }
+}
+
+void RSetData::reset(ver_t ver, node_t replica)
+{
+    this->ver_completed.store(ver, mem_order);
+    this->replicas[0] = replica;
+    this->size.store(1, mem_order);
+    this->bitmap.store(1 << replica, mem_order);
+}
 
 LoadBalancer::LoadBalancer(Configuration *config)
     : config(config), ver_next(1), rset_size(0)
@@ -266,7 +318,7 @@ void LoadBalancer::handle_read_req(struct PegasusHeader &header,
     meta.forward = true;
     const auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
-        header.server_id = select_server(it->second.replicas);
+        header.server_id = it->second.select();
         meta.is_rkey = true;
     } else {
         meta.is_rkey = false;
@@ -283,7 +335,7 @@ void LoadBalancer::handle_write_req(struct PegasusHeader &header,
     header.ver = std::atomic_fetch_add(&this->ver_next, {1});
     const auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
-        header.server_id = select_server(this->all_servers);
+        header.server_id = this->all_servers.select();
         meta.is_rkey = true;
     } else {
         meta.is_rkey = false;
@@ -300,12 +352,11 @@ void LoadBalancer::handle_reply(struct PegasusHeader &header,
     meta.dst = header.client_id;
     auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
-        if (header.ver > it->second.ver_completed) {
-            it->second.ver_completed = header.ver;
-            it->second.replicas.clear();
-            it->second.replicas.insert(header.server_id);
-        } else if (header.ver == it->second.ver_completed) {
-            it->second.replicas.insert(header.server_id);
+        ver_t ver = it->second.get_ver_completed();
+        if (header.ver > ver) {
+            it->second.reset(header.ver, header.server_id);
+        } else if (header.ver == ver) {
+            it->second.insert(header.server_id);
         }
     }
 }
@@ -324,28 +375,14 @@ void LoadBalancer::handle_mgr_ack(struct PegasusHeader &header,
     meta.forward = false;
     auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
-        if (header.ver > it->second.ver_completed) {
-            it->second.ver_completed = header.ver;
-            it->second.replicas.clear();
-            it->second.replicas.insert(header.server_id);
-        } else if (header.ver == it->second.ver_completed) {
-            it->second.replicas.insert(header.server_id);
+        ver_t ver = it->second.get_ver_completed();
+        if (header.ver > ver) {
+            it->second.reset(header.ver, header.server_id);
+        } else if (header.ver == ver) {
+            it->second.insert(header.server_id);
         }
     }
 }
-
-node_t LoadBalancer::select_server(const std::set<node_t> &servers)
-{
-    if (servers.empty()) {
-        panic("rset is empty");
-    }
-    auto it = servers.begin();
-    for (unsigned long i = 0; i < rand() % servers.size(); i++) {
-        it++;
-    }
-    return *it;
-}
-
 
 void LoadBalancer::update_stats(const struct PegasusHeader &header,
                                 const struct MetaData &meta)
@@ -364,10 +401,8 @@ void LoadBalancer::update_stats(const struct PegasusHeader &header,
 
 void LoadBalancer::add_rkey(keyhash_t newkey)
 {
-    RSetData data;
-    data.replicas.insert(newkey % this->config->num_nodes);
-    data.ver_completed = 0;
-    auto res = this->rset.insert(std::make_pair(newkey, data));
+    RSetData data(0, newkey % this->config->num_nodes);
+    auto res = this->rset.insert(std::pair<keyhash_t, RSetData>(newkey, data));
     if (res.second) {
         this->rset_size++;
     }
