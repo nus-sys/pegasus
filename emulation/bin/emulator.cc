@@ -488,7 +488,7 @@ int main(int argc, char *argv[])
             break;
         }
         case NodeMode::LB:
-            config->rack_id = -1;
+            config->rack_id = rack_id;
             config->node_id = -1;
             config->client_id = -1;
             config->node_type = Configuration::NodeType::LB;
