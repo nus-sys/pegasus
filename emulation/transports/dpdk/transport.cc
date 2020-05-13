@@ -33,7 +33,8 @@
 
 #define DEFAULT_PORT_ID 0
 
-thread_local static int queue_id;
+thread_local static int rx_queue_id;
+thread_local static int tx_queue_id;
 thread_local static uint16_t rand_port;
 #define RAND_PORT_BASE 12345
 #define RAND_PORT_MAX 10000
@@ -41,13 +42,14 @@ thread_local static uint16_t rand_port;
 struct AppArg {
     Application *app;
     int tid;
-    int queue_id;
+    int tx_queue_id;
 };
 
 struct TransportArg {
     DPDKTransport *transport;
     int tid;
-    int queue_id;
+    int rx_queue_id;
+    int tx_queue_id;
 };
 
 #define MAX_THREADS 128
@@ -58,7 +60,8 @@ static struct AppArg app_args[MAX_THREADS];
 static int transport_thread_(void *arg)
 {
     struct TransportArg *targ = (struct TransportArg*)arg;
-    queue_id = targ->queue_id;
+    rx_queue_id = targ->rx_queue_id;
+    tx_queue_id = targ->tx_queue_id;
     rand_port = rand() % RAND_PORT_MAX;
     targ->transport->transport_thread(targ->tid);
     return 0;
@@ -67,7 +70,7 @@ static int transport_thread_(void *arg)
 static int app_thread(void *arg)
 {
     struct AppArg *app_arg = (struct AppArg*)arg;
-    queue_id = app_arg->queue_id;
+    tx_queue_id = app_arg->tx_queue_id;
     rand_port = rand() % RAND_PORT_MAX;
     app_arg->app->run_thread(app_arg->tid);
     return 0;
@@ -229,38 +232,18 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
         panic("No available Ethernet ports");
     }
 
-    int num_queues = config->n_transport_threads;
-    // RX mempool
-    this->pktmbuf_rx_pool = new struct rte_mempool*[num_queues];
-    for (int i = 0; i < num_queues; i++) {
-        unsigned nb_mbufs = nb_rxd + MAX_PKT_BURST + MEMPOOL_CACHE_SIZE;
-        char pool_name[32];
-        sprintf(pool_name, "pktmbuf_pool_rx_%d", i);
-        this->pktmbuf_rx_pool[i] = rte_pktmbuf_pool_create(pool_name,
-                                                           nb_mbufs,
-                                                           MEMPOOL_CACHE_SIZE,
-                                                           0,
-                                                           RTE_MBUF_DEFAULT_BUF_SIZE,
-                                                           rte_socket_id());
-        if (this->pktmbuf_rx_pool[i] == nullptr) {
-            panic("rte_pktmbuf_pool_create failed");
-        }
-    }
-    // TX mempool
-    this->pktmbuf_tx_pool = new struct rte_mempool*[num_queues];
-    for (int i = 0; i < num_queues; i++) {
-        unsigned nb_mbufs = nb_txd + MAX_PKT_BURST + MEMPOOL_CACHE_SIZE;
-        char pool_name[32];
-        sprintf(pool_name, "pktmbuf_pool_tx_%d", i);
-        this->pktmbuf_tx_pool[i] = rte_pktmbuf_pool_create(pool_name,
-                                                           nb_mbufs,
-                                                           MEMPOOL_CACHE_SIZE,
-                                                           0,
-                                                           RTE_MBUF_DEFAULT_BUF_SIZE,
-                                                           rte_socket_id());
-        if (this->pktmbuf_tx_pool[i] == nullptr) {
-            panic("rte_pktmbuf_pool_create failed");
-        }
+    // Initialize mempool
+    unsigned nb_mbufs = (config->n_app_threads + config->n_transport_threads) * (nb_rxd + nb_txd + MAX_PKT_BURST + MEMPOOL_CACHE_SIZE);
+    char pool_name[32];
+    sprintf(pool_name, "pktmbuf_pool");
+    this->pktmbuf_pool = rte_pktmbuf_pool_create(pool_name,
+                                                 nb_mbufs,
+                                                 MEMPOOL_CACHE_SIZE,
+                                                 0,
+                                                 RTE_MBUF_DEFAULT_BUF_SIZE,
+                                                 rte_socket_id());
+    if (this->pktmbuf_pool == nullptr) {
+        panic("rte_pktmbuf_pool_create failed");
     }
 
     // Initialize port
@@ -275,9 +258,11 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     if (dev_info.tx_offload_capa & DEV_TX_OFFLOAD_MBUF_FAST_FREE) {
         port_conf.txmode.offloads |= DEV_TX_OFFLOAD_MBUF_FAST_FREE;
     }
+    int num_rx_queues = config->n_transport_threads;
+    int num_tx_queues = config->n_app_threads + config->n_transport_threads;
     if (rte_eth_dev_configure(this->dev_port,
-                              num_queues,
-                              num_queues,
+                              num_rx_queues,
+                              num_tx_queues,
                               &port_conf) < 0) {
         panic("rte_eth_dev_configure failed");
     }
@@ -288,13 +273,13 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     // Initialize RX queue
     rxconf = dev_info.default_rxconf;
     rxconf.offloads = port_conf.rxmode.offloads;
-    for (int qid = 0; qid < num_queues; qid++) {
+    for (int qid = 0; qid < num_rx_queues; qid++) {
         if (rte_eth_rx_queue_setup(this->dev_port,
                                    qid,
                                    nb_rxd,
                                    rte_eth_dev_socket_id(this->dev_port),
                                    &rxconf,
-                                   this->pktmbuf_rx_pool[qid]) < 0) {
+                                   this->pktmbuf_pool) < 0) {
             panic("rte_eth_rx_queue_setup failed");
         }
     }
@@ -302,7 +287,7 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     // Initialize TX queue
     txconf = dev_info.default_txconf;
     txconf.offloads = port_conf.txmode.offloads;
-    for (int qid = 0; qid < num_queues; qid++) {
+    for (int qid = 0; qid < num_tx_queues; qid++) {
         if (rte_eth_tx_queue_setup(this->dev_port,
                                    qid,
                                    nb_txd,
@@ -339,8 +324,6 @@ DPDKTransport::~DPDKTransport()
         }
         delete [] this->argv;
     }
-    delete [] this->pktmbuf_tx_pool;
-    delete [] this->pktmbuf_rx_pool;
 }
 
 void DPDKTransport::send_message(const Message &msg, const Address &addr)
@@ -355,7 +338,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     const DPDKAddress &src_addr = static_cast<const DPDKAddress&>(*this->config->my_address());
 
     /* Allocate mbuf */
-    m = rte_pktmbuf_alloc(this->pktmbuf_tx_pool[queue_id]);
+    m = rte_pktmbuf_alloc(this->pktmbuf_pool);
     if (m == nullptr) {
         panic("Failed to allocate rte_mbuf");
     }
@@ -402,7 +385,7 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     }
     memcpy(dgram, msg.buf(), msg.len());
     /* Send packet */
-    sent = rte_eth_tx_burst(this->dev_port, queue_id, &m, 1);
+    sent = rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
     if (sent < 1) {
         panic("Failed to send packet");
     }
@@ -414,7 +397,7 @@ void DPDKTransport::send_raw(const void *buf, void *tdata)
     uint16_t sent;
 
     m = (struct rte_mbuf*)tdata;
-    sent = rte_eth_tx_burst(this->dev_port, queue_id, &m, 1);
+    sent = rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
     if (sent < 1) {
         panic("Failed to send raw packet");
     }
@@ -427,7 +410,8 @@ void DPDKTransport::run(void)
     for (int tid = 0; tid < this->config->n_transport_threads; tid++) {
         transport_args[tid].transport = this;
         transport_args[tid].tid = this->config->n_app_threads + tid;
-        transport_args[tid].queue_id = tid;
+        transport_args[tid].rx_queue_id = tid;
+        transport_args[tid].tx_queue_id = tid;
         if (rte_eal_remote_launch(transport_thread_,
                                   &transport_args[tid],
                                   this->config->transport_core + tid) != 0) {
@@ -457,7 +441,7 @@ void DPDKTransport::run_app_threads(Application *app)
     for (int tid = 1; tid < this->config->n_app_threads; tid++) {
         app_args[tid].app = app;
         app_args[tid].tid = tid;
-        app_args[tid].queue_id = tid;
+        app_args[tid].tx_queue_id = this->config->n_transport_threads + tid;
         if (rte_eal_remote_launch(app_thread,
                                   &app_args[tid],
                                   this->config->app_core + tid) != 0) {
@@ -468,7 +452,7 @@ void DPDKTransport::run_app_threads(Application *app)
     // Run on master core
     app_args[0].app = app;
     app_args[0].tid = 0;
-    app_args[0].queue_id = 0;
+    app_args[0].tx_queue_id = this->config->n_transport_threads;
     app_thread(&app_args[0]);
 
     // Wait for app slave cores to finish
@@ -488,7 +472,7 @@ void DPDKTransport::transport_thread(int tid)
 
     while (this->status == DPDKTransport::RUNNING) {
         n_rx = rte_eth_rx_burst(this->dev_port,
-                                queue_id,
+                                rx_queue_id,
                                 pkt_burst,
                                 MAX_PKT_BURST);
         for (i = 0; i < n_rx; i++) {
