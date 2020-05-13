@@ -113,25 +113,25 @@ bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
         out.reply.value = string(ptr, value_len);
         break;
     }
-    case OP_MGR_REQ: {
-        if (buf_size < MGR_REQ_BASE_SIZE) {
+    case OP_RC_REQ: {
+        if (buf_size < RC_REQ_BASE_SIZE) {
             return false;
         }
-        out.type = MemcacheKVMessage::Type::MGR_REQ;
-        out.migration_request.keyhash = keyhash;
-        out.migration_request.ver = ver;
+        out.type = MemcacheKVMessage::Type::RC_REQ;
+        out.rc_request.keyhash = keyhash;
+        out.rc_request.ver = ver;
         key_len_t key_len = *(key_len_t *)ptr;
         ptr += sizeof(key_len_t);
-        out.migration_request.key = string(ptr, key_len);
+        out.rc_request.key = string(ptr, key_len);
         ptr += key_len;
         value_len_t value_len = *(value_len_t *)ptr;
         ptr += sizeof(value_len_t);
-        out.migration_request.value = string(ptr, value_len);
+        out.rc_request.value = string(ptr, value_len);
         ptr += value_len;
         break;
     }
-    case OP_MGR_ACK: {
-        panic("Server should never receive MGR_ACK");
+    case OP_RC_ACK: {
+        panic("Server should never receive RC_ACK");
         break;
     }
     default:
@@ -157,12 +157,12 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         buf_size = REPLY_BASE_SIZE + in.reply.value.size();
         break;
     }
-    case MemcacheKVMessage::Type::MGR_REQ: {
-        buf_size = MGR_REQ_BASE_SIZE + in.migration_request.key.size() + in.migration_request.value.size();
+    case MemcacheKVMessage::Type::RC_REQ: {
+        buf_size = RC_REQ_BASE_SIZE + in.rc_request.key.size() + in.rc_request.value.size();
         break;
     }
-    case MemcacheKVMessage::Type::MGR_ACK: {
-        buf_size = MGR_ACK_BASE_SIZE;
+    case MemcacheKVMessage::Type::RC_ACK: {
+        buf_size = RC_ACK_BASE_SIZE;
         break;
     }
     default:
@@ -241,30 +241,30 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(load_t);
         break;
     }
-    case MemcacheKVMessage::Type::MGR_REQ: {
-        *(op_type_t*)ptr = OP_MGR_REQ;
+    case MemcacheKVMessage::Type::RC_REQ: {
+        *(op_type_t*)ptr = OP_RC_REQ;
         ptr += sizeof(op_type_t);
-        convert_endian(ptr, &in.migration_request.keyhash, sizeof(keyhash_t));
+        convert_endian(ptr, &in.rc_request.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         ptr += sizeof(node_t);
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
-        convert_endian(ptr, &in.migration_request.ver, sizeof(ver_t));
+        convert_endian(ptr, &in.rc_request.ver, sizeof(ver_t));
         ptr += sizeof(ver_t);
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
         break;
     }
-    case MemcacheKVMessage::Type::MGR_ACK: {
-        *(op_type_t*)ptr = OP_MGR_ACK;
+    case MemcacheKVMessage::Type::RC_ACK: {
+        *(op_type_t*)ptr = OP_RC_ACK;
         ptr += sizeof(op_type_t);
-        convert_endian(ptr, &in.migration_ack.keyhash, sizeof(keyhash_t));
+        convert_endian(ptr, &in.rc_ack.keyhash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         ptr += sizeof(node_t);
-        *(node_t*)ptr = in.migration_ack.server_id;
+        *(node_t*)ptr = in.rc_ack.server_id;
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
-        convert_endian(ptr, &in.migration_ack.ver, sizeof(ver_t));
+        convert_endian(ptr, &in.rc_ack.ver, sizeof(ver_t));
         ptr += sizeof(ver_t);
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
@@ -313,18 +313,18 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         }
         break;
     }
-    case MemcacheKVMessage::Type::MGR_REQ: {
-        *(key_len_t *)ptr = (key_len_t)in.migration_request.key.size();
+    case MemcacheKVMessage::Type::RC_REQ: {
+        *(key_len_t *)ptr = (key_len_t)in.rc_request.key.size();
         ptr += sizeof(key_len_t);
-        memcpy(ptr, in.migration_request.key.data(), in.migration_request.key.size());
-        ptr += in.migration_request.key.size();
-        *(value_len_t *)ptr = (value_len_t)in.migration_request.value.size();
+        memcpy(ptr, in.rc_request.key.data(), in.rc_request.key.size());
+        ptr += in.rc_request.key.size();
+        *(value_len_t *)ptr = (value_len_t)in.rc_request.value.size();
         ptr += sizeof(value_len_t);
-        memcpy(ptr, in.migration_request.value.data(), in.migration_request.value.size());
-        ptr += in.migration_request.value.size();
+        memcpy(ptr, in.rc_request.value.data(), in.rc_request.value.size());
+        ptr += in.rc_request.value.size();
         break;
     }
-    case MemcacheKVMessage::Type::MGR_ACK: {
+    case MemcacheKVMessage::Type::RC_ACK: {
         // empty
         break;
     }
@@ -612,16 +612,16 @@ bool ControllerCodec::decode(const Message &in, ControllerMessage &out)
         }
         break;
     }
-    case TYPE_KEY_MGR: {
-        if (buf_size < KEY_MGR_BASE_SIZE) {
+    case TYPE_REPLICATION: {
+        if (buf_size < TYPE_REPLICATION) {
             return false;
         }
-        out.type = ControllerMessage::Type::KEY_MGR;
-        out.key_mgr.keyhash = *(keyhash_t*)ptr;
+        out.type = ControllerMessage::Type::REPLICATION;
+        out.replication.keyhash = *(keyhash_t*)ptr;
         ptr += sizeof(keyhash_t);
         key_len_t key_len = *(key_len_t*)ptr;
         ptr += sizeof(key_len_t);
-        out.key_mgr.key = string(ptr, key_len);
+        out.replication.key = string(ptr, key_len);
         break;
     }
     default:
@@ -643,8 +643,8 @@ bool ControllerCodec::encode(Message &out, const ControllerMessage &in)
     case ControllerMessage::Type::HK_REPORT:
         buf_size = HK_REPORT_BASE_SIZE + in.hk_report.reports.size() * (sizeof(keyhash_t) + sizeof(load_t));
         break;
-    case ControllerMessage::Type::KEY_MGR:
-        buf_size = KEY_MGR_BASE_SIZE + in.key_mgr.key.size();
+    case ControllerMessage::Type::REPLICATION:
+        buf_size = REPLICATION_BASE_SIZE + in.replication.key.size();
         break;
     default:
         return false;
@@ -676,12 +676,12 @@ bool ControllerCodec::encode(Message &out, const ControllerMessage &in)
             ptr += sizeof(load_t);
         }
         break;
-    case ControllerMessage::Type::KEY_MGR:
-        *(keyhash_t*)ptr = in.key_mgr.keyhash;
+    case ControllerMessage::Type::REPLICATION:
+        *(keyhash_t*)ptr = in.replication.keyhash;
         ptr += sizeof(keyhash_t);
-        *(key_len_t*)ptr = in.key_mgr.key.size();
+        *(key_len_t*)ptr = in.replication.key.size();
         ptr += sizeof(key_len_t);
-        memcpy(ptr, in.key_mgr.key.data(), in.key_mgr.key.size());
+        memcpy(ptr, in.replication.key.data(), in.replication.key.size());
         break;
     }
 

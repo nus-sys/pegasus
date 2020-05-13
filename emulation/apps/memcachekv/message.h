@@ -72,7 +72,7 @@ struct MemcacheKVReply {
     load_t load;
 };
 
-struct MigrationRequest {
+struct ReplicationRequest {
     keyhash_t keyhash;
     ver_t ver;
 
@@ -80,7 +80,7 @@ struct MigrationRequest {
     std::string value;
 };
 
-struct MigrationAck {
+struct ReplicationAck {
     int server_id;
 
     keyhash_t keyhash;
@@ -91,8 +91,8 @@ struct MemcacheKVMessage {
     enum class Type {
         REQUEST,
         REPLY,
-        MGR_REQ,
-        MGR_ACK,
+        RC_REQ,
+        RC_ACK,
         UNKNOWN
     };
     MemcacheKVMessage()
@@ -101,8 +101,8 @@ struct MemcacheKVMessage {
     Type type;
     MemcacheKVRequest request;
     MemcacheKVReply reply;
-    MigrationRequest migration_request;
-    MigrationAck migration_ack;
+    ReplicationRequest rc_request;
+    ReplicationAck rc_ack;
 };
 
 class MessageCodec {
@@ -141,10 +141,10 @@ private:
      * req_id (32) + req_time (32) + op_type (8) + result (8) + value_len(16) +
      * value
      *
-     * Migration request:
+     * Replication request:
      * key_len (16) + key + value_len (16) + value
      *
-     * Migration ack:
+     * Replication ack:
      * empty
      */
     typedef uint16_t identifier_t;
@@ -167,15 +167,15 @@ private:
     static const op_type_t OP_DEL       = 0x2;
     static const op_type_t OP_REP_R     = 0x3;
     static const op_type_t OP_REP_W     = 0x4;
-    static const op_type_t OP_MGR_REQ   = 0x5;
-    static const op_type_t OP_MGR_ACK   = 0x6;
+    static const op_type_t OP_RC_REQ    = 0x5;
+    static const op_type_t OP_RC_ACK    = 0x6;
     static const op_type_t OP_PUT_FWD   = 0x7;
 
     static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
     static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(result_t) + sizeof(value_len_t);
-    static const size_t MGR_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
-    static const size_t MGR_ACK_BASE_SIZE = PACKET_BASE_SIZE;
+    static const size_t RC_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
+    static const size_t RC_ACK_BASE_SIZE = PACKET_BASE_SIZE;
 };
 
 /*
@@ -255,7 +255,7 @@ struct ControllerHKReport {
     std::list<Report> reports;
 };
 
-struct ControllerKeyMigration {
+struct ControllerReplication {
     keyhash_t keyhash;
     std::string key;
 };
@@ -265,13 +265,13 @@ struct ControllerMessage {
         RESET_REQ,
         RESET_REPLY,
         HK_REPORT,
-        KEY_MGR
+        REPLICATION
     };
     Type type;
     ControllerResetRequest reset_req;
     ControllerResetReply reset_reply;
     ControllerHKReport hk_report;
-    ControllerKeyMigration key_mgr;
+    ControllerReplication replication;
 };
 
 class ControllerCodec {
@@ -295,7 +295,7 @@ private:
      * Hot key report:
      * nkeys (16) + nkeys * (keyhash (32) + load (16))
      *
-     * Key migration:
+     * Replication:
      * keyhash (32) + key_len (16) + key
      */
     typedef uint16_t identifier_t;
@@ -314,7 +314,7 @@ private:
     static const type_t TYPE_RESET_REQ      = 0;
     static const type_t TYPE_RESET_REPLY    = 1;
     static const type_t TYPE_HK_REPORT      = 2;
-    static const type_t TYPE_KEY_MGR        = 3;
+    static const type_t TYPE_REPLICATION    = 3;
 
     static const ack_t ACK_OK       = 0;
     static const ack_t ACK_FAILED   = 1;
@@ -323,7 +323,7 @@ private:
     static const size_t RESET_REQ_SIZE = PACKET_BASE_SIZE + sizeof(nnodes_t) + sizeof(nrkeys_t);
     static const size_t RESET_REPLY_SIZE = PACKET_BASE_SIZE + sizeof(ack_t);
     static const size_t HK_REPORT_BASE_SIZE = PACKET_BASE_SIZE + sizeof(nkeys_t);
-    static const size_t KEY_MGR_BASE_SIZE = PACKET_BASE_SIZE + sizeof(keyhash_t) + sizeof(key_len_t);
+    static const size_t REPLICATION_BASE_SIZE = PACKET_BASE_SIZE + sizeof(keyhash_t) + sizeof(key_len_t);
 };
 
 } // namespace memcachekv

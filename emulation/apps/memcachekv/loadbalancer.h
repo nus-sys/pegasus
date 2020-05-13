@@ -9,6 +9,7 @@
 #include <tbb/concurrent_unordered_set.h>
 
 #include <application.h>
+#include <apps/memcachekv/message.h>
 
 typedef uint16_t identifier_t;
 typedef uint8_t op_type_t;
@@ -93,6 +94,7 @@ private:
     void replace_rkey(keyhash_t newkey, keyhash_t oldkey);
 
     Configuration *config;
+    ControllerCodec *ctrl_codec;
     std::atomic_uint ver_next;
     static const size_t MAX_RSET_SIZE = 32;
     tbb::concurrent_unordered_map<keyhash_t, RSetData> rset;
@@ -102,7 +104,7 @@ private:
     std::shared_mutex stats_mutex;
     tbb::concurrent_unordered_map<keyhash_t, count_t> rkey_access_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> ukey_access_count;
-    tbb::concurrent_unordered_set<keyhash_t> hot_ukey;
+    tbb::concurrent_unordered_map<keyhash_t, std::string> hot_ukey;
     static const int STATS_SAMPLE_RATE = 1000;
     static const int STATS_HK_THRESHOLD = 5;
     static const int STATS_EPOCH = 10000;

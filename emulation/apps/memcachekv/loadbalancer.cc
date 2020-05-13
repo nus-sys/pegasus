@@ -83,10 +83,12 @@ LoadBalancer::LoadBalancer(Configuration *config)
     for (node_t i = 0; i < config->node_addresses.at(0).size(); i++) {
         this->all_servers.insert(i);
     }
+    this->ctrl_codec = new ControllerCodec();
 }
 
 LoadBalancer::~LoadBalancer()
 {
+    delete this->ctrl_codec;
 }
 
 void LoadBalancer::receive_message(const Message &msg, const Address &addr, int tid)
@@ -144,8 +146,8 @@ void LoadBalancer::run_thread(int tid)
          * and rkeys sorted in ascending order
          */
         std::unordered_map<keyhash_t, count_t> ukeys;
-        for (const auto &keyhash : this->hot_ukey) {
-            ukeys[keyhash] = this->ukey_access_count.at(keyhash);
+        for (const auto &it : this->hot_ukey) {
+            ukeys[it.first] = this->ukey_access_count.at(it.first);
         }
         std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_ukey(ukeys.begin(),
                                                                         ukeys.end(),
@@ -393,7 +395,8 @@ void LoadBalancer::update_stats(const struct PegasusHeader &header,
             ++this->rkey_access_count[header.keyhash];
         } else {
             if (++this->ukey_access_count[header.keyhash] >= LoadBalancer::STATS_HK_THRESHOLD) {
-                this->hot_ukey.insert(header.keyhash);
+                this->hot_ukey.insert(std::pair<keyhash_t, std::string>(header.keyhash,
+                                                                        std::string("")));
             }
         }
     }
@@ -401,10 +404,22 @@ void LoadBalancer::update_stats(const struct PegasusHeader &header,
 
 void LoadBalancer::add_rkey(keyhash_t newkey)
 {
-    RSetData data(0, newkey % this->config->num_nodes);
+    node_t home = newkey % this->config->num_nodes;
+    RSetData data(0, home);
     auto res = this->rset.insert(std::pair<keyhash_t, RSetData>(newkey, data));
     if (res.second) {
         this->rset_size++;
+        // Send ControllerReplication message to home server
+        ControllerMessage ctrl;
+        ctrl.type = ControllerMessage::Type::REPLICATION;
+        ctrl.replication.keyhash = newkey;
+        ctrl.replication.key = std::string("");
+
+        Message msg;
+        if (!this->ctrl_codec->encode(msg, ctrl)) {
+            panic("Failed to encode ControllerMessage");
+        }
+        this->transport->send_message_to_local_node(msg, home);
     }
 }
 

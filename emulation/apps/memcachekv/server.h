@@ -43,8 +43,8 @@ private:
     void process_op(const Operation &op,
                     MemcacheKVReply &reply,
                     int tid);
-    void process_migration_request(const MigrationRequest &request);
-    void process_ctrl_key_migration(const ControllerKeyMigration &key_mgr);
+    void process_replication_request(const ReplicationRequest &request);
+    void process_ctrl_replication(const ControllerReplication &request);
     void update_rate(const Operation &op, int tid);
     load_t calculate_load();
 

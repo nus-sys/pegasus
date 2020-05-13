@@ -109,8 +109,8 @@ void Server::process_kv_message(const MemcacheKVMessage &msg,
         process_kv_request(msg.request, addr, tid);
         break;
     }
-    case MemcacheKVMessage::Type::MGR_REQ: {
-        process_migration_request(msg.migration_request);
+    case MemcacheKVMessage::Type::RC_REQ: {
+        process_replication_request(msg.rc_request);
         break;
     }
     default:
@@ -122,8 +122,8 @@ void Server::process_ctrl_message(const ControllerMessage &msg,
                                   const Address &addr)
 {
     switch (msg.type) {
-    case ControllerMessage::Type::KEY_MGR: {
-        process_ctrl_key_migration(msg.key_mgr);
+    case ControllerMessage::Type::REPLICATION: {
+        process_ctrl_replication(msg.replication);
         break;
     }
     default:
@@ -225,22 +225,18 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
 }
 
 void
-Server::process_migration_request(const MigrationRequest &request)
+Server::process_replication_request(const ReplicationRequest &request)
 {
-    bool ack = false;
     Item &item = this->store[request.keyhash];
     if (request.ver >= item.ver) {
         item.value = request.value;
         item.ver = request.ver;
-        ack = true;
-    }
 
-    if (ack) {
         MemcacheKVMessage kvmsg;
-        kvmsg.type = MemcacheKVMessage::Type::MGR_ACK;
-        kvmsg.migration_ack.keyhash = request.keyhash;
-        kvmsg.migration_ack.ver = request.ver;
-        kvmsg.migration_ack.server_id = this->config->node_id;
+        kvmsg.type = MemcacheKVMessage::Type::RC_ACK;
+        kvmsg.rc_ack.keyhash = request.keyhash;
+        kvmsg.rc_ack.ver = request.ver;
+        kvmsg.rc_ack.server_id = this->config->node_id;
 
         Message msg;
         if (!this->codec->encode(msg, kvmsg)) {
@@ -251,22 +247,22 @@ Server::process_migration_request(const MigrationRequest &request)
 }
 
 void
-Server::process_ctrl_key_migration(const ControllerKeyMigration &key_mgr)
+Server::process_ctrl_replication(const ControllerReplication &request)
 {
     MemcacheKVMessage kvmsg;
 
-    // Send migration request to all nodes in the rack (except itself)
-    kvmsg.type = MemcacheKVMessage::Type::MGR_REQ;
-    kvmsg.migration_request.keyhash = key_mgr.keyhash;
-    kvmsg.migration_request.key = key_mgr.key;
+    // Send replication request to all nodes in the rack (except itself)
+    kvmsg.type = MemcacheKVMessage::Type::RC_REQ;
+    kvmsg.rc_request.keyhash = request.keyhash;
+    kvmsg.rc_request.key = request.key;
 
-    auto it = this->store.find(key_mgr.keyhash);
+    auto it = this->store.find(request.keyhash);
     if (it != this->store.end()) {
-        kvmsg.migration_request.value = it->second.value;
-        kvmsg.migration_request.ver = it->second.ver;
+        kvmsg.rc_request.value = it->second.value;
+        kvmsg.rc_request.ver = it->second.ver;
     } else {
-        kvmsg.migration_request.value = this->default_value;
-        kvmsg.migration_request.ver = 0;
+        kvmsg.rc_request.value = this->default_value;
+        kvmsg.rc_request.ver = 0;
     }
 
     Message msg;
