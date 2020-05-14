@@ -49,7 +49,7 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> &keys,
         }
         c = 1 / c;
         float sum = 0;
-        for (unsigned int i = 0; i< keys.size(); i++) {
+        for (unsigned int i = 0; i < keys.size(); i++) {
             sum += (c / pow((float)(i+1), alpha));
             this->zipfs.push_back(sum);
         }
@@ -60,29 +60,26 @@ KVWorkloadGenerator::KVWorkloadGenerator(std::deque<std::string> &keys,
 
     // Per thread initialization
     for (int i = 0; i < n_threads; i++) {
-        ThreadState *ts = new ThreadState;
-        ts->mean_interval = (long)mean_interval;
-        ts->generator = std::default_random_engine(time.tv_usec + i);
-        ts->unif_real_dist = std::uniform_real_distribution<float>(0.0, 1.0);
-        ts->unif_int_dist = std::uniform_int_distribution<int>(0, keys.size()-1);
-        ts->poisson_dist = std::poisson_distribution<long>((long)mean_interval);
+        ThreadState ts;
+        ts.mean_interval = (long)mean_interval;
+        ts.generator = std::default_random_engine(time.tv_usec + i);
+        ts.unif_real_dist = std::uniform_real_distribution<float>(0.0, 1.0);
+        ts.unif_int_dist = std::uniform_int_distribution<int>(0, keys.size()-1);
+        ts.poisson_dist = std::poisson_distribution<long>((long)mean_interval);
         this->thread_states.push_back(ts);
     }
 }
 
 KVWorkloadGenerator::~KVWorkloadGenerator()
 {
-    for (ThreadState *ts : this->thread_states) {
-        delete ts;
-    }
 }
 
 int KVWorkloadGenerator::next_zipf_key_index(int tid)
 {
-    ThreadState *ts = this->thread_states[tid];
+    ThreadState &ts = this->thread_states.at(tid);
     float random = 0.0;
     while (random == 0.0) {
-        random = ts->unif_real_dist(ts->generator);
+        random = ts.unif_real_dist(ts.generator);
     }
 
     int l = 0, r = this->keys.size(), mid = 0;
@@ -101,8 +98,8 @@ int KVWorkloadGenerator::next_zipf_key_index(int tid)
 
 OpType KVWorkloadGenerator::next_op_type(int tid)
 {
-    ThreadState *ts = this->thread_states[tid];
-    float op_choice = ts->unif_real_dist(ts->generator);
+    ThreadState &ts = this->thread_states.at(tid);
+    float op_choice = ts.unif_real_dist(ts.generator);
     OpType op_type;
     if (op_choice < this->get_ratio) {
         op_type = OpType::GET;
@@ -125,10 +122,10 @@ void KVWorkloadGenerator::next_operation(int tid, Operation &op, long &time)
         }
     }
 
-    ThreadState *ts = this->thread_states[tid];
+    ThreadState &ts = this->thread_states.at(tid);
     switch (this->key_type) {
     case KeyType::UNIFORM:
-        op.key = this->keys.at(ts->unif_int_dist(ts->generator));
+        op.key = this->keys.at(ts.unif_int_dist(ts.generator));
         break;
     case KeyType::ZIPF:
         op.key = this->keys.at(next_zipf_key_index(tid));
@@ -147,7 +144,7 @@ void KVWorkloadGenerator::next_operation(int tid, Operation &op, long &time)
         adjust_send_rate(tid);
         break;
     }
-    time = ts->poisson_dist(ts->generator);
+    time = ts.poisson_dist(ts.generator);
 }
 
 void KVWorkloadGenerator::change_keys()
@@ -177,15 +174,15 @@ void KVWorkloadGenerator::change_keys()
 
 void KVWorkloadGenerator::adjust_send_rate(int tid)
 {
-    ThreadState *ts = this->thread_states[tid];
-    if (++ts->op_count >= LATENCY_CHECK_COUNT) {
-        ts->op_count = 0;
+    ThreadState &ts = this->thread_states.at(tid);
+    if (++ts.op_count >= LATENCY_CHECK_COUNT) {
+        ts.op_count = 0;
         if (this->stats->get_latency(tid, LATENCY_CHECK_PTILE) > this->target_latency) {
-            ts->mean_interval += 1;
+            ts.mean_interval += 1;
         } else {
-            ts->mean_interval = std::max((long)MIN_INTERVAL, ts->mean_interval - 1);
+            ts.mean_interval = std::max((long)MIN_INTERVAL, ts.mean_interval - 1);
         }
-        ts->poisson_dist = std::poisson_distribution<long>(ts->mean_interval);
+        ts.poisson_dist = std::poisson_distribution<long>(ts.mean_interval);
     }
 }
 

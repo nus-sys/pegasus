@@ -85,7 +85,7 @@ private:
         std::uniform_int_distribution<int> unif_int_dist;
         std::poisson_distribution<long> poisson_dist;
     };
-    std::vector<ThreadState*> thread_states;
+    std::vector<ThreadState> thread_states;
 };
 
 class Client : public Application {

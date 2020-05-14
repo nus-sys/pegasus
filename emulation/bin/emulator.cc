@@ -528,7 +528,7 @@ int main(int argc, char *argv[])
     delete app;
     delete ctrl_codec;
     delete codec;
-    delete gen;
+    //delete gen;
     delete stats;
 
     return 0;
