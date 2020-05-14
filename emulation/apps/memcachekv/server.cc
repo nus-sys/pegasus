@@ -249,11 +249,17 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
 void
 Server::process_replication_request(const ReplicationRequest &request)
 {
+    bool reply = false;
     Item &item = this->store[request.key];
+    pthread_rwlock_wrlock(&item.lock);
     if (request.ver >= item.ver) {
         item.value = request.value;
         item.ver = request.ver;
+        reply = true;
+    }
+    pthread_rwlock_unlock(&item.lock);
 
+    if (reply) {
         MemcacheKVMessage kvmsg;
         kvmsg.type = MemcacheKVMessage::Type::RC_ACK;
         kvmsg.rc_ack.keyhash = request.keyhash;
@@ -271,29 +277,28 @@ Server::process_replication_request(const ReplicationRequest &request)
 void
 Server::process_ctrl_replication(const ControllerReplication &request)
 {
-    MemcacheKVMessage kvmsg;
-
-    // Send replication request to all nodes in the rack (except itself)
-    kvmsg.type = MemcacheKVMessage::Type::RC_REQ;
-    kvmsg.rc_request.keyhash = request.keyhash;
-    kvmsg.rc_request.key = request.key;
-
     auto it = this->store.find(request.key);
     if (it != this->store.end()) {
+        MemcacheKVMessage kvmsg;
+
+        pthread_rwlock_rdlock(&it->second.lock);
         kvmsg.rc_request.value = it->second.value;
         kvmsg.rc_request.ver = it->second.ver;
-    } else {
-        kvmsg.rc_request.value = this->default_value;
-        kvmsg.rc_request.ver = 0;
-    }
+        pthread_rwlock_unlock(&it->second.lock);
 
-    Message msg;
-    if (!this->codec->encode(msg, kvmsg)) {
-        panic("Failed to encode message");
-    }
-    for (int node_id = 0; node_id < this->config->num_nodes; node_id++) {
-        if (node_id != this->config->node_id) {
-            this->transport->send_message_to_local_node(msg, node_id);
+        kvmsg.type = MemcacheKVMessage::Type::RC_REQ;
+        kvmsg.rc_request.keyhash = request.keyhash;
+        kvmsg.rc_request.key = request.key;
+
+        // Send replication request to all nodes in the rack (except itself)
+        Message msg;
+        if (!this->codec->encode(msg, kvmsg)) {
+            panic("Failed to encode message");
+        }
+        for (int node_id = 0; node_id < this->config->num_nodes; node_id++) {
+            if (node_id != this->config->node_id) {
+                this->transport->send_message_to_local_node(msg, node_id);
+            }
         }
     }
 }
