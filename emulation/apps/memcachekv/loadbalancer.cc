@@ -1,3 +1,4 @@
+#include <unordered_map>
 #include <cassert>
 #include <net/ethernet.h>
 #include <netinet/ip.h>
@@ -84,6 +85,7 @@ LoadBalancer::LoadBalancer(Configuration *config)
         this->all_servers.insert(i);
     }
     this->ctrl_codec = new ControllerCodec();
+    this->stats_lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 LoadBalancer::~LoadBalancer()
@@ -162,12 +164,11 @@ void LoadBalancer::run_thread(int tid)
                                                                         rkeys.end(),
                                                                         comp_asc);
         /* Clear stats */
-        {
-            std::unique_lock lock(this->stats_mutex);
-            this->rkey_access_count.clear();
-            this->ukey_access_count.clear();
-            this->hot_ukey.clear();
-        }
+        pthread_rwlock_wrlock(&this->stats_lock);
+        this->rkey_access_count.clear();
+        this->ukey_access_count.clear();
+        this->hot_ukey.clear();
+        pthread_rwlock_unlock(&this->stats_lock);
         /* Add new rkeys and/or replace old rkeys */
         auto rkey_it = sorted_rkey.begin();
         for (auto ukey_it = sorted_ukey.begin();
@@ -390,7 +391,7 @@ void LoadBalancer::update_stats(const struct PegasusHeader &header,
                                 const struct MetaData &meta)
 {
     if (++access_count % LoadBalancer::STATS_SAMPLE_RATE == 0) {
-        std::shared_lock lock(this->stats_mutex);
+        pthread_rwlock_rdlock(&this->stats_lock);
         if (meta.is_rkey) {
             ++this->rkey_access_count[header.keyhash];
         } else {
@@ -399,6 +400,7 @@ void LoadBalancer::update_stats(const struct PegasusHeader &header,
                                                                         std::string("")));
             }
         }
+        pthread_rwlock_unlock(&this->stats_lock);
     }
 }
 

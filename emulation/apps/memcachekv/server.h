@@ -5,7 +5,6 @@
 #include <vector>
 #include <deque>
 #include <mutex>
-#include <shared_mutex>
 #include <pthread.h>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_unordered_set.h>
@@ -76,7 +75,7 @@ private:
     static const int STATS_SAMPLE_RATE = 1000;
     static const int STATS_HK_THRESHOLD = 5;
     static const int STATS_EPOCH = 10000; // 10ms
-    std::shared_mutex stats_mutex;
+    pthread_rwlock_t stats_lock;
     std::vector<count_t> request_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> access_count;
     tbb::concurrent_unordered_set<keyhash_t> hot_keys;

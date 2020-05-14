@@ -3,7 +3,7 @@
 
 #include <set>
 #include <atomic>
-#include <shared_mutex>
+#include <pthread.h>
 #include <tbb/concurrent_vector.h>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_unordered_set.h>
@@ -101,7 +101,7 @@ private:
     size_t rset_size;
     RSetData all_servers;
 
-    std::shared_mutex stats_mutex;
+    pthread_rwlock_t stats_lock;
     tbb::concurrent_unordered_map<keyhash_t, count_t> rkey_access_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> ukey_access_count;
     tbb::concurrent_unordered_map<keyhash_t, std::string> hot_ukey;

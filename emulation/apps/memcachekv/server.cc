@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <functional>
 #include <set>
+#include <unordered_map>
 
 #include <logger.h>
 #include <utils.h>
@@ -44,6 +45,7 @@ Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl
     for (const auto &key : keys) {
         this->store.insert(std::pair<std::string, Item>(key, Item(0, default_value)));
     }
+    this->stats_lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 Server::~Server()
@@ -96,11 +98,10 @@ void Server::run_thread(int tid)
                                                                       hk.end(),
                                                                       comp);
         /* Clear stats */
-        {
-            std::unique_lock lock(this->stats_mutex);
-            this->access_count.clear();
-            this->hot_keys.clear();
-        }
+        pthread_rwlock_wrlock(&this->stats_lock);
+        this->access_count.clear();
+        this->hot_keys.clear();
+        pthread_rwlock_unlock(&this->stats_lock);
         /* Send hk report */
         if (sorted_hk.size() == 0) {
             continue;
@@ -307,10 +308,11 @@ void
 Server::update_rate(const Operation &op, int tid)
 {
     if (++this->request_count[tid] % Server::STATS_SAMPLE_RATE == 0) {
-        std::shared_lock lock(this->stats_mutex);
+        pthread_rwlock_rdlock(&this->stats_lock);
         if (++this->access_count[op.keyhash] >= Server::STATS_HK_THRESHOLD) {
             this->hot_keys.insert(op.keyhash);
         }
+        pthread_rwlock_unlock(&this->stats_lock);
     }
 }
 
