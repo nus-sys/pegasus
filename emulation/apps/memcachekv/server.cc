@@ -188,7 +188,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
     }
     switch (op.op_type) {
     case OpType::GET: {
-        auto it = this->store.find(op.keyhash);
+        auto it = this->store.find(op.key);
         if (it != this->store.end()) {
             // Key is present
             reply.result = Result::OK;
@@ -202,7 +202,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
     }
     case OpType::PUT:
     case OpType::PUTFWD: {
-        Item &item = this->store[op.keyhash];
+        Item &item = this->store[op.key];
         if (op.ver >= item.ver) {
             item.value = op.value;
             item.ver = op.ver;
@@ -227,7 +227,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
 void
 Server::process_replication_request(const ReplicationRequest &request)
 {
-    Item &item = this->store[request.keyhash];
+    Item &item = this->store[request.key];
     if (request.ver >= item.ver) {
         item.value = request.value;
         item.ver = request.ver;
@@ -256,7 +256,7 @@ Server::process_ctrl_replication(const ControllerReplication &request)
     kvmsg.rc_request.keyhash = request.keyhash;
     kvmsg.rc_request.key = request.key;
 
-    auto it = this->store.find(request.keyhash);
+    auto it = this->store.find(request.key);
     if (it != this->store.end()) {
         kvmsg.rc_request.value = it->second.value;
         kvmsg.rc_request.ver = it->second.ver;

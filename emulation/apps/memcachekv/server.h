@@ -60,7 +60,7 @@ private:
         std::string value;
         ver_t ver;
     };
-    tbb::concurrent_unordered_map<keyhash_t, Item> store;
+    tbb::concurrent_unordered_map<std::string, Item> store;
 
     int proc_latency;
     std::string default_value;
