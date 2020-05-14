@@ -10,8 +10,27 @@ using std::string;
 
 namespace memcachekv {
 
+Server::Item::Item()
+    : ver(0), value("")
+{
+    this->lock = PTHREAD_RWLOCK_INITIALIZER;
+}
+
+Server::Item::Item(ver_t ver, const std::string &value)
+    : ver(ver), value(value)
+{
+    this->lock = PTHREAD_RWLOCK_INITIALIZER;
+}
+
+Server::Item::Item(const Item &item)
+    : ver(item.ver), value(item.value)
+{
+    this->lock = PTHREAD_RWLOCK_INITIALIZER;
+}
+
 Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl_codec,
-               int proc_latency, string default_value, bool report_load)
+               int proc_latency, string default_value, bool report_load,
+               std::deque<std::string> &keys)
     : config(config),
     codec(codec),
     ctrl_codec(ctrl_codec),
@@ -22,6 +41,9 @@ Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
     this->request_count.resize(config->n_transport_threads, 0);
+    for (const auto &key : keys) {
+        this->store.insert(std::pair<std::string, Item>(key, Item(0, default_value)));
+    }
 }
 
 Server::~Server()
@@ -181,7 +203,6 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
 {
     reply.op_type = op.op_type;
     reply.keyhash = op.keyhash;
-    reply.ver = op.ver;
     reply.key = op.key;
     if (this->report_load) {
         reply.load = calculate_load();
@@ -191,31 +212,32 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
         auto it = this->store.find(op.key);
         if (it != this->store.end()) {
             // Key is present
-            reply.result = Result::OK;
+            pthread_rwlock_rdlock(&it->second.lock);
+            reply.ver = it->second.ver;
             reply.value = it->second.value;
+            pthread_rwlock_unlock(&it->second.lock);
+            reply.result = Result::OK;
         } else {
             // Key not found
+            reply.ver = 0;
+            reply.value = std::string("");
             reply.result = Result::NOT_FOUND;
-            reply.value = this->default_value;
         }
         break;
     }
     case OpType::PUT:
     case OpType::PUTFWD: {
         Item &item = this->store[op.key];
+        pthread_rwlock_wrlock(&item.lock);
         if (op.ver >= item.ver) {
-            item.value = op.value;
             item.ver = op.ver;
+            item.value = op.value;
         }
-        reply.op_type = OpType::PUT; // client doesn't expect PUTFWD
-        reply.result = Result::OK;
+        pthread_rwlock_unlock(&item.lock);
+        reply.ver = op.ver;
         reply.value = op.value; // for netcache
-        break;
-    }
-    case OpType::DEL: {
-        // XXX rkey?
         reply.result = Result::OK;
-        reply.value = "";
+        reply.op_type = OpType::PUT; // client doesn't expect PUTFWD
         break;
     }
     default:

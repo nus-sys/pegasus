@@ -2,12 +2,11 @@
 #define _MEMCACHEKV_SERVER_H_
 
 #include <string>
-#include <unordered_map>
-#include <set>
-#include <mutex>
 #include <vector>
+#include <deque>
+#include <mutex>
 #include <shared_mutex>
-#include <tbb/concurrent_hash_map.h>
+#include <pthread.h>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_unordered_set.h>
 
@@ -22,7 +21,8 @@ class Server : public Application {
 public:
     Server(Configuration *config, MessageCodec *codec,
            ControllerCodec *ctrl_codec, int proc_latency,
-           std::string default_value, bool report_load);
+           std::string default_value, bool report_load,
+           std::deque<std::string> &keys);
     ~Server();
 
     virtual void receive_message(const Message &msg,
@@ -53,12 +53,13 @@ private:
     ControllerCodec *ctrl_codec;
 
     struct Item {
-        Item()
-            : value(""), ver(0) {};
-        Item(const std::string &value, ver_t ver)
-            : value(value), ver(ver) {};
-        std::string value;
+        Item();
+        Item(ver_t ver, const std::string &value);
+        Item(const Item &item);
+
         ver_t ver;
+        std::string value;
+        pthread_rwlock_t lock;
     };
     tbb::concurrent_unordered_map<std::string, Item> store;
 

@@ -402,16 +402,7 @@ int main(int argc, char *argv[])
             panic("Unreachable");
         }
 
-        switch (node_mode) {
-        case NodeMode::CLIENT: {
-            if (node_id < 0) {
-                panic("client requires argument '-e <node id>'");
-            }
-            config->rack_id = -1;
-            config->client_id = node_id;
-            config->node_type = Configuration::NodeType::CLIENT;
-            config->terminating = true;
-            config->use_raw_transport = false;
+        if (node_mode == NodeMode::CLIENT || node_mode == NodeMode::SERVER) {
             // Read in all keys
             std::ifstream in;
             in.open(keys_file_path);
@@ -424,6 +415,18 @@ int main(int argc, char *argv[])
                 keys.push_back(key);
             }
             in.close();
+        }
+
+        switch (node_mode) {
+        case NodeMode::CLIENT: {
+            if (node_id < 0) {
+                panic("client requires argument '-e <node id>'");
+            }
+            config->rack_id = -1;
+            config->client_id = node_id;
+            config->node_type = Configuration::NodeType::CLIENT;
+            config->terminating = true;
+            config->use_raw_transport = false;
 
             stats = new memcachekv::MemcacheKVStats(n_app_threads + n_transport_threads,
                                                     stats_file_path,
@@ -460,7 +463,7 @@ int main(int argc, char *argv[])
             config->terminating = false;
             config->use_raw_transport = false;
             std::string default_value = std::string(value_len, 'v');
-            app = new memcachekv::Server(config, codec, ctrl_codec, proc_latency, default_value, report_load);
+            app = new memcachekv::Server(config, codec, ctrl_codec, proc_latency, default_value, report_load, keys);
             break;
         }
         case NodeMode::CONTROLLER: {
