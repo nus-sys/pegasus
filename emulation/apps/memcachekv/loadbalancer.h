@@ -17,6 +17,10 @@ typedef uint32_t keyhash_t;
 typedef uint8_t node_t;
 typedef uint16_t load_t;
 typedef uint32_t ver_t;
+typedef uint32_t req_id_t;
+typedef uint32_t req_time_t;
+typedef uint8_t result_t;
+typedef uint16_t key_len_t;
 
 typedef uint64_t count_t;
 
@@ -30,6 +34,8 @@ struct PegasusHeader {
     node_t server_id;
     load_t load;
     ver_t ver;
+    const char *key;
+    size_t key_len;
 };
 
 /* Process pipeline metadata */
@@ -90,21 +96,22 @@ private:
                         struct MetaData &meta);
     void update_stats(const struct PegasusHeader &header,
                       const struct MetaData &meta);
-    void add_rkey(keyhash_t newkey);
-    void replace_rkey(keyhash_t newkey, keyhash_t oldkey);
+    void add_rkey(keyhash_t keyhash, const std::string &key);
+    void replace_rkey(keyhash_t newhash, const std::string &newkey,
+                      keyhash_t oldhash, const std::string &oldkey);
 
     Configuration *config;
     ControllerCodec *ctrl_codec;
     std::atomic_uint ver_next;
     static const size_t MAX_RSET_SIZE = 32;
     tbb::concurrent_unordered_map<keyhash_t, RSetData> rset;
-    size_t rset_size;
     RSetData all_servers;
 
     pthread_rwlock_t stats_lock;
     tbb::concurrent_unordered_map<keyhash_t, count_t> rkey_access_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> ukey_access_count;
-    tbb::concurrent_unordered_map<keyhash_t, std::string> hot_ukey;
+    tbb::concurrent_unordered_map<keyhash_t, std::string> hot_ukeys;
+    std::unordered_map<keyhash_t, std::string> rkeys;
     static const int STATS_SAMPLE_RATE = 1000;
     static const int STATS_HK_THRESHOLD = 5;
     static const int STATS_EPOCH = 10000;

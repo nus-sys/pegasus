@@ -79,7 +79,7 @@ void RSetData::reset(ver_t ver, node_t replica)
 }
 
 LoadBalancer::LoadBalancer(Configuration *config)
-    : config(config), ver_next(1), rset_size(0)
+    : config(config), ver_next(1)
 {
     for (node_t i = 0; i < config->node_addresses.at(0).size(); i++) {
         this->all_servers.insert(i);
@@ -147,38 +147,42 @@ void LoadBalancer::run_thread(int tid)
          * Construct hot ukeys sorted in descending order,
          * and rkeys sorted in ascending order
          */
-        std::unordered_map<keyhash_t, count_t> ukeys;
-        for (const auto &it : this->hot_ukey) {
-            ukeys[it.first] = this->ukey_access_count.at(it.first);
+        std::unordered_map<keyhash_t, count_t> uk;
+        std::unordered_map<keyhash_t, std::string> uk_keys;
+        for (const auto &it : this->hot_ukeys) {
+            uk[it.first] = this->ukey_access_count.at(it.first);
+            uk_keys[it.first] = it.second;
         }
-        std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_ukey(ukeys.begin(),
-                                                                        ukeys.end(),
-                                                                        comp_desc);
-        std::unordered_map<keyhash_t, count_t> rkeys;
-        for (const auto &it : this->rkey_access_count) {
-            if (this->rset.count(it.first) > 0) {
-                rkeys[it.first] = it.second;
-            }
+        std::unordered_map<keyhash_t, count_t> rk;
+        for (const auto &it : this->rkeys) {
+            // use [] operator because key may not be accessed since last clear
+            rk[it.first] = this->rkey_access_count[it.first];
         }
-        std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_rkey(rkeys.begin(),
-                                                                        rkeys.end(),
-                                                                        comp_asc);
+
+        std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_uk(uk.begin(),
+                                                                      uk.end(),
+                                                                      comp_desc);
+        std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_rk(rk.begin(),
+                                                                      rk.end(),
+                                                                      comp_asc);
         /* Clear stats */
         pthread_rwlock_wrlock(&this->stats_lock);
         this->rkey_access_count.clear();
         this->ukey_access_count.clear();
-        this->hot_ukey.clear();
+        this->hot_ukeys.clear();
         pthread_rwlock_unlock(&this->stats_lock);
+
         /* Add new rkeys and/or replace old rkeys */
-        auto rkey_it = sorted_rkey.begin();
-        for (auto ukey_it = sorted_ukey.begin();
-             ukey_it != sorted_ukey.end();
-             ukey_it++) {
-            if (this->rset_size < LoadBalancer::MAX_RSET_SIZE) {
-                add_rkey(ukey_it->first);
-            } else if (rkey_it != sorted_rkey.end() && ukey_it->second > rkey_it->second) {
-                replace_rkey(ukey_it->first, rkey_it->first);
-                rkey_it++;
+        auto rk_it = sorted_rk.begin();
+        for (auto uk_it = sorted_uk.begin();
+             uk_it != sorted_uk.end();
+             uk_it++) {
+            if (this->rkeys.size() < LoadBalancer::MAX_RSET_SIZE) {
+                add_rkey(uk_it->first, uk_keys.at(uk_it->first));
+            } else if (rk_it != sorted_rk.end() && uk_it->second > rk_it->second) {
+                replace_rkey(uk_it->first, uk_keys.at(uk_it->first),
+                             rk_it->first, this->rkeys.at(rk_it->first));
+                rk_it++;
             } else {
                 break;
             }
@@ -211,6 +215,22 @@ bool LoadBalancer::parse_pegasus_header(const void *pkt, struct PegasusHeader &h
     convert_endian(&header.ver, ptr, sizeof(ver_t));
     ptr += sizeof(ver_t);
 
+    switch (header.op_type) {
+    case OP_GET:
+    case OP_PUT:
+    case OP_DEL:
+        ptr += sizeof(node_t);
+        ptr += sizeof(load_t);
+        ptr += sizeof(req_id_t);
+        ptr += sizeof(req_time_t);
+        ptr += sizeof(op_type_t);
+        header.key_len = *(key_len_t*)ptr;
+        ptr += sizeof(key_len_t);
+        header.key = (const char*)ptr;
+        break;
+    default:
+        break;
+    }
     return true;
 }
 
@@ -396,26 +416,27 @@ void LoadBalancer::update_stats(const struct PegasusHeader &header,
             ++this->rkey_access_count[header.keyhash];
         } else {
             if (++this->ukey_access_count[header.keyhash] >= LoadBalancer::STATS_HK_THRESHOLD) {
-                this->hot_ukey.insert(std::pair<keyhash_t, std::string>(header.keyhash,
-                                                                        std::string("")));
+                this->hot_ukeys.insert(std::make_pair(header.keyhash,
+                                                      std::string(header.key,
+                                                                  header.key_len)));
             }
         }
         pthread_rwlock_unlock(&this->stats_lock);
     }
 }
 
-void LoadBalancer::add_rkey(keyhash_t newkey)
+void LoadBalancer::add_rkey(keyhash_t keyhash, const std::string &key)
 {
-    node_t home = newkey % this->config->num_nodes;
+    node_t home = keyhash % this->config->num_nodes;
     RSetData data(0, home);
-    auto res = this->rset.insert(std::pair<keyhash_t, RSetData>(newkey, data));
+    this->rkeys.insert(std::make_pair(keyhash, key));
+    auto res = this->rset.insert(std::make_pair(keyhash, data));
     if (res.second) {
-        this->rset_size++;
         // Send ControllerReplication message to home server
         ControllerMessage ctrl;
         ctrl.type = ControllerMessage::Type::REPLICATION;
-        ctrl.replication.keyhash = newkey;
-        ctrl.replication.key = std::string("");
+        ctrl.replication.keyhash = keyhash;
+        ctrl.replication.key = key;
 
         Message msg;
         if (!this->ctrl_codec->encode(msg, ctrl)) {
@@ -425,15 +446,16 @@ void LoadBalancer::add_rkey(keyhash_t newkey)
     }
 }
 
-void LoadBalancer::replace_rkey(keyhash_t newkey, keyhash_t oldkey)
+void LoadBalancer::replace_rkey(keyhash_t newhash, const std::string &newkey,
+                                keyhash_t oldhash, const std::string &oldkey)
 {
-    if (newkey == oldkey) {
+    if (newhash == oldhash) {
         return;
     }
-    assert(this->rset_size > 0);
-    this->rset.unsafe_erase(oldkey);
-    this->rset_size--;
-    add_rkey(newkey);
+    assert(this->rkeys.size() > 0);
+    this->rkeys.erase(oldhash);
+    this->rset.unsafe_erase(oldhash);
+    add_rkey(newhash, newkey);
 }
 
 } // namespace memcachekv
