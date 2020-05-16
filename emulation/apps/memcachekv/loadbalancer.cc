@@ -27,55 +27,66 @@ namespace memcachekv {
 thread_local static count_t access_count = 0;
 thread_local static unsigned set_index = 0;
 
-static const std::memory_order mem_order = std::memory_order_relaxed;
-
 RSetData::RSetData()
+    : ver_completed(0), bitmap(0), size(0)
 {
-    this->ver_completed.store(0, mem_order);
-    this->bitmap.store(0, mem_order);
-    this->size.store(0, mem_order);
+    this->lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 RSetData::RSetData(ver_t ver, node_t replica)
 {
     reset(ver, replica);
+    this->lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 RSetData::RSetData(const RSetData &r)
+    : ver_completed(r.ver_completed), bitmap(r.bitmap), size(r.size)
 {
-    this->ver_completed.store(r.ver_completed.load(mem_order), mem_order);
-    this->bitmap.store(r.bitmap.load(mem_order), mem_order);
-    this->size.store(r.size.load(mem_order), mem_order);
-    for (unsigned i = 0; i < this->size.load(mem_order); i++) {
+    for (size_t i = 0; i < r.size; i++) {
         this->replicas[i] = r.replicas[i];
     }
+    this->lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 ver_t RSetData::get_ver_completed() const
 {
-    return this->ver_completed.load(mem_order);
+    return this->ver_completed;
 }
 
 node_t RSetData::select() const
 {
-    return this->replicas[set_index++ % this->size.load(mem_order)];
+    return this->replicas[set_index++ % this->size];
 }
 
 void RSetData::insert(node_t replica)
 {
-    unsigned long bm = this->bitmap.fetch_or(1 << replica, mem_order);
-    if (!(bm & (1 << replica))) {
-        unsigned s = this->size.fetch_add(1, mem_order);
-        this->replicas[s] = replica;
+    if (!(this->bitmap & (1 << replica))) {
+        this->bitmap |= (1 << replica);
+        this->replicas[this->size++] = replica;
     }
 }
 
 void RSetData::reset(ver_t ver, node_t replica)
 {
-    this->ver_completed.store(ver, mem_order);
+    this->ver_completed = ver;
     this->replicas[0] = replica;
-    this->size.store(1, mem_order);
-    this->bitmap.store(1 << replica, mem_order);
+    this->size = 1;
+    this->bitmap = 1 << replica;
+}
+
+void RSetData::shared_lock()
+{
+    pthread_rwlock_rdlock(&this->lock);
+}
+
+void RSetData::exclusive_lock()
+{
+    pthread_rwlock_wrlock(&this->lock);
+}
+
+void RSetData::unlock()
+{
+    pthread_rwlock_unlock(&this->lock);
 }
 
 LoadBalancer::LoadBalancer(Configuration *config)
@@ -341,7 +352,9 @@ void LoadBalancer::handle_read_req(struct PegasusHeader &header,
     meta.forward = true;
     const auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
+        it->second.shared_lock();
         header.server_id = it->second.select();
+        it->second.unlock();
         meta.is_rkey = true;
     } else {
         meta.is_rkey = false;
@@ -358,6 +371,7 @@ void LoadBalancer::handle_write_req(struct PegasusHeader &header,
     header.ver = std::atomic_fetch_add(&this->ver_next, {1});
     const auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
+        // No lock required: all_servers is read-only
         header.server_id = this->all_servers.select();
         meta.is_rkey = true;
     } else {
@@ -375,12 +389,14 @@ void LoadBalancer::handle_reply(struct PegasusHeader &header,
     meta.dst = header.client_id;
     auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
+        it->second.exclusive_lock();
         ver_t ver = it->second.get_ver_completed();
         if (header.ver > ver) {
             it->second.reset(header.ver, header.server_id);
         } else if (header.ver == ver) {
             it->second.insert(header.server_id);
         }
+        it->second.unlock();
     }
 }
 
@@ -398,12 +414,14 @@ void LoadBalancer::handle_mgr_ack(struct PegasusHeader &header,
     meta.forward = false;
     auto it = this->rset.find(header.keyhash);
     if (it != this->rset.end()) {
+        it->second.exclusive_lock();
         ver_t ver = it->second.get_ver_completed();
         if (header.ver > ver) {
             it->second.reset(header.ver, header.server_id);
         } else if (header.ver == ver) {
             it->second.insert(header.server_id);
         }
+        it->second.unlock();
     }
 }
 

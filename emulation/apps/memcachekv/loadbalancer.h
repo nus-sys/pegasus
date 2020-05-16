@@ -57,11 +57,15 @@ public:
     node_t select() const;
     void insert(node_t replica);
     void reset(ver_t ver, node_t replica);
+    void shared_lock();
+    void exclusive_lock();
+    void unlock();
 
 private:
-    std::atomic<unsigned> ver_completed;
-    std::atomic<unsigned long> bitmap;
-    std::atomic<unsigned> size;
+    pthread_rwlock_t lock;
+    ver_t ver_completed;
+    unsigned long bitmap;
+    size_t size;
     node_t replicas[MAX_REPLICAS];
 };
 
@@ -113,7 +117,7 @@ private:
     tbb::concurrent_unordered_map<keyhash_t, std::string> hot_ukeys;
     std::unordered_map<keyhash_t, std::string> rkeys;
     static const int STATS_SAMPLE_RATE = 1000;
-    static const int STATS_HK_THRESHOLD = 5;
+    static const int STATS_HK_THRESHOLD = 4;
     static const int STATS_EPOCH = 10000;
 };
 
