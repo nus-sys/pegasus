@@ -22,6 +22,8 @@
 #define OP_MGR_ACK  0x6
 #define OP_PUT_FWD  0x7
 
+#define USE_LOCKING
+
 namespace memcachekv {
 
 thread_local static count_t access_count = 0;
@@ -76,17 +78,23 @@ void RSetData::reset(ver_t ver, node_t replica)
 
 void RSetData::shared_lock()
 {
+#ifdef USE_LOCKING
     pthread_rwlock_rdlock(&this->lock);
+#endif /* USE_LOCKING */
 }
 
 void RSetData::exclusive_lock()
 {
+#ifdef USE_LOCKING
     pthread_rwlock_wrlock(&this->lock);
+#endif /* USE_LOCKING */
 }
 
 void RSetData::unlock()
 {
+#ifdef USE_LOCKING
     pthread_rwlock_unlock(&this->lock);
+#endif /* USE_LOCKING */
 }
 
 LoadBalancer::LoadBalancer(Configuration *config)
@@ -184,17 +192,17 @@ void LoadBalancer::run_thread(int tid)
         pthread_rwlock_unlock(&this->stats_lock);
 
         /* Add new rkeys and/or replace old rkeys */
-        auto rk_it = sorted_rk.begin();
+        //auto rk_it = sorted_rk.begin();
         for (auto uk_it = sorted_uk.begin();
              uk_it != sorted_uk.end();
              uk_it++) {
             if (this->rkeys.size() < LoadBalancer::MAX_RSET_SIZE) {
                 add_rkey(uk_it->first, uk_keys.at(uk_it->first));
-            } else if (rk_it != sorted_rk.end() && uk_it->second > rk_it->second) {
+            } /* else if (rk_it != sorted_rk.end() && uk_it->second > rk_it->second) {
                 replace_rkey(uk_it->first, uk_keys.at(uk_it->first),
                              rk_it->first, this->rkeys.at(rk_it->first));
                 rk_it++;
-            } else {
+            } */ else {
                 break;
             }
         }
