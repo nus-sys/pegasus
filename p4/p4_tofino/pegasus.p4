@@ -22,7 +22,6 @@
 #define RKEY_NONE       0x7F
 #define MAX_RKEY_RATE   0x7FFF
 #define NNODES          32
-#define VER_GT          0x7FFFFFFF
 
 #define RSET_OP_NONE	0x0
 #define RSET_OP_GET	0x1
@@ -310,7 +309,6 @@ table tab_do_drop {
    metadata initialization
 */
 action meta_init() {
-    modify_field(meta.ver, VER_GT);
     modify_field(meta.use_node_forward, 0);
     modify_field(meta.rset_op, RSET_OP_NONE);
 }
@@ -538,11 +536,11 @@ blackbox stateful_alu sa_get_rset {
 }
 blackbox stateful_alu sa_set_rset {
     reg: reg_rset;
-    update_lo_1_value: meta.node;
+    update_lo_1_value: pegasus.node;
 }
 blackbox stateful_alu sa_install_rset {
     reg: reg_rset;
-    update_lo_1_value: meta.node;
+    update_lo_1_value: pegasus.node;
 }
 
 action get_rset() {
@@ -656,7 +654,7 @@ table tab_inc_rkey_write_counter {
 control process_reply {
     if (meta.rkey_index != RKEY_NONE) {
         apply(tab_check_rkey_ver_completed);
-        if (meta.ver == VER_GT) {
+        if (meta.ver == 0) {
             apply(tab_set_rset_bitmap);
             apply(tab_set_rset_size);
         } else if (meta.ver == pegasus.ver) {
