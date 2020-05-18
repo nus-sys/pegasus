@@ -93,6 +93,13 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     strcpy(argv[2], cores.c_str());
     argv[3] = new char[strlen("--proc-type=auto")+1];
     strcpy(argv[3], "--proc-type=auto");
+    const DPDKAddress *addr = static_cast<const DPDKAddress*>(config->my_address());
+    if (addr->blacklist != "none") {
+        argv[4] = new char[strlen("-b")+1];
+        strcpy(argv[4], "-b");
+        argv[5] = new char[addr->blacklist.length()+1];
+        strcpy(argv[5], addr->blacklist.c_str());
+    }
 }
 
 static void generate_flow_rules(const Configuration *config, uint16_t dev_port)
@@ -211,8 +218,6 @@ static void generate_flow_rules(const Configuration *config, uint16_t dev_port)
 DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     : Transport(config), use_flow_api(use_flow_api), status(STOPPED)
 {
-    this->argc = 4;
-    this->argv = new char*[this->argc];
     uint16_t nb_ports, nb_rxd = RTE_RX_DESC, nb_txd = RTE_TX_DESC;
     struct rte_eth_rxconf rxconf;
     struct rte_eth_txconf txconf;
@@ -223,6 +228,8 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     const DPDKAddress *addr = static_cast<const DPDKAddress*>(config->my_address());
     this->dev_port = addr->dev_port;
 
+    this->argc = addr->blacklist == "none" ? 4 : 6;
+    this->argv = new char*[this->argc];
     construct_arguments(config, this->argc, this->argv);
     if (rte_eal_init(argc, argv) < 0) {
         panic("rte_eal_init failed");
@@ -499,12 +506,14 @@ void DPDKTransport::transport_thread(int tid)
                 if (this->use_flow_api || filter_packet(DPDKAddress(ether_hdr->d_addr,
                                                                     ip_hdr->dst_addr,
                                                                     udp_hdr->dst_port,
-                                                                    DEFAULT_PORT_ID))) {
+                                                                    DEFAULT_PORT_ID,
+                                                                    nullptr))) {
                     /* Construct source address */
                     DPDKAddress addr(ether_hdr->s_addr,
                                      ip_hdr->src_addr,
                                      udp_hdr->src_port,
-                                     DEFAULT_PORT_ID);
+                                     DEFAULT_PORT_ID,
+                                     nullptr);
                     /* Upcall to transport receiver */
                     Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
                             rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),
