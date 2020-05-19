@@ -80,7 +80,8 @@ header_type pegasus_t {
     fields {
         op : 8;
         keyhash : 32;
-        node : 8;
+        client_id : 8;
+        server_id : 8;
         load : 16;
         ver : 32;
         bitmap : 32;
@@ -536,11 +537,11 @@ blackbox stateful_alu sa_get_rset {
 }
 blackbox stateful_alu sa_set_rset {
     reg: reg_rset;
-    update_lo_1_value: pegasus.node;
+    update_lo_1_value: pegasus.server_id;
 }
 blackbox stateful_alu sa_install_rset {
     reg: reg_rset;
-    update_lo_1_value: pegasus.node;
+    update_lo_1_value: pegasus.server_id;
 }
 
 action get_rset() {
