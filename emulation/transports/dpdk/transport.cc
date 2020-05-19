@@ -7,7 +7,7 @@
 #include <rte_lcore.h>
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
-#include <rte_distributor.h>
+#include <rte_malloc.h>
 
 #include <logger.h>
 #include <application.h>
@@ -39,10 +39,15 @@ thread_local static uint16_t rand_port;
 #define RAND_PORT_BASE 12345
 #define RAND_PORT_MAX 10000
 
+#define USE_TX_BUFFER
+#define TX_BUFFER_SIZE 4
+thread_local static struct rte_eth_dev_tx_buffer *tx_buffer;
+
 struct AppArg {
     Application *app;
     int tid;
     int tx_queue_id;
+    int dev_port;
 };
 
 struct TransportArg {
@@ -50,6 +55,7 @@ struct TransportArg {
     int tid;
     int rx_queue_id;
     int tx_queue_id;
+    int dev_port;
 };
 
 #define MAX_THREADS 128
@@ -63,7 +69,15 @@ static int transport_thread_(void *arg)
     rx_queue_id = targ->rx_queue_id;
     tx_queue_id = targ->tx_queue_id;
     rand_port = rand() % RAND_PORT_MAX;
+    tx_buffer = (rte_eth_dev_tx_buffer*)rte_zmalloc_socket(nullptr, RTE_ETH_TX_BUFFER_SIZE(TX_BUFFER_SIZE), 0, rte_eth_dev_socket_id(targ->dev_port));
+    if (tx_buffer == nullptr) {
+        panic("Failed to allocate TX buffer");
+    }
+    if (rte_eth_tx_buffer_init(tx_buffer, TX_BUFFER_SIZE) != 0) {
+        panic("Failed to initialize TX buffer");
+    }
     targ->transport->transport_thread(targ->tid);
+    rte_free(tx_buffer);
     return 0;
 }
 
@@ -72,7 +86,15 @@ static int app_thread(void *arg)
     struct AppArg *app_arg = (struct AppArg*)arg;
     tx_queue_id = app_arg->tx_queue_id;
     rand_port = rand() % RAND_PORT_MAX;
+    tx_buffer = (rte_eth_dev_tx_buffer*)rte_zmalloc_socket(nullptr, RTE_ETH_TX_BUFFER_SIZE(TX_BUFFER_SIZE), 0, rte_eth_dev_socket_id(app_arg->dev_port));
+    if (tx_buffer == nullptr) {
+        panic("Failed to allocate TX buffer");
+    }
+    if (rte_eth_tx_buffer_init(tx_buffer, TX_BUFFER_SIZE) != 0) {
+        panic("Failed to initialize TX buffer");
+    }
     app_arg->app->run_thread(app_arg->tid);
+    rte_free(tx_buffer);
     return 0;
 }
 
@@ -341,7 +363,6 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     struct rte_ipv4_hdr *ip_hdr;
     struct rte_udp_hdr *udp_hdr;
     void *dgram;
-    uint16_t sent;
     const DPDKAddress &dst_addr = static_cast<const DPDKAddress&>(addr);
     const DPDKAddress &src_addr = static_cast<const DPDKAddress&>(*this->config->my_address());
 
@@ -393,10 +414,11 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     }
     memcpy(dgram, msg.buf(), msg.len());
     /* Send packet */
-    sent = rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
-    if (sent < 1) {
-        panic("Failed to send packet");
-    }
+#ifdef USE_TX_BUFFER
+    rte_eth_tx_buffer(this->dev_port, tx_queue_id, tx_buffer, m);
+#else
+    rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
+#endif /* USE_TX_BUFFER */
 }
 
 void DPDKTransport::send_raw(const void *buf, void *tdata)
@@ -420,6 +442,7 @@ void DPDKTransport::run(void)
         transport_args[tid].tid = this->config->n_app_threads + tid;
         transport_args[tid].rx_queue_id = tid;
         transport_args[tid].tx_queue_id = tid;
+        transport_args[tid].dev_port = this->dev_port;
         if (rte_eal_remote_launch(transport_thread_,
                                   &transport_args[tid],
                                   this->config->transport_core + tid) != 0) {
@@ -450,6 +473,7 @@ void DPDKTransport::run_app_threads(Application *app)
         app_args[tid].app = app;
         app_args[tid].tid = tid;
         app_args[tid].tx_queue_id = this->config->n_transport_threads + tid;
+        app_args[tid].dev_port = this->dev_port;
         if (rte_eal_remote_launch(app_thread,
                                   &app_args[tid],
                                   this->config->app_core + tid) != 0) {
@@ -461,6 +485,7 @@ void DPDKTransport::run_app_threads(Application *app)
     app_args[0].app = app;
     app_args[0].tid = 0;
     app_args[0].tx_queue_id = this->config->n_transport_threads;
+    app_args[0].dev_port = this->dev_port;
     app_thread(&app_args[0]);
 
     // Wait for app slave cores to finish
