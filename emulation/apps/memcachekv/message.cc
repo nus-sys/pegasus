@@ -36,16 +36,13 @@ bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
     ptr += sizeof(node_t);
     uint8_t server_id = *(node_t*)ptr;
     ptr += sizeof(node_t);
-    load_t load_a;
-    convert_endian(&load_a, ptr, sizeof(load_t));
+    load_t load;
+    convert_endian(&load, ptr, sizeof(load_t));
     ptr += sizeof(load_t);
     ver_t ver;
     convert_endian(&ver, ptr, sizeof(ver_t));
     ptr += sizeof(ver_t);
-    ptr += sizeof(node_t);
-    load_t load_b;
-    convert_endian(&load_b, ptr, sizeof(load_t));
-    ptr += sizeof(load_t);
+    ptr += sizeof(bitmap_t);
 
     // Payload
     switch (op_type) {
@@ -97,7 +94,7 @@ bool WireCodec::decode(const Message &in, MemcacheKVMessage &out)
         out.reply.client_id = client_id;
         out.reply.server_id = server_id;
         out.reply.keyhash = keyhash;
-        out.reply.load = load_a;
+        out.reply.load = load;
         out.reply.ver = ver;
         out.reply.req_id = *(req_id_t*)ptr;
         ptr += sizeof(req_id_t);
@@ -211,10 +208,8 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ver_t base_version = BASE_VERSION;
         convert_endian(ptr, &base_version, sizeof(ver_t));
         ptr += sizeof(ver_t);
-        *(node_t*)ptr = 0;
-        ptr += sizeof(node_t);
-        *(load_t*)ptr = 0;
-        ptr += sizeof(load_t);
+        *(bitmap_t*)ptr = 0;
+        ptr += sizeof(bitmap_t);
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {
@@ -240,8 +235,9 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(load_t);
         convert_endian(ptr, &in.reply.ver, sizeof(ver_t));
         ptr += sizeof(ver_t);
-        ptr += sizeof(node_t);
-        ptr += sizeof(load_t);
+        bitmap_t bitmap = 1 << in.reply.server_id;
+        convert_endian(ptr, &bitmap, sizeof(bitmap_t));
+        ptr += sizeof(bitmap_t);
         break;
     }
     case MemcacheKVMessage::Type::RC_REQ: {
@@ -254,8 +250,7 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(load_t);
         convert_endian(ptr, &in.rc_request.ver, sizeof(ver_t));
         ptr += sizeof(ver_t);
-        ptr += sizeof(node_t);
-        ptr += sizeof(load_t);
+        ptr += sizeof(bitmap_t);
         break;
     }
     case MemcacheKVMessage::Type::RC_ACK: {
@@ -269,8 +264,9 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         ptr += sizeof(load_t);
         convert_endian(ptr, &in.rc_ack.ver, sizeof(ver_t));
         ptr += sizeof(ver_t);
-        ptr += sizeof(node_t);
-        ptr += sizeof(load_t);
+        bitmap_t bitmap = 1 << in.rc_ack.server_id;
+        convert_endian(ptr, &bitmap, sizeof(bitmap_t));
+        ptr += sizeof(bitmap_t);
         break;
     }
     default:

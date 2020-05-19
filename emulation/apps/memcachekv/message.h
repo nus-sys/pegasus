@@ -129,8 +129,7 @@ private:
     /* Wire format:
      * Header:
      * identifier (16) + op_type (8) + key_hash (32) + client_id (8) + server_id
-     * (8) + load (16) + version (32) + debug_node (8) + debug_load (16) +
-     * message payload
+     * (8) + load (16) + version (32) + bitmap (32) + message payload
      *
      * Message payload:
      * Request:
@@ -153,6 +152,7 @@ private:
     typedef uint8_t node_t;
     typedef uint16_t load_t;
     typedef uint32_t ver_t;
+    typedef uint32_t bitmap_t;
     typedef uint32_t req_id_t;
     typedef uint32_t req_time_t;
     typedef uint16_t key_len_t;
@@ -171,7 +171,7 @@ private:
     static const op_type_t OP_RC_ACK    = 0x6;
     static const op_type_t OP_PUT_FWD   = 0x7;
 
-    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(node_t) + sizeof(load_t);
+    static const size_t PACKET_BASE_SIZE = sizeof(identifier_t) + sizeof(op_type_t) + sizeof(keyhash_t) + sizeof(node_t) + sizeof(node_t) + sizeof(load_t) + sizeof(ver_t) + sizeof(bitmap_t);
     static const size_t REQUEST_BASE_SIZE = PACKET_BASE_SIZE + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(key_len_t);
     static const size_t REPLY_BASE_SIZE = PACKET_BASE_SIZE + sizeof(req_id_t) + sizeof(req_time_t) + sizeof(op_type_t) + sizeof(result_t) + sizeof(value_len_t);
     static const size_t RC_REQ_BASE_SIZE = PACKET_BASE_SIZE + sizeof(key_len_t) + sizeof(value_len_t);
