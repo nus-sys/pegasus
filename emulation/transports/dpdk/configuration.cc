@@ -8,8 +8,7 @@
 DPDKAddress::DPDKAddress(const char *ether,
                          const char *ip,
                          const char *port,
-                         const char *dev_port,
-                         const char *blacklist)
+                         const char *dev_port)
 {
     if (rte_ether_unformat_addr(ether, &this->ether_addr) != 0) {
         panic("Failed to parse ethernet address");
@@ -19,22 +18,15 @@ DPDKAddress::DPDKAddress(const char *ether,
     }
     this->udp_port = rte_cpu_to_be_16(uint16_t(std::stoul(port)));
     this->dev_port = uint16_t(std::stoul(dev_port));
-    if (blacklist != nullptr) {
-        this->blacklist = std::string(blacklist);
-    }
 }
 
 DPDKAddress::DPDKAddress(const struct rte_ether_addr &ether_addr,
                          rte_be32_t ip_addr,
                          rte_be16_t udp_port,
-                         uint16_t dev_port,
-                         const char *blacklist)
+                         uint16_t dev_port)
     : ip_addr(ip_addr), udp_port(udp_port), dev_port(dev_port)
 {
     memcpy(&this->ether_addr, &ether_addr, sizeof(struct rte_ether_addr));
-    if (blacklist != nullptr) {
-        this->blacklist = std::string(blacklist);
-    }
 }
 
 DPDKConfiguration::DPDKConfiguration(const char *file_path)
@@ -73,12 +65,16 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
             char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "|");
             char *dev_port = strtok(nullptr, "|");
-            char *blacklist = strtok(nullptr, "");
 
-            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr || blacklist == nullptr) {
-                panic("Configuration line format: 'node ether|ip|port|dev_port|blacklist'");
+            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr) {
+                panic("Configuration line format: 'node ether|ip|port|dev_port[|blacklist]'");
             }
-            rack.push_back(new DPDKAddress(ether, ip, port, dev_port, blacklist));
+            DPDKAddress *addr = new DPDKAddress(ether, ip, port, dev_port);
+            char *blacklist;
+            while ((blacklist = strtok(nullptr, "|")) != nullptr) {
+                addr->blacklist.push_back(std::string(blacklist));
+            }
+            rack.push_back(addr);
         } else if (strcasecmp(cmd, "client") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
@@ -89,16 +85,16 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
             char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "|");
             char *dev_port = strtok(nullptr, "|");
-            char *blacklist = strtok(nullptr, "");
 
-            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr || blacklist == nullptr) {
-                panic("Configuration line format: 'client ether|ip|port|dev_port|blacklist'");
+            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr) {
+                panic("Configuration line format: 'client ether|ip|port|dev_port[|blacklist]'");
             }
-            this->client_addresses.push_back(new DPDKAddress(ether,
-                                                             ip,
-                                                             port,
-                                                             dev_port,
-                                                             blacklist));
+            DPDKAddress *addr = new DPDKAddress(ether, ip, port, dev_port);
+            char *blacklist;
+            while ((blacklist = strtok(nullptr, "|")) != nullptr) {
+                addr->blacklist.push_back(std::string(blacklist));
+            }
+            this->client_addresses.push_back(addr);
         } else if (strcasecmp(cmd, "lb") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
@@ -109,12 +105,16 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
             char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "|");
             char *dev_port = strtok(nullptr, "|");
-            char *blacklist = strtok(nullptr, "");
 
-            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr || blacklist == nullptr) {
-                panic("Configuration line format: 'lb ether|ip|port|dev_port|blacklist'");
+            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr) {
+                panic("Configuration line format: 'lb ether|ip|port|dev_port[|blacklist]'");
             }
-            this->lb_address = new DPDKAddress(ether, ip, port, dev_port, blacklist);
+            DPDKAddress *addr = new DPDKAddress(ether, ip, port, dev_port);
+            char *blacklist;
+            while ((blacklist = strtok(nullptr, "|")) != nullptr) {
+                addr->blacklist.push_back(std::string(blacklist));
+            }
+            this->lb_address = addr;
         } else if (strcasecmp(cmd, "controller") == 0) {
             char *arg = strtok(nullptr, " \t");
             if (arg == nullptr) {
@@ -125,17 +125,17 @@ DPDKConfiguration::DPDKConfiguration(const char *file_path)
             char *ip = strtok(nullptr, "|");
             char *port = strtok(nullptr, "|");
             char *dev_port = strtok(nullptr, "|");
-            char *blacklist = strtok(nullptr, "");
 
-            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr || blacklist == nullptr) {
-                panic("Configuration line format: 'controller ether|ip|port|dev_port|blacklist'");
+            if (ether == nullptr || ip == nullptr || port == nullptr || dev_port == nullptr) {
+                panic("Configuration line format: 'controller ether|ip|port|dev_port[|blacklist]'");
+            }
+            DPDKAddress *addr = new DPDKAddress(ether, ip, port, dev_port);
+            char *blacklist;
+            while ((blacklist = strtok(nullptr, "|")) != nullptr) {
+                addr->blacklist.push_back(std::string(blacklist));
             }
 
-            this->controller_addresses.push_back(new DPDKAddress(ether,
-                                                                 ip,
-                                                                 port,
-                                                                 dev_port,
-                                                                 blacklist));
+            this->controller_addresses.push_back(addr);
         } else {
             panic("Unknown configuration directive");
         }

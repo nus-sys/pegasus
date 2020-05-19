@@ -14,8 +14,8 @@
 #include <transports/dpdk/transport.h>
 #include <transports/dpdk/configuration.h>
 
-#define RTE_RX_DESC 1024
-#define RTE_TX_DESC 1024
+#define RTE_RX_DESC 4096
+#define RTE_TX_DESC 4096
 #define MAX_PKT_BURST 32
 #define MEMPOOL_CACHE_SIZE 256
 
@@ -85,7 +85,7 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     std::string cores;
     char app_cores[16], transport_cores[16];
     sprintf(app_cores, "%d-%d", config->app_core, config->app_core+config->n_app_threads-1);
-    sprintf(transport_cores, "%d-%d", config->transport_core, config->transport_core+config->n_transport_threads); // add 1 core for distributor
+    sprintf(transport_cores, "%d-%d", config->transport_core, config->transport_core+config->n_transport_threads-1);
     cores.append(app_cores);
     cores.append(",");
     cores.append(transport_cores);
@@ -94,11 +94,12 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     argv[3] = new char[strlen("--proc-type=auto")+1];
     strcpy(argv[3], "--proc-type=auto");
     const DPDKAddress *addr = static_cast<const DPDKAddress*>(config->my_address());
-    if (addr->blacklist != "none") {
-        argv[4] = new char[strlen("-b")+1];
-        strcpy(argv[4], "-b");
-        argv[5] = new char[addr->blacklist.length()+1];
-        strcpy(argv[5], addr->blacklist.c_str());
+    int index = 4;
+    for (const auto &blacklist : addr->blacklist) {
+        argv[index] = new char[strlen("-b")+1];
+        strcpy(argv[index++], "-b");
+        argv[index] = new char[blacklist.length()+1];
+        strcpy(argv[index++], blacklist.c_str());
     }
 }
 
@@ -228,7 +229,7 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     const DPDKAddress *addr = static_cast<const DPDKAddress*>(config->my_address());
     this->dev_port = addr->dev_port;
 
-    this->argc = addr->blacklist == "none" ? 4 : 6;
+    this->argc = 4 + (addr->blacklist.size() * 2);
     this->argv = new char*[this->argc];
     construct_arguments(config, this->argc, this->argv);
     if (rte_eal_init(argc, argv) < 0) {
@@ -506,14 +507,12 @@ void DPDKTransport::transport_thread(int tid)
                 if (this->use_flow_api || filter_packet(DPDKAddress(ether_hdr->d_addr,
                                                                     ip_hdr->dst_addr,
                                                                     udp_hdr->dst_port,
-                                                                    DEFAULT_PORT_ID,
-                                                                    nullptr))) {
+                                                                    DEFAULT_PORT_ID))) {
                     /* Construct source address */
                     DPDKAddress addr(ether_hdr->s_addr,
                                      ip_hdr->src_addr,
                                      udp_hdr->src_port,
-                                     DEFAULT_PORT_ID,
-                                     nullptr);
+                                     DEFAULT_PORT_ID);
                     /* Upcall to transport receiver */
                     Message msg(rte_pktmbuf_mtod_offset(m, void*, offset),
                             rte_be_to_cpu_16(udp_hdr->dgram_len)-sizeof(struct rte_udp_hdr),

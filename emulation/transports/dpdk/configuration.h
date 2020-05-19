@@ -1,6 +1,7 @@
 #ifndef _DPDK_CONFIGURATION_H_
 #define _DPDK_CONFIGURATION_H_
 
+#include <list>
 #include <rte_ether.h>
 #include <rte_byteorder.h>
 
@@ -11,19 +12,17 @@ public:
     DPDKAddress(const char *ether,
                 const char *ip,
                 const char *port,
-                const char *dev_port,
-                const char *blacklist);
+                const char *dev_port);
     DPDKAddress(const struct rte_ether_addr &ether_addr,
                 rte_be32_t ip_addr,
                 rte_be16_t udp_port,
-                uint16_t dev_port,
-                const char *blacklist);
+                uint16_t dev_port);
 
     struct rte_ether_addr ether_addr;
     rte_be32_t ip_addr;
     rte_be16_t udp_port;
     uint16_t dev_port;
-    std::string blacklist;
+    std::list<std::string> blacklist;
 };
 
 class DPDKConfiguration : public Configuration {
