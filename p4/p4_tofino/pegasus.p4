@@ -98,6 +98,7 @@ header_type metadata_t {
         rset_offset : 16;
         node : 8;
         bitmap : 32;
+        n_servers: 8;
         // requires initialization
         ver : 32;
         use_node_forward : 1;
@@ -140,6 +141,10 @@ register reg_rr_rkey {
     instance_count: 32;
 }
 register reg_rr_all_servers {
+    width: 8;
+    instance_count: 1;
+}
+register reg_n_servers {
     width: 8;
     instance_count: 1;
 }
@@ -381,7 +386,7 @@ blackbox stateful_alu sa_access_rr_rkey {
 }
 blackbox stateful_alu sa_access_rr_all_servers {
     reg: reg_rr_all_servers;
-    condition_lo: register_lo >= NNODES - 1;
+    condition_lo: register_lo >= meta.n_servers - 1;
     update_lo_1_predicate: condition_lo;
     update_lo_1_value: 0;
     update_lo_2_predicate: not condition_lo;
@@ -410,6 +415,27 @@ table tab_access_rr_all_servers {
         access_rr_all_servers;
     }
     default_action: access_rr_all_servers;
+    size: 1;
+}
+
+/*
+    get total number of servers
+*/
+blackbox stateful_alu sa_get_n_servers {
+    reg: reg_n_servers;
+    output_value: register_lo;
+    output_dst: meta.n_servers;
+}
+
+action get_n_servers() {
+    sa_get_n_servers.execute_stateful_alu(0);
+}
+
+table tab_get_n_servers {
+    actions {
+        get_n_servers;
+    }
+    default_action: get_n_servers;
     size: 1;
 }
 
@@ -670,6 +696,7 @@ control process_reply {
 control process_request {
     if (meta.rkey_index != RKEY_NONE) {
         apply(tab_inc_rkey_rate_counter);
+        apply(tab_get_n_servers);
         if (pegasus.op == OP_GET) {
             process_replicated_read();
         } else {
