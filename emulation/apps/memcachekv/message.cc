@@ -5,6 +5,8 @@
 #include <apps/memcachekv/message.h>
 #include <apps/memcachekv/utils.h>
 
+#define BASE_VERSION 1
+
 using std::string;
 
 namespace memcachekv {
@@ -206,7 +208,8 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         *(node_t*)ptr = in.request.server_id;
         ptr += sizeof(node_t);
         ptr += sizeof(load_t);
-        *(ver_t*)ptr = 0;
+        ver_t base_version = BASE_VERSION;
+        convert_endian(ptr, &base_version, sizeof(ver_t));
         ptr += sizeof(ver_t);
         *(node_t*)ptr = 0;
         ptr += sizeof(node_t);

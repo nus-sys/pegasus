@@ -7,6 +7,8 @@
 #include <utils.h>
 #include <apps/memcachekv/server.h>
 
+#define BASE_VERSION 1
+
 using std::string;
 
 namespace memcachekv {
@@ -43,7 +45,8 @@ Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl
     this->epoch_start.tv_usec = 0;
     this->request_count.resize(config->n_transport_threads, 0);
     for (const auto &key : keys) {
-        this->store.insert(std::pair<std::string, Item>(key, Item(0, default_value)));
+        this->store.insert(std::pair<std::string, Item>(key, Item(BASE_VERSION,
+                                                                  default_value)));
     }
     this->stats_lock = PTHREAD_RWLOCK_INITIALIZER;
 }
@@ -220,7 +223,7 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
             reply.result = Result::OK;
         } else {
             // Key not found
-            reply.ver = 0;
+            reply.ver = BASE_VERSION;
             reply.value = std::string("");
             reply.result = Result::NOT_FOUND;
         }
