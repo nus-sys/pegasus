@@ -66,7 +66,8 @@ int main(int argc, char *argv[])
     float mean_interval = 1000;
     int n_transport_threads = 1, n_app_threads = 1, value_len = 256, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, colocate_id = 0, n_colocate_nodes = 1;
     float get_ratio = 0.5, alpha = 0.5;
-    bool report_load = false, use_endhost_lb = false, use_flow_api = false;
+    bool report_load = false, use_endhost_lb = false, use_flow_api = false, use_tx_buffer= false;
+    size_t tx_buffer_size = 4;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
     std::deque<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::KeyType::UNIFORM;
@@ -76,7 +77,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:O:P:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -301,6 +302,14 @@ int main(int argc, char *argv[])
             n_colocate_nodes = stoi(std::string(optarg));
             break;
         }
+        case 'O': {
+            use_tx_buffer = stoi(std::string(optarg)) != 0;
+            break;
+        }
+        case 'P': {
+            tx_buffer_size = stoi(std::string(optarg));
+            break;
+        }
         default:
             panic("Unknown argument %s", argv[optind]);
         }
@@ -326,7 +335,10 @@ int main(int argc, char *argv[])
         config = new UDPConfiguration(config_file_path);
         break;
     case TransportMode::DPDK:
-        config = new DPDKConfiguration(config_file_path);
+        DPDKConfiguration *dc = new DPDKConfiguration(config_file_path);
+        dc->use_tx_buffer = use_tx_buffer;
+        dc->tx_buffer_size = tx_buffer_size;
+        config = dc;
         break;
     }
     config->duration = duration;

@@ -39,8 +39,8 @@ thread_local static uint16_t rand_port;
 #define RAND_PORT_BASE 12345
 #define RAND_PORT_MAX 10000
 
-#define USE_TX_BUFFER
-#define TX_BUFFER_SIZE 4
+static bool use_tx_buffer;
+static size_t tx_buffer_size;
 thread_local static struct rte_eth_dev_tx_buffer *tx_buffer;
 
 struct AppArg {
@@ -63,21 +63,30 @@ struct TransportArg {
 static struct TransportArg transport_args[MAX_THREADS];
 static struct AppArg app_args[MAX_THREADS];
 
+static void tx_buffer_init(int dev_port)
+{
+    tx_buffer = (rte_eth_dev_tx_buffer*)rte_zmalloc_socket(nullptr, RTE_ETH_TX_BUFFER_SIZE(tx_buffer_size), 0, rte_eth_dev_socket_id(dev_port));
+    if (tx_buffer == nullptr) {
+        panic("Failed to allocate TX buffer");
+    }
+    if (rte_eth_tx_buffer_init(tx_buffer, tx_buffer_size) != 0) {
+        panic("Failed to initialize TX buffer");
+    }
+}
+
 static int transport_thread_(void *arg)
 {
     struct TransportArg *targ = (struct TransportArg*)arg;
     rx_queue_id = targ->rx_queue_id;
     tx_queue_id = targ->tx_queue_id;
     rand_port = rand() % RAND_PORT_MAX;
-    tx_buffer = (rte_eth_dev_tx_buffer*)rte_zmalloc_socket(nullptr, RTE_ETH_TX_BUFFER_SIZE(TX_BUFFER_SIZE), 0, rte_eth_dev_socket_id(targ->dev_port));
-    if (tx_buffer == nullptr) {
-        panic("Failed to allocate TX buffer");
-    }
-    if (rte_eth_tx_buffer_init(tx_buffer, TX_BUFFER_SIZE) != 0) {
-        panic("Failed to initialize TX buffer");
+    if (use_tx_buffer) {
+        tx_buffer_init(targ->dev_port);
     }
     targ->transport->transport_thread(targ->tid);
-    rte_free(tx_buffer);
+    if (use_tx_buffer) {
+        rte_free(tx_buffer);
+    }
     return 0;
 }
 
@@ -86,15 +95,13 @@ static int app_thread(void *arg)
     struct AppArg *app_arg = (struct AppArg*)arg;
     tx_queue_id = app_arg->tx_queue_id;
     rand_port = rand() % RAND_PORT_MAX;
-    tx_buffer = (rte_eth_dev_tx_buffer*)rte_zmalloc_socket(nullptr, RTE_ETH_TX_BUFFER_SIZE(TX_BUFFER_SIZE), 0, rte_eth_dev_socket_id(app_arg->dev_port));
-    if (tx_buffer == nullptr) {
-        panic("Failed to allocate TX buffer");
-    }
-    if (rte_eth_tx_buffer_init(tx_buffer, TX_BUFFER_SIZE) != 0) {
-        panic("Failed to initialize TX buffer");
+    if (use_tx_buffer) {
+        tx_buffer_init(app_arg->dev_port);
     }
     app_arg->app->run_thread(app_arg->tid);
-    rte_free(tx_buffer);
+    if (use_tx_buffer) {
+        rte_free(tx_buffer);
+    }
     return 0;
 }
 
@@ -250,6 +257,8 @@ DPDKTransport::DPDKTransport(const Configuration *config, bool use_flow_api)
     // Initialize
     const DPDKAddress *addr = static_cast<const DPDKAddress*>(config->my_address());
     this->dev_port = addr->dev_port;
+    use_tx_buffer = static_cast<const DPDKConfiguration*>(config)->use_tx_buffer;
+    tx_buffer_size = static_cast<const DPDKConfiguration*>(config)->tx_buffer_size;
 
     this->argc = 4 + (addr->blacklist.size() * 2);
     this->argv = new char*[this->argc];
@@ -414,22 +423,26 @@ void DPDKTransport::send_message(const Message &msg, const Address &addr)
     }
     memcpy(dgram, msg.buf(), msg.len());
     /* Send packet */
-#ifdef USE_TX_BUFFER
-    rte_eth_tx_buffer(this->dev_port, tx_queue_id, tx_buffer, m);
-#else
-    rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
-#endif /* USE_TX_BUFFER */
+    if (use_tx_buffer) {
+        rte_eth_tx_buffer(this->dev_port, tx_queue_id, tx_buffer, m);
+    } else {
+        if (rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1) < 1) {
+            rte_pktmbuf_free(m);
+        }
+    }
 }
 
 void DPDKTransport::send_raw(const void *buf, void *tdata)
 {
     struct rte_mbuf *m;
-    uint16_t sent;
 
     m = (struct rte_mbuf*)tdata;
-    sent = rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1);
-    if (sent < 1) {
-        panic("Failed to send raw packet");
+    if (use_tx_buffer) {
+        rte_eth_tx_buffer(this->dev_port, tx_queue_id, tx_buffer, m);
+    } else {
+        if (rte_eth_tx_burst(this->dev_port, tx_queue_id, &m, 1) < 1) {
+            rte_pktmbuf_free(m);
+        }
     }
 }
 

@@ -28,6 +28,9 @@ public:
 class DPDKConfiguration : public Configuration {
 public:
     DPDKConfiguration(const char *file_path);
+
+    bool use_tx_buffer;
+    size_t tx_buffer_size;
 };
 
 #endif /* _DPDK_CONFIGURATION_H_ */
