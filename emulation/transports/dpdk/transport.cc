@@ -113,9 +113,11 @@ static void construct_arguments(const Configuration *config, int argc, char **ar
     strcpy(argv[1], "-l");
     std::string cores;
     char app_cores[16], transport_cores[16];
-    sprintf(app_cores, "%d-%d", config->app_core, config->app_core+config->n_app_threads-1);
+    if (config->n_app_threads > 0) {
+        sprintf(app_cores, "%d-%d", config->app_core, config->app_core+config->n_app_threads-1);
+        cores.append(app_cores);
+    }
     sprintf(transport_cores, "%d-%d", config->transport_core, config->transport_core+config->n_transport_threads-1);
-    cores.append(app_cores);
     cores.append(",");
     cores.append(transport_cores);
     argv[2] = new char[cores.length()+1];
@@ -450,7 +452,7 @@ void DPDKTransport::run(void)
 {
     this->status = RUNNING;
     // Start all transport threads
-    for (int tid = 0; tid < this->config->n_transport_threads; tid++) {
+    for (int tid = 1; tid < this->config->n_transport_threads; tid++) {
         transport_args[tid].transport = this;
         transport_args[tid].tid = this->config->n_app_threads + tid;
         transport_args[tid].rx_queue_id = tid;
@@ -461,6 +463,22 @@ void DPDKTransport::run(void)
                                   this->config->transport_core + tid) != 0) {
             panic("transport thread rte_eal_remote_launch failed");
         }
+    }
+
+    transport_args[0].transport = this;
+    transport_args[0].tid = this->config->n_app_threads;
+    transport_args[0].rx_queue_id = 0;
+    transport_args[0].tx_queue_id = 0;
+    transport_args[0].dev_port = this->dev_port;
+
+    if (this->config->n_app_threads > 0) {
+        if (rte_eal_remote_launch(transport_thread_,
+                                  &transport_args[0],
+                                  this->config->transport_core) != 0) {
+            panic("transport thread rte_eal_remote_launch failed");
+        }
+    } else {
+        transport_thread_(&transport_args[0]);
     }
 }
 

@@ -84,7 +84,7 @@ static Comparator comp =
 
 void Server::run()
 {
-    this->transport->run_app_threads(this);
+    //this->transport->run_app_threads(this);
 }
 
 void Server::run_thread(int tid)
