@@ -14,21 +14,18 @@ using std::string;
 namespace memcachekv {
 
 Server::Item::Item()
-    : ver(0), value("")
+    : ver(BASE_VERSION), value("")
 {
-    this->lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 Server::Item::Item(ver_t ver, const std::string &value)
     : ver(ver), value(value)
 {
-    this->lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 Server::Item::Item(const Item &item)
     : ver(item.ver), value(item.value)
 {
-    this->lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl_codec,
@@ -213,13 +210,11 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
     }
     switch (op.op_type) {
     case OpType::GET: {
-        auto it = this->store.find(op.key);
-        if (it != this->store.end()) {
+        const_store_ac_t ac;
+        if (this->store.find(ac, op.key)) {
             // Key is present
-            pthread_rwlock_rdlock(&it->second.lock);
-            reply.ver = it->second.ver;
-            reply.value = it->second.value;
-            pthread_rwlock_unlock(&it->second.lock);
+            reply.ver = ac->second.ver;
+            reply.value = ac->second.value;
             reply.result = Result::OK;
         } else {
             // Key not found
@@ -231,13 +226,14 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
     }
     case OpType::PUT:
     case OpType::PUTFWD: {
-        Item &item = this->store[op.key];
-        pthread_rwlock_wrlock(&item.lock);
-        if (op.ver >= item.ver) {
-            item.ver = op.ver;
-            item.value = op.value;
+        {
+            store_ac_t ac;
+            this->store.insert(ac, op.key);
+            if (op.ver >= ac->second.ver) {
+                ac->second.ver = op.ver;
+                ac->second.value = op.value;
+            }
         }
-        pthread_rwlock_unlock(&item.lock);
         reply.ver = op.ver;
         reply.value = op.value; // for netcache
         reply.result = Result::OK;
@@ -254,14 +250,15 @@ void
 Server::process_replication_request(const ReplicationRequest &request)
 {
     bool reply = false;
-    Item &item = this->store[request.key];
-    pthread_rwlock_wrlock(&item.lock);
-    if (request.ver >= item.ver) {
-        item.value = request.value;
-        item.ver = request.ver;
-        reply = true;
+    {
+        store_ac_t ac;
+        this->store.insert(ac, request.key);
+        if (request.ver >= ac->second.ver) {
+            ac->second.ver = request.ver;
+            ac->second.value = request.value;
+            reply = true;
+        }
     }
-    pthread_rwlock_unlock(&item.lock);
 
     if (reply) {
         MemcacheKVMessage kvmsg;
@@ -281,15 +278,17 @@ Server::process_replication_request(const ReplicationRequest &request)
 void
 Server::process_ctrl_replication(const ControllerReplication &request)
 {
-    auto it = this->store.find(request.key);
-    if (it != this->store.end()) {
-        MemcacheKVMessage kvmsg;
+    MemcacheKVMessage kvmsg;
+    bool reply;
+    {
+        const_store_ac_t ac;
+        if ((reply = this->store.find(ac, request.key))) {
+            kvmsg.rc_request.ver = ac->second.ver;
+            kvmsg.rc_request.value = ac->second.value;
+        }
+    }
 
-        pthread_rwlock_rdlock(&it->second.lock);
-        kvmsg.rc_request.value = it->second.value;
-        kvmsg.rc_request.ver = it->second.ver;
-        pthread_rwlock_unlock(&it->second.lock);
-
+    if (reply) {
         kvmsg.type = MemcacheKVMessage::Type::RC_REQ;
         kvmsg.rc_request.keyhash = request.keyhash;
         kvmsg.rc_request.key = request.key;

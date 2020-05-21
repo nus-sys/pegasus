@@ -6,6 +6,7 @@
 #include <deque>
 #include <mutex>
 #include <pthread.h>
+#include <tbb/concurrent_hash_map.h>
 #include <tbb/concurrent_unordered_map.h>
 #include <tbb/concurrent_unordered_set.h>
 
@@ -58,9 +59,10 @@ private:
 
         ver_t ver;
         std::string value;
-        pthread_rwlock_t lock;
     };
-    tbb::concurrent_unordered_map<std::string, Item> store;
+    typedef tbb::concurrent_hash_map<std::string, Item>::const_accessor const_store_ac_t;
+    typedef tbb::concurrent_hash_map<std::string, Item>::accessor store_ac_t;
+    tbb::concurrent_hash_map<std::string, Item> store;
 
     int proc_latency;
     std::string default_value;
