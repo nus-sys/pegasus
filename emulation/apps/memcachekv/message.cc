@@ -474,11 +474,9 @@ bool NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
             return false;
         }
         ptr += sizeof(op_type_t);
-        if (in.request.op.key.size() > KEY_SIZE) {
-            return false;
-        }
         memset(ptr, 0, KEY_SIZE);
-        memcpy(ptr, in.request.op.key.data(), in.request.op.key.size());
+        memcpy(ptr, in.request.op.key.data(), std::min(in.request.op.key.size(),
+                                                       KEY_SIZE));
         ptr += KEY_SIZE;
         ptr += VALUE_SIZE;
         break;
@@ -496,14 +494,13 @@ bool NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
             return false;
         }
         ptr += sizeof(op_type_t);
-        if (in.reply.key.size() > KEY_SIZE) {
-            return false;
-        }
         memset(ptr, 0, KEY_SIZE);
-        memcpy(ptr, in.reply.key.data(), in.reply.key.size());
+        memcpy(ptr, in.reply.key.data(), std::min(in.reply.key.size(),
+                                                  KEY_SIZE));
         ptr += KEY_SIZE;
         memset(ptr, 0, VALUE_SIZE);
-        memcpy(ptr, in.reply.value.data(), in.reply.value.size());
+        memcpy(ptr, in.reply.value.data(), std::min(in.reply.value.size(),
+                                                    VALUE_SIZE));
         ptr += VALUE_SIZE;
         break;
     }
