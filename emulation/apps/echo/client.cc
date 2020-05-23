@@ -21,7 +21,7 @@ void Client::receive_message(const Message &msg, const Address &addr, int tid)
     struct timeval now, sent;
     sent = *(struct timeval*)msg.buf();
     gettimeofday(&now, nullptr);
-    this->stats->report_latency(tid, latency(sent, now));
+    this->stats->report_latency(tid, 0, latency(sent, now));
 }
 
 void Client::run()

@@ -266,7 +266,7 @@ void Client::complete_op(int tid, const MemcacheKVReply &reply)
     if (end_time.tv_usec < start_time.tv_usec) {
         start_time.tv_sec -= 1; // assume request won't take > 1 sec
     }
-    this->stats->report_latency(tid, latency(start_time, end_time));
+    this->stats->report_latency(tid, reply.server_id, latency(start_time, end_time));
 }
 
 } // namespace memcachekv

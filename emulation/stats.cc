@@ -12,13 +12,20 @@ Stats::ThreadStats::ThreadStats()
 Stats::Stats(int n_threads,
              const char *stats_file,
              int interval,
+             const char *nodeops_file,
              const char *interval_file)
     : interval(interval)
 {
     if (stats_file != nullptr) {
-        this->file_stream.open(stats_file, std::ofstream::out | std::ofstream::trunc);
-        if (!this->file_stream) {
+        this->stats_fs.open(stats_file, std::ofstream::out | std::ofstream::trunc);
+        if (!this->stats_fs) {
             panic("Failed to open stats output file");
+        }
+    }
+    if (nodeops_file != nullptr) {
+        this->nodeops_fs.open(nodeops_file, std::ofstream::out | std::ofstream::trunc);
+        if (!this->nodeops_fs) {
+            panic("Failed to open nodeops output file");
         }
     }
     if (interval_file != nullptr) {
@@ -31,8 +38,11 @@ Stats::Stats(int n_threads,
 
 Stats::~Stats()
 {
-    if (this->file_stream.is_open()) {
-        this->file_stream.close();
+    if (this->stats_fs.is_open()) {
+        this->stats_fs.close();
+    }
+    if (this->nodeops_fs.is_open()) {
+        this->nodeops_fs.close();
     }
     for (ThreadStats *ts : this->thread_stats) {
         delete ts;
@@ -44,10 +54,11 @@ void Stats::report_issue(int tid)
     this->thread_stats[tid]->issued_ops++;
 }
 
-void Stats::report_latency(int tid, int l)
+void Stats::report_latency(int tid, int node, int l)
 {
     this->thread_stats[tid]->latencies[l]++;
     this->thread_stats[tid]->completed_ops++;
+    this->thread_stats[tid]->node_ops[node]++;
     if (this->interval > 0) {
         struct timeval tv;
         gettimeofday(&tv, nullptr);
@@ -99,12 +110,16 @@ void Stats::dump()
     uint64_t total_latency = 0, count = 0;
     int med_latency = -1, n_latency = -1, nn_latency = -1;
     std::map<int, uint64_t> combined_latencies;
+    std::unordered_map<int, uint64_t> combined_node_ops;
     uint64_t combined_issued_ops = 0, combined_completed_ops = 0;
 
-    // Combine latency from all threads
+    // Combine stats from all threads
     for (ThreadStats *ts : this->thread_stats) {
         for (const auto &latency : ts->latencies) {
             combined_latencies[latency.first] += latency.second;
+        }
+        for (const auto &ops : ts->node_ops) {
+            combined_node_ops[ops.first] += ops.second;
         }
         combined_issued_ops += ts->issued_ops;
         combined_completed_ops += ts->completed_ops;
@@ -132,12 +147,19 @@ void Stats::dump()
     printf("90%% Latency: %d\n", n_latency);
     printf("99%% Latency: %d\n", nn_latency);
 
-    if (this->file_stream.is_open()) {
-        this->file_stream << combined_completed_ops << " " << combined_issued_ops << std::endl;
+    if (this->stats_fs.is_open()) {
+        this->stats_fs << combined_completed_ops << " " << combined_issued_ops << std::endl;
         for (auto latency : combined_latencies) {
-            this->file_stream << latency.first << " " << latency.second << std::endl;
+            this->stats_fs << latency.first << " " << latency.second << std::endl;
         }
-        this->file_stream.close();
+        this->stats_fs.close();
+    }
+
+    if (this->nodeops_fs.is_open()) {
+        for (const auto &ops : combined_node_ops) {
+            this->nodeops_fs << ops.first << " " << ops.second << std::endl;
+        }
+        this->nodeops_fs.close();
     }
 
     if (this->interval > 0) {

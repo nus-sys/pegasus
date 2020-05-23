@@ -15,7 +15,7 @@ MemcacheKVStats::MemcacheKVStats(int n_threads,
 void
 MemcacheKVStats::report_op(int tid, OpType op_type, int latency, bool hit)
 {
-    report_latency(tid, latency);
+    report_latency(tid, 0, latency);
     this->replies[tid][op_type] += 1;
 
     if (op_type == OpType::GET) {

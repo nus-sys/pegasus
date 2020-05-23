@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     float get_ratio = 0.5, alpha = 0.5;
     bool report_load = false, use_endhost_lb = false, use_flow_api = false, use_tx_buffer= false;
     size_t tx_buffer_size = 4;
-    const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *interval_file_path = nullptr;
+    const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *nodeops_file_path = nullptr, *interval_file_path = nullptr;
     std::deque<std::string> keys;
     memcachekv::KeyType key_type = memcachekv::KeyType::UNIFORM;
     memcachekv::DynamismType d_type = memcachekv::DynamismType::NONE;
@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:O:P:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:O:P:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -151,6 +151,10 @@ int main(int argc, char *argv[])
             } else {
                 panic("Unknown transport mode %s", optarg);
             }
+            break;
+        }
+        case 'p': {
+            nodeops_file_path = optarg;
             break;
         }
         case 'q': {
@@ -436,10 +440,11 @@ int main(int argc, char *argv[])
             config->terminating = true;
             config->use_raw_transport = false;
 
-            stats = new memcachekv::MemcacheKVStats(n_app_threads + n_transport_threads,
-                                                    stats_file_path,
-                                                    interval,
-                                                    interval_file_path);
+            stats = new Stats(n_app_threads + n_transport_threads,
+                              stats_file_path,
+                              interval,
+                              nodeops_file_path,
+                              interval_file_path);
             gen = new memcachekv::KVWorkloadGenerator(keys,
                                                       value_len,
                                                       get_ratio,
