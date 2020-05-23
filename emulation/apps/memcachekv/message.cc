@@ -394,6 +394,8 @@ bool NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
+        out.reply.server_id = *(server_id_t*)ptr;
+        ptr += sizeof(server_id_t);
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
@@ -417,6 +419,7 @@ bool NetcacheCodec::decode(const Message &in, MemcacheKVMessage &out)
             return false;
         }
         out.type = MemcacheKVMessage::Type::REPLY;
+        out.reply.server_id = SWITCH_ID;
         out.reply.client_id = *(client_id_t*)ptr;
         ptr += sizeof(client_id_t);
         out.reply.req_id = *(req_id_t*)ptr;
@@ -532,6 +535,8 @@ bool NetcacheCodec::encode(Message &out, const MemcacheKVMessage &in)
         break;
     }
     case MemcacheKVMessage::Type::REPLY: {
+        *(server_id_t*)ptr = (server_id_t)in.reply.server_id;
+        ptr += sizeof(server_id_t);
         *(client_id_t*)ptr = (client_id_t)in.reply.client_id;
         ptr += sizeof(client_id_t);
         *(req_id_t*)ptr = (req_id_t)in.reply.req_id;

@@ -200,11 +200,12 @@ private:
      * + key (+ value_len(16) + value)
      *
      * Reply:
-     * client_id (32) + req_id (32) + req_time (32) + op_type (8) + result (8) +
-     * value_len(16) + value
+     * server_id (8) + client_id (32) + req_id (32) + req_time (32) + op_type
+     * (8) + result (8) + value_len(16) + value
      */
     typedef uint16_t identifier_t;
     typedef uint8_t op_type_t;
+    typedef uint8_t server_id_t;
     typedef uint32_t client_id_t;
     typedef uint32_t req_id_t;
     typedef uint32_t req_time_t;
@@ -213,6 +214,7 @@ private:
     typedef uint16_t value_len_t;
     static const size_t KEY_SIZE        = 6;
     static const size_t VALUE_SIZE      = 4;
+    static const server_id_t SWITCH_ID  = 0xFF;
 
     static const identifier_t NETCACHE  = 0x5039;
     static const op_type_t OP_READ      = 0x1;
