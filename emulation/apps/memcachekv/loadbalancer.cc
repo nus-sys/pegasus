@@ -233,13 +233,12 @@ bool LoadBalancer::parse_pegasus_header(const void *pkt, struct PegasusHeader &h
     ptr += sizeof(load_t);
     convert_endian(&header.ver, ptr, sizeof(ver_t));
     ptr += sizeof(ver_t);
+    ptr += sizeof(bitmap_t);
 
     switch (header.op_type) {
     case OP_GET:
     case OP_PUT:
     case OP_DEL:
-        ptr += sizeof(node_t);
-        ptr += sizeof(load_t);
         ptr += sizeof(req_id_t);
         ptr += sizeof(req_time_t);
         ptr += sizeof(op_type_t);

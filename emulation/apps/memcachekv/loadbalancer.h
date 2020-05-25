@@ -21,6 +21,7 @@ typedef uint32_t req_id_t;
 typedef uint32_t req_time_t;
 typedef uint8_t result_t;
 typedef uint16_t key_len_t;
+typedef uint32_t bitmap_t;
 
 typedef uint64_t count_t;
 
