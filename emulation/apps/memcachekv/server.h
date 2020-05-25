@@ -81,6 +81,8 @@ private:
     std::vector<count_t> request_count;
     tbb::concurrent_unordered_map<keyhash_t, count_t> access_count;
     tbb::concurrent_unordered_set<keyhash_t> hot_keys;
+
+    Message separate_payload;
 };
 
 } // namespace memcachekv

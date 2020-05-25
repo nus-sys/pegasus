@@ -36,7 +36,8 @@ Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl
     ctrl_codec(ctrl_codec),
     proc_latency(proc_latency),
     default_value(default_value),
-    report_load(report_load)
+    report_load(report_load),
+    separate_payload(this->default_value)
 {
     this->epoch_start.tv_sec = 0;
     this->epoch_start.tv_usec = 0;
