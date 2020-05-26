@@ -11,7 +11,7 @@
 
 #define IPV4_HDR_LEN 20
 #define UDP_HDR_LEN 8
-#define PEGASUS_IDENTIFIER 0x4750
+#define PEGASUS_IDENTIFIER 0x1573
 
 #define OP_GET      0x0
 #define OP_PUT      0x1
