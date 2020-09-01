@@ -15,9 +15,9 @@
 #define OP_DEL          0x2
 #define OP_REP_R        0x3
 #define OP_REP_W        0x4
-#define OP_MGR_REQ      0x5
-#define OP_MGR_ACK      0x6
-#define OP_DEC          0xF
+#define OP_RC_REQ       0x5
+#define OP_RC_ACK       0x6
+#define OP_PUT_FWD      0x7
 
 #define RKEY_NONE       0x7F
 #define MAX_RKEY_RATE   0x7FFF
@@ -720,11 +720,11 @@ control process_replicated_write {
 control ingress {
     if (valid(pegasus)) {
 	apply(tab_meta_init);
-        if (pegasus.op != OP_MGR_REQ) {
+        if (pegasus.op != OP_RC_REQ) {
             apply(tab_replicated_keys);
             if (pegasus.op == OP_REP_R or
                 pegasus.op == OP_REP_W or
-                pegasus.op == OP_MGR_ACK) {
+                pegasus.op == OP_RC_ACK) {
                 process_reply();
             } else {
                 process_request();
