@@ -116,21 +116,21 @@ metadata metadata_t meta;
 */
 register reg_ver_next {
     width: 32;
-    instance_count: 32;
+    instance_count: 64;
 }
 /*
    version number of latest completed write
  */
 register reg_rkey_ver_completed {
     width: 32;
-    instance_count: 32;
+    instance_count: 64;
 }
 /*
    rkey access rate counter
  */
 register reg_rkey_rate_counter {
     width: 16;
-    instance_count: 32;
+    instance_count: 64;
 }
 /*
    round-robin counter
@@ -138,7 +138,7 @@ register reg_rkey_rate_counter {
 register reg_rr_rkey {
     // per key counter
     width: 8;
-    instance_count: 32;
+    instance_count: 64;
 }
 register reg_rr_all_servers {
     width: 8;
@@ -153,26 +153,26 @@ register reg_n_servers {
 */
 register reg_rset_size {
     width: 8;
-    instance_count: 32;
+    instance_count: 64;
 }
 register reg_rset_bitmap {
     width: 32;
-    instance_count: 32;
+    instance_count: 64;
 }
 register reg_rset {
     width: 8;
-    instance_count: 1024;
+    instance_count: 2048;
 }
 /*
    Read/Write ratio counter
  */
 register reg_rkey_read_counter {
     width: 16;
-    instance_count: 32;
+    instance_count: 64;
 }
 register reg_rkey_write_counter {
     width: 16;
-    instance_count: 32;
+    instance_count: 64;
 }
 /*************************************************************************
 *********************** CHECKSUM *****************************************
@@ -347,7 +347,7 @@ table tab_replicated_keys {
         not_rkey;
     }
     default_action: not_rkey;
-    size: 32;
+    size: 64;
 }
 
 /*
@@ -550,7 +550,7 @@ table tab_calc_rset_index {
         calc_rset_index;
     }
     default_action: calc_rset_index;
-    size: 32;
+    size: 64;
 }
 
 /*
