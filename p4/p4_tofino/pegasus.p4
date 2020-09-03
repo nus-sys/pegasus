@@ -21,7 +21,6 @@
 
 #define RKEY_NONE       0x7F
 #define MAX_RKEY_RATE   0x7FFF
-#define NNODES          32
 
 #define RSET_OP_NONE	0x0
 #define RSET_OP_GET	0x1
@@ -453,8 +452,6 @@ blackbox stateful_alu sa_set_rset_size {
 }
 blackbox stateful_alu sa_inc_rset_size {
     reg: reg_rset_size;
-    condition_lo: register_lo < NNODES;
-    update_lo_1_predicate: condition_lo;
     update_lo_1_value: register_lo + 1;
     output_value: register_lo;
     output_dst: meta.rset_offset;
