@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     float mean_interval = 1000;
     int n_transport_threads = 1, n_app_threads = 1, value_len = 256, nkeys = 1000, duration = 1, rack_id = -1, node_id = -1, num_racks = 1, num_nodes = 1, proc_latency = 0, dec_interval = 1000, n_dec = 1, num_rkeys = 32, interval = 0, d_interval = 1000000, d_nkeys = 100, target_latency = 100, app_core = 0, transport_core = 1, colocate_id = 0, n_colocate_nodes = 1;
     float get_ratio = 0.5, alpha = 0.5;
-    bool report_load = false, use_endhost_lb = false, use_flow_api = false, use_tx_buffer= false;
+    bool use_endhost_lb = false, use_flow_api = false, use_tx_buffer= false;
     size_t tx_buffer_size = 4;
     const char *keys_file_path = nullptr, *config_file_path = nullptr, *stats_file_path = nullptr, *nodeops_file_path = nullptr, *interval_file_path = nullptr;
     std::deque<std::string> keys;
@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, sigint_handler);
     signal(SIGTERM, sigterm_handler);
 
-    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:j:k:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:O:P:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:b:c:d:e:f:g:i:k:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:A:B:C:D:E:F:G:H:I:J:K:L:M:N:O:P:")) != -1) {
         switch (opt) {
         case 'a': {
             alpha = stof(std::string(optarg));
@@ -109,10 +109,6 @@ int main(int argc, char *argv[])
         }
         case 'i': {
             mean_interval = stof(std::string(optarg));
-            break;
-        }
-        case 'j': {
-            report_load = stoi(std::string(optarg))!= 0;
             break;
         }
         case 'k': {
@@ -476,7 +472,7 @@ int main(int argc, char *argv[])
             config->terminating = false;
             config->use_raw_transport = false;
             std::string default_value = std::string(value_len, 'v');
-            app = new memcachekv::Server(config, codec, ctrl_codec, proc_latency, default_value, report_load, keys);
+            app = new memcachekv::Server(config, codec, ctrl_codec, proc_latency, default_value, keys);
             break;
         }
         case NodeMode::CONTROLLER: {

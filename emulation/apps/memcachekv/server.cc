@@ -29,24 +29,18 @@ Server::Item::Item(const Item &item)
 }
 
 Server::Server(Configuration *config, MessageCodec *codec, ControllerCodec *ctrl_codec,
-               int proc_latency, string default_value, bool report_load,
+               int proc_latency, string default_value,
                std::deque<std::string> &keys)
     : config(config),
     codec(codec),
     ctrl_codec(ctrl_codec),
     proc_latency(proc_latency),
-    default_value(default_value),
-    report_load(report_load),
-    separate_payload(this->default_value)
+    default_value(default_value)
 {
-    this->epoch_start.tv_sec = 0;
-    this->epoch_start.tv_usec = 0;
-    this->request_count.resize(config->n_transport_threads, 0);
     for (const auto &key : keys) {
         this->store.insert(std::pair<std::string, Item>(key, Item(BASE_VERSION,
                                                                   default_value)));
     }
-    this->stats_lock = PTHREAD_RWLOCK_INITIALIZER;
 }
 
 Server::~Server()
@@ -82,47 +76,11 @@ static Comparator comp =
 
 void Server::run()
 {
-    //this->transport->run_app_threads(this);
+    // Do nothing
 }
 
 void Server::run_thread(int tid)
 {
-    // Send HK report periodically
-    while (true) {
-        usleep(Server::STATS_EPOCH);
-        /* Construct sorted hot key accesses */
-        std::unordered_map<keyhash_t, count_t> hk;
-        for (const auto &keyhash : this->hot_keys) {
-            hk[keyhash] = this->access_count.at(keyhash);
-        }
-        std::set<std::pair<keyhash_t, count_t>, Comparator> sorted_hk(hk.begin(),
-                                                                      hk.end(),
-                                                                      comp);
-        /* Clear stats */
-        pthread_rwlock_wrlock(&this->stats_lock);
-        this->access_count.clear();
-        this->hot_keys.clear();
-        pthread_rwlock_unlock(&this->stats_lock);
-        /* Send hk report */
-        if (sorted_hk.size() == 0) {
-            continue;
-        }
-        // hk report has a max size of STATS_HK_REPORT_SIZE
-        ControllerMessage ctrlmsg;
-        ctrlmsg.type = ControllerMessage::Type::HK_REPORT;
-        for (const auto &hk : sorted_hk) {
-            if (ctrlmsg.hk_report.reports.size() >= Server::STATS_HK_REPORT_SIZE) {
-                break;
-            }
-            ctrlmsg.hk_report.reports.push_back(ControllerHKReport::Report(hk.first,
-                                                                           hk.second));
-        }
-        Message msg;
-        if (!this->ctrl_codec->encode(msg, ctrlmsg)) {
-            panic("Failed to encode hk report");
-        }
-        this->transport->send_message_to_controller(msg, this->config->rack_id);
-    }
 }
 
 void Server::process_kv_message(const MemcacheKVMessage &msg,
@@ -206,9 +164,6 @@ Server::process_op(const Operation &op, MemcacheKVReply &reply, int tid)
     reply.op_type = op.op_type;
     reply.keyhash = op.keyhash;
     reply.key = op.key;
-    if (this->report_load) {
-        reply.load = calculate_load();
-    }
     switch (op.op_type) {
     case OpType::GET: {
         const_store_ac_t ac;
@@ -305,48 +260,6 @@ Server::process_ctrl_replication(const ControllerReplication &request)
             }
         }
     }
-}
-
-void
-Server::update_rate(const Operation &op, int tid)
-{
-    if (++this->request_count[tid] % Server::STATS_SAMPLE_RATE == 0) {
-        pthread_rwlock_rdlock(&this->stats_lock);
-        if (++this->access_count[op.keyhash] >= Server::STATS_HK_THRESHOLD) {
-            this->hot_keys.insert(op.keyhash);
-        }
-        pthread_rwlock_unlock(&this->stats_lock);
-    }
-}
-
-load_t
-Server::calculate_load()
-{
-    struct timeval now;
-
-    gettimeofday(&now, nullptr);
-    if (this->epoch_start.tv_sec == 0 && this->epoch_start.tv_usec == 0) {
-        // Initialize epoch
-        this->epoch_start = now;
-    }
-    this->load_mutex.lock();
-    this->request_ts.push_back(now);
-
-    if (latency(this->epoch_start, now) > EPOCH_DURATION) {
-        this->epoch_start = get_prev_timeval(now, EPOCH_DURATION);
-        for (auto it = this->request_ts.begin(); it != this->request_ts.end(); ) {
-            // Remove ts that fall out of the epoch
-            if (timeval_cmp(*it, this->epoch_start) < 0) {
-                it = this->request_ts.erase(it);
-            } else {
-                // ts should be in order
-                break;
-            }
-        }
-    }
-    this->load_mutex.unlock();
-
-    return this->request_ts.size();
 }
 
 } // namespace memcachekv
