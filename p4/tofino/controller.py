@@ -155,12 +155,6 @@ class Controller(object):
         self.switch_lock = threading.Lock()
 
     def install_table_entries(self, tables):
-        # ports
-        for port in tables["ports"]:
-            self.devport.devport_mgr_add_port(self.dev,
-                                              port,
-                                              bf_port_speeds.BF_PORT_SPEED_25G,
-                                              bf_fec_types.BF_FEC_TYP_RS)
         # tab_l2_forward
         self.pegasus.tab_l2_forward_set_default_action__drop(
             self.sess_hdl, self.dev_tgt)
