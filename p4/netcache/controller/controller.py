@@ -39,14 +39,17 @@ DCNC_WRITE_REQUEST             = 2
 DCNC_READ_REPLY                = 3
 DCNC_WRITE_REPLY               = 4
 
+THRIFT_SERVER = "localhost"
+THRIFT_PORT = 9090
+
 def signal_handler(signum, frame):
     print "Received INT/TERM signal...Exiting"
     controller.stop()
     os._exit(1)
 
 class Controller(object):
-    def __init__(self, thrift_server):
-        self.transport = TSocket.TSocket(thrift_server, 9090)
+    def __init__(self, thrift_server, thrift_port):
+        self.transport = TSocket.TSocket(thrift_server, thrift_port)
         self.transport = TTransport.TBufferedTransport(self.transport)
         bprotocol = TBinaryProtocol.TBinaryProtocol(self.transport)
         conn_mgr_protocol = TMultiplexedProtocol.TMultiplexedProtocol(bprotocol, "conn_mgr")
@@ -60,7 +63,6 @@ class Controller(object):
         self.dev_tgt = DevTarget_t(self.dev, hex_to_i16(0xFFFF))
 
     def add_key(self, key, index):
-        print "adding key", key, "index", index
         self.client.tor_ser_cache_check_table_add_with_tor_ser_cache_check_act(
             self.sess_hdl, self.dev_tgt,
             netcache_tor_ser_cache_check_match_spec_t(
@@ -68,13 +70,13 @@ class Controller(object):
             netcache_tor_ser_cache_check_act_action_spec_t(
                 action_index = index))
 
-    def install_table_entries(self, tables, keyfile, nkeys):
+    def install_table_entries(self, tables, nkeys):
         # add keys
         i = 0
-        for line in open(keyfile):
+        for key in tables["keys"]:
             if i >= nkeys:
                 break
-            self.add_key(line.strip(), i)
+            self.add_key(key, i)
             i += 1
         # add l2 forwarding rules
         for (mac, port) in tables["tab_l2_forward"].items():
@@ -92,9 +94,6 @@ def main():
     parser.add_argument("--config",
                         required=True,
                         help="configuration (JSON) file")
-    parser.add_argument("--kfile",
-                        required=True,
-                        help="keys file")
     parser.add_argument("--nkeys",
                         type=int,
                         default=0,
@@ -106,8 +105,8 @@ def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    controller = Controller("tofino1")
-    controller.install_table_entries(tables, args.kfile, args.nkeys)
+    controller = Controller(THRIFT_SERVER, THRIFT_PORT)
+    controller.install_table_entries(tables, args.nkeys)
 
 
 if __name__ == "__main__":
