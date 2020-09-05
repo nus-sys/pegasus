@@ -74,7 +74,7 @@ port-enb 1/-
 ```
 You need to use the right port number (1/-), port speed (25G), and FEC mode (none) based on the switch/cable configurations.
 
-Second, modify JSON files `$REPO/artifact_eval/pegasus.json` and `$REPO/artifact_eval/netcache.json` with the testbed cluster configuration. Specifically, `tab_l2_forward` contains the MAC address of *all* the machines in the testbed (both clients and servers), and which P4 switch ports they are connected to. Add more entries if needed. `tab_node_forward` (only in pegasus.json) contains the MAC, IP, UDP port, and the connected P4 switch port of *only* the servers (don't add client machines here). These entries are numerically ordered (0, 1, 2, 3, ...), and they have to follow the same order as the `node` entries in `$REPO/artifact_eval/pegasus.config`. Similarly, add more entries if needed.
+Second, modify JSON files `$REPO/artifact_eval/pegasus.json` and `$REPO/artifact_eval/netcache.json` with the testbed cluster configuration. Specifically, `tab_l2_forward` contains the MAC address of *all* the machines in the testbed (both clients and servers), and which P4 switch ports they are connected to. Add more entries if needed. `tab_node_forward` (only in pegasus.json) contains the MAC, IP, UDP port, and the connected P4 switch port of *only* the servers (don't add client machines here). These entries are numerically ordered (0, 1, 2, 3, ...), and they have to follow the same order as the `node` entries in `$REPO/artifact_eval/testbed.config`. Similarly, add more entries if needed.
 
 Third, start the Pegasus switch controller:
 ```
@@ -88,3 +88,15 @@ cd $REPO
 ```
 
 ### Ehd-host
+
+First, modify configuration file `$REPO/artifact_eval/testbed.config`. The file has the following entries:
+1. Servers:
+```
+node mac|ip|port|dev_port[|blacklist]
+```
+* mac: server MAC address
+* ip: server IP address
+* port: server UDP port
+* dev_port: for NICs with multiple ports, this is the port number (not used by the experiments, so keep 0 here)
+* blacklist: optional. If there are multiple NICS, and/or if the DPDK NIC has multiple ports, list all the PCI slot numbers (bus:device.function) that are *not* used by the experiments.
+Note that the `node` entries are ordered. Make sure their order matches the numerical order of `tab_node_forward` in `$REPO/artifact_eval/pegasus.json`.
