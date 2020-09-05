@@ -87,7 +87,7 @@ cd $REPO
 ./artifact_eval/run_netcache_controller.sh
 ```
 
-### Ehd-host
+### End-host
 
 First, modify configuration file `$REPO/artifact_eval/testbed.config`. The file has the following entries:
 1. Servers:
@@ -97,6 +97,26 @@ node mac|ip|port|dev_port[|blacklist]
 * mac: server MAC address
 * ip: server IP address
 * port: server UDP port
-* dev_port: for NICs with multiple ports, this is the port number (not used by the experiments, so keep 0 here)
+* dev_port: for NICs with multiple ports, this is the port number (not used by the experiments, so can keep 0 here)
 * blacklist: optional. If there are multiple NICS, and/or if the DPDK NIC has multiple ports, list all the PCI slot numbers (bus:device.function) that are *not* used by the experiments.
+
 Note that the `node` entries are ordered. Make sure their order matches the numerical order of `tab_node_forward` in `$REPO/artifact_eval/pegasus.json`.
+
+2. Clients:
+```
+client mac|ip|port|dev_port[|blacklist]
+```
+Fields are the same as the `node` entries. `client` entries are not ordered.
+
+3. Controller:
+```
+controller mac|ip|port|dev_port
+```
+Specify the address of the P4 switch controller.
+
+Second, modify the python script `$REPO/artifact_eval/run_experiments.py`.
+
+Next, on a machine that has ssh connectivity to all the servers and clients (could be one of the client/server machines), run the following
+```
+python2 $REPO/artifact_eval/run_experiments.py
+```
