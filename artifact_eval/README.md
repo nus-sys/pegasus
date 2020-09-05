@@ -2,8 +2,10 @@
 
 ## Macros used in this README
 
-`$REPO`: path to Pegasus repository
+`$REPO`: path to the root of the Pegasus repository
+
 `$SDE`: path to Barefoot SDE
+
 `$SDE_INSTALL`: path to Barefoot SDE installation directory
 
 ## Dependencies
@@ -19,11 +21,11 @@
 
 ## Build
 
-### End Host Code
+### End-host code
 
 Run `make` in `$REPO`
 
-### P4 Switch Code
+### P4 switch code
 
 On the target P4 switch:
 
