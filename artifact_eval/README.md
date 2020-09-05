@@ -74,7 +74,7 @@ port-enb 1/-
 ```
 You need to use the right port number (1/-), port speed (25G), and FEC mode (none) based on the switch/cable configurations.
 
-Second, modify JSON files `$REPO/artifact_eval/pegasus.json` and `$REPO/artifact_eval/netcache.json` with the testbed cluster configuration. Specifically, `tab_l2_forward` contains the MAC address of *all* the machines in the testbed (both clients and servers), and which P4 switch ports they are connected to. Add more entries if needed. `tab_node_forward` (only in pegasus.json) contains the MAC, IP, UDP port, and the connected P4 switch port of *only* the servers (don't add client machines here). These entries are numerically ordered (0, 1, 2, 3, ...), and they have to follow the same order as the `node` entries in `$REPO/artifact_eval/testbed.config`. Similarly, add more entries if needed.
+Second, modify JSON files `$REPO/artifact_eval/pegasus.json` and `$REPO/artifact_eval/netcache.json` with the testbed cluster configuration. Specifically, `controller_ip` and `controller_udp` (only in pegasus.json) are the address of the controller (on P4 switch). `tab_l2_forward` contains the MAC address of *all* the machines in the testbed (both clients and servers), and which P4 switch ports they are connected to. Add more entries if needed. `tab_node_forward` (only in pegasus.json) contains the MAC, IP, UDP port, and the connected P4 switch port of *only* the servers (don't add client machines here). These entries are numerically ordered (0, 1, 2, 3, ...), and they have to follow the same order as the `node` entries in `$REPO/artifact_eval/testbed.config`. Similarly, add more entries if needed.
 
 Third, start the Pegasus switch controller:
 ```
@@ -112,7 +112,7 @@ Fields are the same as the `node` entries. `client` entries are not ordered.
 ```
 controller mac|ip|port|dev_port
 ```
-Specify the address of the P4 switch controller.
+Specify the address of the P4 switch controller. Should match the `controller_ip` and `controller_udp` fields in `$REPO/artifact_eval/pegasus.json`.
 
 Second, modify the python script `$REPO/artifact_eval/run_experiments.py`.
 
