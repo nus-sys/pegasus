@@ -114,9 +114,27 @@ controller mac|ip|port|dev_port
 ```
 Specify the address of the P4 switch controller. Should match the `controller_ip` and `controller_udp` fields in `$REPO/artifact_eval/pegasus.json`.
 
-Second, modify the python script `$REPO/artifact_eval/run_experiments.py`.
+Second, modify the python script `$REPO/artifact_eval/run_experiments.py`. Update `clients` and `servers` with actual hostnames of the client and server machines. The following experiment parameters can be modified to reproduce graphs in the paper:
+* `n_servers`: number of servers used in the experiment
+* `node_config`: one of `pegasus`, `netcache`, or `static` (consistent hashing). Need to run the appropriate P4 switch daemon and switch controller when changing from `pegasus` to `netcache (or vice versa).
+* `alpha`: Zipfian skewness parameter
+* `get_ratio`: percentage of read requests in the workload (0.0 - 1.0)
+* `n_server_threads`: number of server threads to run. Each thread will run on a dedicated core, so this number cannot exceed the total number of cores.
+* `n_client_threads`: number of client application threads to run. Similar to server threads, each application thread will run on a dedicated core. However, each application thread will also have a corresponding transport thread, running on a different core. So the total number of threads spawned will be `2 * n_client_threads` and this number cannot exceed the total number of cores.
+* `interval`: interval (in us) between client requests. Lower means higher request rate. Combined with `n_client_threads`, these two parameters determine the total client load.
+* `key_type`: key distribution. Either `unif` (uniform) or `zipf` (Zipfian)
+* `value_len`: value size (in bytes)
+* `n_keys`: total number of keys (max 1M)
+* `duration`: duration of the experiment (in seconds)
 
 Next, on a machine that has ssh connectivity to all the servers and clients (could be one of the client/server machines), run the following
 ```
 python2 $REPO/artifact_eval/run_experiments.py
 ```
+The script will output the following statistics:
+* Throughput
+* Average latency
+* Median latency
+* 90% latency
+* 99% latency
+You need to play with the `n_client_threads` and `interval` parameters to get the maximum throughput with some 99% latency SLO, as reported in the paper.
