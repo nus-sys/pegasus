@@ -8,7 +8,6 @@ import pyrem.task
 # Modify the following
 clients = ['client0hostname', 'client1hostname']
 servers = ['server0hostname', 'server1hostname']
-log_dir = '/h/jialin/log/'
 
 # Experiment parameters
 n_servers = 2 # Number of servers
@@ -25,6 +24,7 @@ num_rkeys = 64 # Number of replicated keys
 duration = '10' # Duration of the experiment (seconds)
 
 # Do not modify anything below
+log_dir = '/tmp/'
 cur_dir = os.path.dirname(os.path.abspath(__file__))
 config_file = cur_dir + '/testbed.config'
 key_file = cur_dir + '/keys'
@@ -102,9 +102,7 @@ if __name__ == "__main__":
                get_ratio = get_ratio,
                alpha = alpha,
                num_rkeys = num_rkeys)
-    # Remove previous logs
-    pyrem.host.RemoteHost(clients[0]).run(['rm',
-                                           log_dir+'*']).start(wait=True)
+
     # Start all servers
     server_tasks = []
     for i in range(n_servers):
@@ -180,6 +178,15 @@ if __name__ == "__main__":
                    '>', log_dir+'client_'+str(i)+'.log',
                    '2>&1']
         client_tasks.append(client_host.run(command, quiet=True))
+        i += 1
+    pyrem.task.Parallel(client_tasks, aggregate=False).start(wait=True)
+
+    # Collect client logs
+    i = 0
+    client_tasks = []
+    for client in clients:
+        client_host = pyrem.host.RemoteHost(client)
+        client_tasks.append(client_host.get_file(log_dir+'stats_'+str(i)+'.log'))
         i += 1
     pyrem.task.Parallel(client_tasks, aggregate=False).start(wait=True)
 
