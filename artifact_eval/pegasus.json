@@ -1,5 +1,5 @@
 {
-    "controller_ip": "198.19.3.16",
+    "controller_ip": "198.164.1.1",
     "controller_udp": 12345,
     "tab_l2_forward": {
         "aa:aa:aa:aa:aa:aa": 0,
