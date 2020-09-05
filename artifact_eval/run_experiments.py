@@ -47,7 +47,6 @@ def parse_result(task):
     total_ops = 0
     completed_ops = 0
     issued_ops = 0
-    node_ops = {}
     for i in range(task.n_clients):
         first_line = True
         for line in open(log_dir+'stats_'+str(i)+'.log'):
@@ -63,12 +62,6 @@ def parse_result(task):
                 current_count = latencies.get(latency, 0)
                 latencies[latency] = current_count + count
                 total_ops += count
-        for line in open(log_dir+'nodeops_'+str(i)+'.log'):
-            str_node, _, str_ops = line.partition(' ')
-            node = int(str_node)
-            ops = int(str_ops)
-            current_ops = node_ops.get(node, 0)
-            node_ops[node] = current_ops + ops
 
     count = 0
     total_latency = 0
