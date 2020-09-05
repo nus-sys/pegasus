@@ -23,7 +23,6 @@ from thrift.transport import TTransport
 from thrift.protocol import TBinaryProtocol
 from thrift.protocol import TMultiplexedProtocol
 
-CONTROLLER_ADDR = ("198.19.3.16", 12345)
 THRIFT_SERVER = "localhost"
 THRIFT_PORT = 9090
 
@@ -324,7 +323,8 @@ def main():
 
     controller = Controller(THRIFT_SERVER, THRIFT_PORT)
     g_controller = controller
-    handler = MessageHandler(CONTROLLER_ADDR, controller)
+    controller_addr = (tables["controller_ip"], tables["controller_udp"])
+    handler = MessageHandler(controller_addr, controller)
 
     controller.install_table_entries(tables)
     handler.start()
