@@ -15,7 +15,7 @@
 * libnuma (libnuma-dev)
 * zlib (zlib1g-dev)
 * DPDK (tested with version 19.11.1)
-* Mellanox OFED (only if using Mellanox NICs)
+* Mellanox OFED (only if using Mellanox NICs, tested with version 5.0-2.1.8.0)
 * Barefoot SDE (tested with version 9.1.1)
 * Python PyREM (pip install pyrem)
 
@@ -24,6 +24,15 @@
 ### End-host code
 
 Run `make` in `$REPO`
+
+Note: if you are using Mellanox NICs, you need modify the following line in `$REPO/emulation/Makefile`
+```
+HAS_MLX5 := n
+```
+to
+```
+HAS_MLX5 := y
+```
 
 ### P4 switch code
 
@@ -37,3 +46,5 @@ make install
 ```
 
 Note that the location of `p4-build` may depend on the Barefoot SDE version.
+
+## Run
