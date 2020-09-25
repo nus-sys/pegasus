@@ -1,26 +1,41 @@
 {
-    "controller_ip": "198.164.1.1",
+    "controller_ip": "10.100.0.9",
     "controller_udp": 12345,
     "tab_l2_forward": {
-        "aa:aa:aa:aa:aa:aa": 0,
-        "bb:bb:bb:bb:bb:bb": 1,
-        "cc:cc:cc:cc:cc:cc": 2,
-        "dd:dd:dd:dd:dd:dd": 3
+        "50:6b:4b:b6:35:8d": 128,
+        "3c:fd:fe:9e:5d:01": 136,
+        "3c:fd:fe:a0:42:00": 144,
+        "ec:0d:9a:37:c8:2e": 152,
+        "3c:fd:fe:9e:78:88": 160
     },
     "tab_node_forward": {
         "0":
         {
-            "mac": "aa:aa:aa:aa:aa:aa",
+            "mac": "50:6b:4b:b6:35:8d",
             "ip": "10.1.0.1",
             "udp": 12345,
-            "port": 0
+            "port": 128
         },
         "1":
         {
-            "mac": "bb:bb:bb:bb:bb:bb",
+            "mac": "3c:fd:fe:9e:5d:01",
             "ip": "10.1.0.2",
             "udp": 12345,
-            "port": 1
+            "port": 136
+        },
+        "2":
+        {
+            "mac": "3c:fd:fe:a0:42:00",
+            "ip": "10.1.0.3",
+            "udp": 12345,
+            "port": 144
+        },
+        "3":
+        {
+            "mac": "ec:0d:9a:37:c8:2e",
+            "ip": "10.1.0.4",
+            "udp": 12345,
+            "port": 152
         }
     },
     "tab_replicated_keys": [
