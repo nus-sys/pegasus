@@ -35,11 +35,11 @@ LDFLAGS += -ltbb
 LDFLAGS += -lpthread
 
 # DPDK library
-HAS_MLX5 := n
+HAS_MLX := y
 CFLAGS += -DALLOW_EXPERIMENTAL_API -mssse3
 LDFLAGS += -Wl,--whole-archive -ldpdk -Wl,--no-whole-archive -ldl -lnuma -lz
-ifeq ($(HAS_MLX5), y)
-	LDFLAGS += -lrte_pmd_mlx5 -lmlx5 -libverbs
+ifeq ($(HAS_MLX), y)
+	LDFLAGS += -lrte_pmd_mlx5 -lmlx5 -libverbs -lrte_pmd_mlx4 -lmlx4
 endif
 
 # Object files
