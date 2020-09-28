@@ -29,6 +29,7 @@ cur_dir = os.path.dirname(os.path.abspath(__file__))
 config_file = cur_dir + '/testbed.config'
 key_file = cur_dir + '/keys'
 emulator = cur_dir + '/../emulation/bin/emulator'
+reset = cur_dir + '/reset.py'
 forcekill = ['sudo', 'killall', 'emulator']
 
 class Task(object):
@@ -139,7 +140,13 @@ if __name__ == "__main__":
     all_server_tasks = pyrem.task.Parallel(server_tasks, aggregate=False)
     all_server_tasks.start()
 
-    time.sleep(4)
+    # Reset controller
+    command = ['sudo', reset,
+               str(n_servers),
+               str(num_rkeys)]
+    pyrem.host.LocalHost().run(command).start(wait=True)
+
+    time.sleep(5)
     # Start clients
     i = 0
     client_tasks = []
