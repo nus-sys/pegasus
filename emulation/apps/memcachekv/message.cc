@@ -197,7 +197,6 @@ bool WireCodec::encode(Message &out, const MemcacheKVMessage &in)
         }
         ptr += sizeof(op_type_t);
         keyhash_t hash = (keyhash_t)compute_keyhash(in.request.op.key);
-        hash = hash & KEYHASH_MASK; // controller uses signed int
         convert_endian(ptr, &hash, sizeof(keyhash_t));
         ptr += sizeof(keyhash_t);
         *(node_t*)ptr = in.request.client_id;

@@ -12,7 +12,6 @@ namespace memcachekv {
 typedef uint32_t keyhash_t;
 typedef uint16_t load_t;
 typedef uint32_t ver_t;
-#define KEYHASH_MASK 0x7FFFFFFF
 
 /*
  * KV messages

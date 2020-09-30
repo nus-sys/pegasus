@@ -7,14 +7,15 @@
 namespace memcachekv {
 
 #define N_VIRTUAL_NODES 16
+#define KEYHASH_MASK 0x7FFFFFFF
 
-inline uint64_t compute_keyhash(const std::string &key)
+inline uint32_t compute_keyhash(const std::string &key)
 {
     uint64_t hash = 5381;
     for (auto c : key) {
         hash = ((hash << 5) + hash) + (uint64_t)c;
     }
-    return hash;
+    return (uint32_t)(hash & KEYHASH_MASK);
 }
 
 inline int key_to_node_id(const std::string &key, int num_nodes)
