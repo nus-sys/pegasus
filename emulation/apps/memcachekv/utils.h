@@ -8,6 +8,7 @@ namespace memcachekv {
 
 #define N_VIRTUAL_NODES 16
 #define KEYHASH_MASK 0x7FFFFFFF
+#define KEYHASH_RANGE 0x80000000
 
 inline uint32_t compute_keyhash(const std::string &key)
 {
@@ -20,7 +21,9 @@ inline uint32_t compute_keyhash(const std::string &key)
 
 inline int key_to_node_id(const std::string &key, int num_nodes)
 {
-    return (int)((compute_keyhash(key) % (num_nodes * N_VIRTUAL_NODES)) % num_nodes);
+    uint32_t keyhash = compute_keyhash(key);
+    uint32_t interval = (uint32_t)KEYHASH_RANGE / (num_nodes * N_VIRTUAL_NODES);
+    return (int)((keyhash / interval) % num_nodes);
 }
 
 } // namespace memcachekv
