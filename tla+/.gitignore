@@ -1,0 +1,6 @@
+*.toolbox/
+*.tex
+*.ps
+*.pdf
+*.jar
+tlatex.sty
